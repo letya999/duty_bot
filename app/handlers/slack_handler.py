@@ -79,7 +79,7 @@ class SlackHandler:
                     result = await handler.duty_today()
                 else:
                     # Mention specific team's duty
-                    team_name = text.split()[0]
+                    team_name = text.split()[0].strip()
                     result = await handler.mention_duty(team_name)
 
                 await self.client.chat_postMessage(
@@ -114,13 +114,13 @@ class SlackHandler:
                     raise CommandError("Usage: /team <command> [args]")
 
                 parts = text.split()
-                cmd = parts[0]
+                cmd = parts[0].strip()
 
                 if cmd == "list":
                     result = await handler.team_list()
 
                 elif cmd == "add" and len(parts) >= 2:
-                    name = parts[1]
+                    name = parts[1].strip()
                     display_name = CommandParser.extract_quote_content(text)
                     if not display_name:
                         raise CommandError('Usage: /team add <name> "<display_name>" [--shifts]')
@@ -129,7 +129,7 @@ class SlackHandler:
                     result = await handler.team_add(name, display_name, has_shifts)
 
                 elif cmd == "edit" and len(parts) >= 2:
-                    team_name = parts[1]
+                    team_name = parts[1].strip()
 
                     if "--name" in text:
                         idx = text.find("--name")
@@ -152,7 +152,7 @@ class SlackHandler:
                         raise CommandError("Unknown team edit option")
 
                 elif cmd == "lead" and len(parts) >= 3:
-                    team_name = parts[1]
+                    team_name = parts[1].strip()
                     mentions = CommandParser.extract_mentions(text)
                     if not mentions:
                         raise CommandError("Usage: /team lead <team> @user")
@@ -164,7 +164,7 @@ class SlackHandler:
                     result = await handler.team_set_lead(team_name, user)
 
                 elif cmd == "add-member" and len(parts) >= 2:
-                    team_name = parts[1]
+                    team_name = parts[1].strip()
                     mentions = CommandParser.extract_mentions(text)
                     if not mentions:
                         raise CommandError("Usage: /team add-member <team> @user")
@@ -176,7 +176,7 @@ class SlackHandler:
                     result = await handler.team_add_member(team_name, user)
 
                 elif cmd == "remove-member" and len(parts) >= 2:
-                    team_name = parts[1]
+                    team_name = parts[1].strip()
                     mentions = CommandParser.extract_mentions(text)
                     if not mentions:
                         raise CommandError("Usage: /team remove-member <team> @user")
@@ -189,8 +189,8 @@ class SlackHandler:
 
                 elif cmd == "move" and len(parts) >= 4:
                     mentions = CommandParser.extract_mentions(text)
-                    from_team = parts[2]
-                    to_team = parts[3]
+                    from_team = parts[2].strip()
+                    to_team = parts[3].strip()
 
                     if not mentions:
                         raise CommandError("Usage: /team move @user <from_team> <to_team>")
@@ -202,12 +202,12 @@ class SlackHandler:
                     result = await handler.team_move_member(user, from_team, to_team)
 
                 elif cmd == "delete" and len(parts) >= 2:
-                    team_name = parts[1]
+                    team_name = parts[1].strip()
                     result = await handler.team_delete(team_name)
 
                 else:
                     # Show team info
-                    team_name = cmd
+                    team_name = cmd.strip()
                     result = await handler.team_info(team_name)
 
                 await self.client.chat_postMessage(
@@ -242,7 +242,7 @@ class SlackHandler:
                     raise CommandError("Usage: /schedule <team> [period] [set/clear] [date] [@user]")
 
                 parts = text.split()
-                team_name = parts[0]
+                team_name = parts[0].strip()
 
                 if "set" in text and len(parts) >= 3:
                     date_idx = text.find("set") + 3
@@ -299,7 +299,7 @@ class SlackHandler:
                     raise CommandError("Usage: /shift <team> [period] [set/add/remove/clear] [date] [@users]")
 
                 parts = text.split()
-                team_name = parts[0]
+                team_name = parts[0].strip()
 
                 if "set" in text and len(parts) >= 3:
                     date_idx = text.find("set") + 3

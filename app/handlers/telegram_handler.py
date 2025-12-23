@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
-from app.commands.handlers import CommandHandler
+from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.commands.parser import CommandParser, DateParser, CommandError
 from app.services.user_service import UserService
 from app.config import get_settings
@@ -49,7 +49,7 @@ class TelegramHandler:
         """Handle /duty command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
 
                 args = context.args
                 if not args:
@@ -72,7 +72,7 @@ class TelegramHandler:
         """Handle /team command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
                 args = context.args
@@ -188,7 +188,7 @@ class TelegramHandler:
         """Handle /schedule command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
                 args = context.args
@@ -233,7 +233,7 @@ class TelegramHandler:
         """Handle /shift command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
                 args = context.args
@@ -309,7 +309,7 @@ class TelegramHandler:
         """Handle /escalation command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
                 args = context.args
@@ -340,7 +340,7 @@ class TelegramHandler:
         """Handle /escalate command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
 
                 args = context.args
                 if not args:

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.commands.parser import CommandParser, DateParser, CommandError, DateRange
 from app.services.user_service import UserService
@@ -268,7 +268,7 @@ Members: {members_str}"""
         while current <= date_range.end:
             await self.schedule_service.set_duty(team, user, current)
             count += 1
-            current += __import__('datetime').timedelta(days=1)
+            current += timedelta(days=1)
 
         return f"Duty set for {user.display_name} for {count} day(s)"
 
@@ -293,7 +293,7 @@ Members: {members_str}"""
         while current <= date_range.end:
             if await self.schedule_service.clear_duty(team, current):
                 count += 1
-            current += __import__('datetime').timedelta(days=1)
+            current += timedelta(days=1)
 
         return f"Duty cleared for {count} day(s)"
 
@@ -358,7 +358,7 @@ Members: {members_str}"""
         while current <= date_range.end:
             await self.shift_service.create_shift(team, current, users)
             count += 1
-            current += __import__('datetime').timedelta(days=1)
+            current += timedelta(days=1)
 
         names = ", ".join([u.display_name for u in users])
         return f"Shift set for {names} for {count} day(s)"
@@ -424,7 +424,7 @@ Members: {members_str}"""
         while current <= date_range.end:
             if await self.shift_service.clear_shift(team, current):
                 count += 1
-            current += __import__('datetime').timedelta(days=1)
+            current += timedelta(days=1)
 
         return f"Shifts cleared for {count} day(s)"
 

@@ -12,8 +12,9 @@ from app.models import Team, User
 class CommandHandler:
     """Handle all bot commands"""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, workspace_id: int = 1):
         self.db = db
+        self.workspace_id = workspace_id
         self.user_service = UserService(db)
         self.team_service = TeamService(db)
         self.schedule_service = ScheduleService(db)
@@ -27,7 +28,7 @@ class CommandHandler:
         if today is None:
             today = date.today()
 
-        teams = await self.team_service.get_all_teams()
+        teams = await self.team_service.get_all_teams(self.workspace_id)
 
         if not teams:
             return "No teams configured."
@@ -55,7 +56,7 @@ class CommandHandler:
         if today is None:
             today = date.today()
 
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -76,7 +77,7 @@ class CommandHandler:
 
     async def team_list(self) -> str:
         """List all teams"""
-        teams = await self.team_service.get_all_teams()
+        teams = await self.team_service.get_all_teams(self.workspace_id)
 
         if not teams:
             return "No teams configured."
@@ -91,7 +92,7 @@ class CommandHandler:
 
     async def team_info(self, team_name: str) -> str:
         """Show team composition"""
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -106,20 +107,20 @@ Members: {members_str}"""
 
     async def team_add(self, name: str, display_name: str, has_shifts: bool = False) -> str:
         """Create team"""
-        existing = await self.team_service.get_team_by_name(name)
+        existing = await self.team_service.get_team_by_name(self.workspace_id, name)
         if existing:
             raise CommandError(f"Team already exists: {name}")
 
-        team = await self.team_service.create_team(name, display_name, has_shifts)
+        team = await self.team_service.create_team(self.workspace_id, name, display_name, has_shifts)
         return f"Team created: {team.display_name}"
 
     async def team_edit_name(self, team_name: str, new_name: str) -> str:
         """Rename team identifier"""
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        existing = await self.team_service.get_team_by_name(new_name)
+        existing = await self.team_service.get_team_by_name(self.workspace_id, new_name)
         if existing and existing.id != team.id:
             raise CommandError(f"Team already exists: {new_name}")
 
@@ -128,7 +129,7 @@ Members: {members_str}"""
 
     async def team_edit_display(self, team_name: str, new_display: str) -> str:
         """Change display name"""
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -137,7 +138,7 @@ Members: {members_str}"""
 
     async def team_edit_shifts(self, team_name: str, enabled: bool) -> str:
         """Enable/disable shift mode"""
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -147,7 +148,7 @@ Members: {members_str}"""
 
     async def team_set_lead(self, team_name: str, user: User) -> str:
         """Set team lead"""
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -156,7 +157,7 @@ Members: {members_str}"""
 
     async def team_add_member(self, team_name: str, user: User) -> str:
         """Add team member"""
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -165,7 +166,7 @@ Members: {members_str}"""
 
     async def team_remove_member(self, team_name: str, user: User) -> str:
         """Remove team member"""
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -182,11 +183,11 @@ Members: {members_str}"""
         to_team_name: str
     ) -> str:
         """Move member between teams"""
-        from_team = await self.team_service.get_team_by_name(from_team_name)
+        from_team = await self.team_service.get_team_by_name(self.workspace_id, from_team_name)
         if not from_team:
             raise CommandError(f"Team not found: {from_team_name}")
 
-        to_team = await self.team_service.get_team_by_name(to_team_name)
+        to_team = await self.team_service.get_team_by_name(self.workspace_id, to_team_name)
         if not to_team:
             raise CommandError(f"Team not found: {to_team_name}")
 
@@ -200,7 +201,7 @@ Members: {members_str}"""
 
     async def team_delete(self, team_name: str) -> str:
         """Delete team"""
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -214,7 +215,7 @@ Members: {members_str}"""
         if today is None:
             today = date.today()
 
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -254,7 +255,7 @@ Members: {members_str}"""
         if today is None:
             today = date.today()
 
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -282,7 +283,7 @@ Members: {members_str}"""
         if today is None:
             today = date.today()
 
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -304,7 +305,7 @@ Members: {members_str}"""
         if today is None:
             today = date.today()
 
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -344,7 +345,7 @@ Members: {members_str}"""
         if today is None:
             today = date.today()
 
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -374,7 +375,7 @@ Members: {members_str}"""
         if today is None:
             today = date.today()
 
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -394,7 +395,7 @@ Members: {members_str}"""
         if today is None:
             today = date.today()
 
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -413,7 +414,7 @@ Members: {members_str}"""
         if today is None:
             today = date.today()
 
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -432,8 +433,8 @@ Members: {members_str}"""
 
     async def escalation_show(self) -> str:
         """Show escalation settings"""
-        teams = await self.team_service.get_all_teams()
-        cto = await self.escalation_service.get_cto()
+        teams = await self.team_service.get_all_teams(self.workspace_id)
+        cto = await self.escalation_service.get_cto(self.workspace_id)
 
         result = ["**Escalation Settings**"]
         result.append("Level 1 (Team Leads):")
@@ -448,12 +449,12 @@ Members: {members_str}"""
 
     async def escalation_set_cto(self, user: User) -> str:
         """Set CTO"""
-        await self.escalation_service.set_cto(user)
+        await self.escalation_service.set_cto(self.workspace_id, user)
         return f"CTO set to {user.display_name}"
 
     async def escalate_team(self, team_name: str) -> str:
         """Escalate to team lead"""
-        team = await self.team_service.get_team_by_name(team_name)
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
@@ -465,7 +466,7 @@ Members: {members_str}"""
 
     async def escalate_cto(self) -> str:
         """Escalate to CTO"""
-        cto = await self.escalation_service.get_cto()
+        cto = await self.escalation_service.get_cto(self.workspace_id)
         if not cto:
             raise CommandError("CTO not assigned")
 

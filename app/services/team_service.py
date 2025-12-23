@@ -10,12 +10,14 @@ class TeamService:
 
     async def create_team(
         self,
+        workspace_id: int,
         name: str,
         display_name: str,
         has_shifts: bool = False
     ) -> Team:
-        """Create a new team"""
+        """Create a new team in workspace"""
         team = Team(
+            workspace_id=workspace_id,
             name=name,
             display_name=display_name,
             has_shifts=has_shifts,
@@ -25,30 +27,35 @@ class TeamService:
         await self.db.refresh(team)
         return team
 
-    async def get_team(self, team_id: int) -> Team | None:
-        """Get team by ID"""
+    async def get_team(self, team_id: int, workspace_id: int = None) -> Team | None:
+        """Get team by ID, optionally filtered by workspace"""
         stmt = select(Team).options(
             selectinload(Team.members),
             selectinload(Team.team_lead_user)
         ).where(Team.id == team_id)
+        if workspace_id is not None:
+            stmt = stmt.where(Team.workspace_id == workspace_id)
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    async def get_team_by_name(self, name: str) -> Team | None:
-        """Get team by name"""
+    async def get_team_by_name(self, workspace_id: int, name: str) -> Team | None:
+        """Get team by name in workspace"""
         stmt = select(Team).options(
             selectinload(Team.members),
             selectinload(Team.team_lead_user)
-        ).where(Team.name == name)
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
-
-    async def get_all_teams(self) -> list[Team]:
-        """Get all teams"""
-        stmt = select(Team).options(
-            selectinload(Team.members),
-            selectinload(Team.team_lead_user)
+        ).where(
+            (Team.workspace_id == workspace_id) &
+            (Team.name == name)
         )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_all_teams(self, workspace_id: int) -> list[Team]:
+        """Get all teams in workspace"""
+        stmt = select(Team).options(
+            selectinload(Team.members),
+            selectinload(Team.team_lead_user)
+        ).where(Team.workspace_id == workspace_id)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

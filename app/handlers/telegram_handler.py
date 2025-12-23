@@ -3,14 +3,42 @@ from datetime import date
 from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.database import AsyncSessionLocal
 from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.commands.parser import CommandParser, DateParser, CommandError
 from app.services.user_service import UserService
+from app.models import Workspace
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+async def get_or_create_telegram_workspace(db: AsyncSession, chat_id: int) -> int:
+    """Get or create Telegram workspace by chat ID"""
+    external_id = str(chat_id)
+    stmt = select(Workspace).where(
+        (Workspace.workspace_type == 'telegram') &
+        (Workspace.external_id == external_id)
+    )
+    result = await db.execute(stmt)
+    workspace = result.scalars().first()
+
+    if not workspace:
+        workspace = Workspace(
+            name=f"Telegram Chat {chat_id}",
+            workspace_type='telegram',
+            external_id=external_id
+        )
+        db.add(workspace)
+        await db.commit()
+        await db.refresh(workspace)
+        logger.info(f"Created new Telegram workspace: {chat_id} (id={workspace.id})")
+    else:
+        logger.debug(f"Using existing Telegram workspace: {chat_id} (id={workspace.id})")
+
+    return workspace.id
 
 
 class TelegramHandler:
@@ -61,7 +89,8 @@ class TelegramHandler:
         """Handle /duty command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                handler = BotCommandHandler(db, workspace_id)
 
                 args = context.args
                 if not args:
@@ -84,7 +113,8 @@ class TelegramHandler:
         """Handle /team command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
                 args = context.args
@@ -135,7 +165,7 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /team lead <team> @user")
 
-                    user = await user_service.get_user_by_telegram(mentions[0])
+                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
@@ -147,7 +177,7 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /team add-member <team> @user")
 
-                    user = await user_service.get_user_by_telegram(mentions[0])
+                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
@@ -159,7 +189,7 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /team remove-member <team> @user")
 
-                    user = await user_service.get_user_by_telegram(mentions[0])
+                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
@@ -173,7 +203,7 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /team move @user <from_team> <to_team>")
 
-                    user = await user_service.get_user_by_telegram(mentions[0])
+                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
@@ -200,7 +230,8 @@ class TelegramHandler:
         """Handle /schedule command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
                 args = context.args
@@ -218,7 +249,7 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /schedule <team> set <date> @user")
 
-                    user = await user_service.get_user_by_telegram(mentions[0])
+                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
@@ -245,7 +276,8 @@ class TelegramHandler:
         """Handle /shift command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
                 args = context.args
@@ -265,7 +297,7 @@ class TelegramHandler:
 
                     users = []
                     for mention in mentions:
-                        user = await user_service.get_user_by_telegram(mention)
+                        user = await user_service.get_user_by_telegram(workspace_id, mention)
                         if not user:
                             raise CommandError(f"User not found: @{mention}")
                         users.append(user)
@@ -280,7 +312,7 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /shift <team> add <date> @user")
 
-                    user = await user_service.get_user_by_telegram(mentions[0])
+                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
@@ -294,7 +326,7 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /shift <team> remove <date> @user")
 
-                    user = await user_service.get_user_by_telegram(mentions[0])
+                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
@@ -321,7 +353,8 @@ class TelegramHandler:
         """Handle /escalation command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
                 args = context.args
@@ -332,7 +365,7 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /escalation cto @user")
 
-                    user = await user_service.get_user_by_telegram(mentions[0])
+                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
@@ -352,7 +385,8 @@ class TelegramHandler:
         """Handle /escalate command"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                handler = BotCommandHandler(db, workspace_id)
 
                 args = context.args
                 if not args:

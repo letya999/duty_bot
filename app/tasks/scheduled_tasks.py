@@ -4,11 +4,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from pytz import timezone
+from sqlalchemy import select
 from slack_sdk.web.async_client import AsyncWebClient
 from telegram import Bot
 from app.database import AsyncSessionLocal
 from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.services.escalation_service import EscalationService
+from app.models import Workspace
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -55,131 +57,160 @@ class ScheduledTasks:
         self.scheduler.shutdown()
         logger.info("Scheduled tasks stopped")
 
+    async def get_all_workspaces(self, db) -> list[Workspace]:
+        """Get all workspaces from database"""
+        stmt = select(Workspace)
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
     async def morning_digest(self):
-        """Send morning digest with today's duties"""
+        """Send morning digest with today's duties to all workspaces"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
-                today = date.today()
-                message = await handler.duty_today()
+                workspaces = await self.get_all_workspaces(db)
 
-                # Send to Telegram
-                if self.telegram_bot and self.telegram_chat_id:
+                for workspace in workspaces:
                     try:
-                        await self.telegram_bot.send_message(
-                            chat_id=self.telegram_chat_id,
-                            text=f"📅 *Today's Duties*\n\n{message}",
-                            parse_mode='Markdown'
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to send Telegram digest: {e}")
+                        handler = BotCommandHandler(db, workspace.id)
+                        message = await handler.duty_today()
 
-                # Send to Slack
-                if self.slack_client and self.slack_channel_id:
-                    try:
-                        await self.slack_client.chat_postMessage(
-                            channel=self.slack_channel_id,
-                            text=f"📅 Today's Duties\n\n{message}"
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to send Slack digest: {e}")
+                        # Send to Telegram workspace
+                        if workspace.workspace_type == 'telegram' and self.telegram_bot:
+                            try:
+                                await self.telegram_bot.send_message(
+                                    chat_id=int(workspace.external_id),
+                                    text=f"📅 *Today's Duties*\n\n{message}",
+                                    parse_mode='Markdown'
+                                )
+                                logger.info(f"Morning digest sent to Telegram workspace {workspace.id}")
+                            except Exception as e:
+                                logger.error(f"Failed to send Telegram digest to workspace {workspace.id}: {e}")
 
-                logger.info("Morning digest sent")
+                        # Send to Slack workspace
+                        elif workspace.workspace_type == 'slack' and self.slack_client and self.slack_channel_id:
+                            try:
+                                await self.slack_client.chat_postMessage(
+                                    channel=self.slack_channel_id,
+                                    text=f"📅 Today's Duties\n\n{message}"
+                                )
+                                logger.info(f"Morning digest sent to Slack workspace {workspace.id}")
+                            except Exception as e:
+                                logger.error(f"Failed to send Slack digest to workspace {workspace.id}: {e}")
+
+                    except Exception as e:
+                        logger.warning(f"Error sending morning digest to workspace {workspace.id}: {e}")
+
+                logger.info("Morning digest sent to all workspaces")
 
         except Exception as e:
             logger.exception(f"Error in morning_digest: {e}")
 
     async def send_reminders(self):
-        """Send reminders to duty people"""
+        """Send reminders to duty people in all workspaces"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspaces = await self.get_all_workspaces(db)
                 today = date.today()
 
-                teams = (await handler.team_service.get_all_teams())
-
-                for team in teams:
+                for workspace in workspaces:
                     try:
-                        if team.has_shifts:
-                            shift = await handler.shift_service.get_today_shift(team, today)
-                            users = shift.users if shift else []
-                        else:
-                            user = await handler.schedule_service.get_today_duty(team, today)
-                            users = [user] if user else []
+                        handler = BotCommandHandler(db, workspace.id)
+                        teams = await handler.team_service.get_all_teams(workspace.id)
 
-                        for user in users:
-                            if user.telegram_username and self.telegram_bot:
-                                try:
-                                    await self.telegram_bot.send_message(
-                                        chat_id=f"@{user.telegram_username}",
-                                        text=f"⏰ Reminder: You are on duty for {team.display_name} today"
-                                    )
-                                except Exception as e:
-                                    logger.warning(f"Failed to send Telegram reminder to {user.display_name}: {e}")
+                        for team in teams:
+                            try:
+                                if team.has_shifts:
+                                    shift = await handler.shift_service.get_today_shift(team, today)
+                                    users = shift.users if shift else []
+                                else:
+                                    user = await handler.schedule_service.get_today_duty(team, today)
+                                    users = [user] if user else []
+
+                                for user in users:
+                                    if user.telegram_username and self.telegram_bot and workspace.workspace_type == 'telegram':
+                                        try:
+                                            await self.telegram_bot.send_message(
+                                                chat_id=f"@{user.telegram_username}",
+                                                text=f"⏰ Reminder: You are on duty for {team.display_name} today"
+                                            )
+                                        except Exception as e:
+                                            logger.warning(f"Failed to send Telegram reminder to {user.display_name}: {e}")
+
+                            except Exception as e:
+                                logger.warning(f"Error sending reminders for team {team.display_name} in workspace {workspace.id}: {e}")
 
                     except Exception as e:
-                        logger.warning(f"Error sending reminders for team {team.display_name}: {e}")
+                        logger.warning(f"Error sending reminders for workspace {workspace.id}: {e}")
 
-                logger.info("Reminders sent")
+                logger.info("Reminders sent to all workspaces")
 
         except Exception as e:
             logger.exception(f"Error in send_reminders: {e}")
 
     async def check_auto_escalations(self):
-        """Check if auto-escalation should be triggered"""
+        """Check if auto-escalation should be triggered in all workspaces"""
         try:
             async with AsyncSessionLocal() as db:
-                escalation_service = EscalationService(db)
-                handler = BotCommandHandler(db)
+                workspaces = await self.get_all_workspaces(db)
 
-                teams = (await handler.team_service.get_all_teams())
-
-                for team in teams:
+                for workspace in workspaces:
                     try:
-                        event = await escalation_service.get_active_escalation(team)
-                        if not event:
-                            continue
+                        escalation_service = EscalationService(db)
+                        handler = BotCommandHandler(db, workspace.id)
 
-                        # Check if timeout exceeded
-                        elapsed = datetime.now(dt_timezone.utc) - event.initiated_at
-                        timeout = timedelta(minutes=settings.escalation_timeout_minutes)
+                        teams = await handler.team_service.get_all_teams(workspace.id)
 
-                        if elapsed > timeout and not event.escalated_to_level2_at:
-                            # Auto-escalate to level 2
-                            await escalation_service.escalate_to_level2(event)
+                        for team in teams:
+                            try:
+                                event = await escalation_service.get_active_escalation(team)
+                                if not event:
+                                    continue
 
-                            cto = await escalation_service.get_cto()
-                            if not cto:
-                                logger.warning(f"No CTO assigned for auto-escalation in {team.display_name}")
-                                continue
+                                # Check if timeout exceeded
+                                elapsed = datetime.now(dt_timezone.utc) - event.initiated_at
+                                timeout = timedelta(minutes=settings.escalation_timeout_minutes)
 
-                            mention = f"@{cto.telegram_username or cto.slack_user_id}"
-                            message = f"⚠️ Auto-escalation to Level 2: {team.display_name} issue escalated to {mention}"
+                                if elapsed > timeout and not event.escalated_to_level2_at:
+                                    # Auto-escalate to level 2
+                                    await escalation_service.escalate_to_level2(event)
 
-                            # Send to the messenger where escalation was initiated
-                            if event.messenger == 'telegram' and self.telegram_bot and self.telegram_chat_id:
-                                try:
-                                    await self.telegram_bot.send_message(
-                                        chat_id=self.telegram_chat_id,
-                                        text=message,
-                                        parse_mode='Markdown'
-                                    )
-                                except Exception as e:
-                                    logger.error(f"Failed to send auto-escalation message to Telegram: {e}")
+                                    cto = await escalation_service.get_cto(workspace.id)
+                                    if not cto:
+                                        logger.warning(f"No CTO assigned for auto-escalation in {team.display_name} (workspace {workspace.id})")
+                                        continue
 
-                            elif event.messenger == 'slack' and self.slack_client and self.slack_channel_id:
-                                try:
-                                    await self.slack_client.chat_postMessage(
-                                        channel=self.slack_channel_id,
-                                        text=message
-                                    )
-                                except Exception as e:
-                                    logger.error(f"Failed to send auto-escalation message to Slack: {e}")
+                                    mention = f"@{cto.telegram_username or cto.slack_user_id}"
+                                    message = f"⚠️ Auto-escalation to Level 2: {team.display_name} issue escalated to {mention}"
 
-                            logger.info(f"Auto-escalated {team.display_name} to level 2")
+                                    # Send to the messenger where escalation was initiated
+                                    if event.messenger == 'telegram' and self.telegram_bot:
+                                        try:
+                                            await self.telegram_bot.send_message(
+                                                chat_id=int(workspace.external_id),
+                                                text=message,
+                                                parse_mode='Markdown'
+                                            )
+                                            logger.info(f"Auto-escalation message sent to Telegram workspace {workspace.id}")
+                                        except Exception as e:
+                                            logger.error(f"Failed to send auto-escalation message to Telegram workspace {workspace.id}: {e}")
+
+                                    elif event.messenger == 'slack' and self.slack_client and self.slack_channel_id:
+                                        try:
+                                            await self.slack_client.chat_postMessage(
+                                                channel=self.slack_channel_id,
+                                                text=message
+                                            )
+                                            logger.info(f"Auto-escalation message sent to Slack workspace {workspace.id}")
+                                        except Exception as e:
+                                            logger.error(f"Failed to send auto-escalation message to Slack workspace {workspace.id}: {e}")
+
+                                    logger.info(f"Auto-escalated {team.display_name} to level 2 in workspace {workspace.id}")
+
+                            except Exception as e:
+                                logger.warning(f"Error checking escalations for team {team.display_name} in workspace {workspace.id}: {e}")
 
                     except Exception as e:
-                        logger.warning(f"Error checking escalations for team {team.display_name}: {e}")
+                        logger.warning(f"Error checking escalations for workspace {workspace.id}: {e}")
 
         except Exception as e:
             logger.exception(f"Error in check_auto_escalations: {e}")

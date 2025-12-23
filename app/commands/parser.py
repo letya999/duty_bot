@@ -42,7 +42,9 @@ class DateParser:
         - Month name (Russian or English)
         """
         if today is None:
-            today = date.today()
+            from datetime import timezone as dt_timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(dt_timezone.utc).date()
 
         date_str = date_str.strip().lower()
 
@@ -92,7 +94,9 @@ class DateParser:
     def parse_date_range(range_str: str, today: date = None) -> DateRange:
         """Parse date range like '01.12-05.12'"""
         if today is None:
-            today = date.today()
+            from datetime import timezone as dt_timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(dt_timezone.utc).date()
 
         if '-' not in range_str:
             single_date = DateParser.parse_date_string(range_str, today)
@@ -114,7 +118,9 @@ class DateParser:
     def get_month_dates(month_str: str, today: date = None) -> DateRange:
         """Get first and last day of month"""
         if today is None:
-            today = date.today()
+            from datetime import timezone as dt_timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(dt_timezone.utc).date()
 
         first_day = DateParser.parse_date_string(month_str, today)
         first_day = first_day.replace(day=1)
@@ -159,7 +165,9 @@ class CommandParser:
     def get_current_week_dates(today: date = None) -> DateRange:
         """Get Monday-Sunday of current week"""
         if today is None:
-            today = date.today()
+            from datetime import timezone as dt_timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(dt_timezone.utc).date()
 
         monday = today - timedelta(days=today.weekday())
         sunday = monday + timedelta(days=6)
@@ -170,7 +178,9 @@ class CommandParser:
     def get_next_week_dates(today: date = None) -> DateRange:
         """Get Monday-Sunday of next week"""
         if today is None:
-            today = date.today()
+            from datetime import timezone as dt_timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(dt_timezone.utc).date()
 
         current_week = CommandParser.get_current_week_dates(today)
         monday = current_week.end + timedelta(days=1)

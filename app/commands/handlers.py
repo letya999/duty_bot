@@ -81,7 +81,9 @@ class CommandHandler:
     async def duty_today(self, today: date = None) -> str:
         """Show all on-duty people today"""
         if today is None:
-            today = date.today()
+            from datetime import datetime, timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(timezone.utc).date()
 
         teams = await self.team_service.get_all_teams(self.workspace_id)
 
@@ -109,7 +111,9 @@ class CommandHandler:
     async def mention_duty(self, team_name: str, today: date = None) -> str:
         """Mention today's duty person/shift"""
         if today is None:
-            today = date.today()
+            from datetime import datetime, timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(timezone.utc).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -268,7 +272,9 @@ Members: {members_str}"""
     async def schedule_show(self, team_name: str, period: str = "week", today: date = None) -> str:
         """Show schedule"""
         if today is None:
-            today = date.today()
+            from datetime import datetime, timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(timezone.utc).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -308,7 +314,9 @@ Members: {members_str}"""
     ) -> str:
         """Set duty for date range"""
         if today is None:
-            today = date.today()
+            from datetime import datetime, timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(timezone.utc).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -336,7 +344,9 @@ Members: {members_str}"""
     ) -> str:
         """Clear duty for date range"""
         if today is None:
-            today = date.today()
+            from datetime import datetime, timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(timezone.utc).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -358,7 +368,9 @@ Members: {members_str}"""
     async def shift_show(self, team_name: str, period: str = "week", today: date = None) -> str:
         """Show shifts"""
         if today is None:
-            today = date.today()
+            from datetime import datetime, timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(timezone.utc).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -398,7 +410,9 @@ Members: {members_str}"""
     ) -> str:
         """Set shift for date range"""
         if today is None:
-            today = date.today()
+            from datetime import datetime, timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(timezone.utc).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -428,7 +442,9 @@ Members: {members_str}"""
     ) -> str:
         """Add user to shift"""
         if today is None:
-            today = date.today()
+            from datetime import datetime, timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(timezone.utc).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -448,7 +464,9 @@ Members: {members_str}"""
     ) -> str:
         """Remove user from shift"""
         if today is None:
-            today = date.today()
+            from datetime import datetime, timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(timezone.utc).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -467,7 +485,9 @@ Members: {members_str}"""
     ) -> str:
         """Clear shifts for date range"""
         if today is None:
-            today = date.today()
+            from datetime import datetime, timezone
+            # Use UTC for consistent date comparison across timezones
+            today = datetime.now(timezone.utc).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:

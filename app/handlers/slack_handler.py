@@ -1,4 +1,6 @@
 import logging
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
 from app.database import AsyncSessionLocal
@@ -51,18 +53,6 @@ class SlackHandler:
         self.client = AsyncWebClient(token=settings.slack_bot_token)
         self.setup_handlers()
 
-    async def _get_or_create_user(self, db: AsyncSession, command: dict):
-        """Ensure current user is in database"""
-        user_id = command.get("user_id")
-        user_name = command.get("user_name")
-        if not user_id:
-            return None
-            
-        user_service = UserService(db)
-        return await user_service.get_or_create_by_slack(
-            slack_user_id=user_id,
-            display_name=user_name or user_id
-        )
 
     def setup_handlers(self):
         """Setup all Slack event handlers"""
@@ -80,7 +70,8 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
+                handler = BotCommandHandler(db, workspace_id)
 
                 text = command.get("text", "").strip()
                 if not text:
@@ -114,7 +105,8 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
+                handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
                 text = command.get("text", "").strip()
@@ -241,7 +233,8 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
+                handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
                 text = command.get("text", "").strip()
@@ -297,7 +290,8 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
+                handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
                 text = command.get("text", "").strip()
@@ -384,7 +378,8 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
+                handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
                 text = command.get("text", "").strip()
@@ -425,7 +420,8 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
+                handler = BotCommandHandler(db, workspace_id)
 
                 text = command.get("text", "").strip()
                 if not text:
@@ -462,8 +458,8 @@ class SlackHandler:
         await ack()
         try:
             async with AsyncSessionLocal() as db:
-                await self._get_or_create_user(db, command)
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
+                handler = BotCommandHandler(db, workspace_id)
                 result = await handler.help()
                 await self.client.chat_postMessage(
                     channel=command["channel_id"],

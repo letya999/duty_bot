@@ -3,6 +3,7 @@ from datetime import datetime, date, timedelta
 from dateutil.parser import parse as parse_date
 from dateutil.relativedelta import relativedelta
 from typing import NamedTuple
+from zoneinfo import ZoneInfo
 
 
 class DateRange(NamedTuple):
@@ -34,7 +35,7 @@ class DateParser:
     }
 
     @staticmethod
-    def parse_date_string(date_str: str, today: date = None) -> date:
+    def parse_date_string(date_str: str, today: date = None, timezone_str: str = "UTC") -> date:
         """
         Parse date from string formats:
         - DD.MM (assumes current or next year)
@@ -42,9 +43,9 @@ class DateParser:
         - Month name (Russian or English)
         """
         if today is None:
-            from datetime import timezone as dt_timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(dt_timezone.utc).date()
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(timezone_str)
+            today = datetime.now(tz).date()
 
         date_str = date_str.strip().lower()
 
@@ -91,23 +92,23 @@ class DateParser:
         raise CommandError(f"Could not parse date: {date_str}")
 
     @staticmethod
-    def parse_date_range(range_str: str, today: date = None) -> DateRange:
+    def parse_date_range(range_str: str, today: date = None, timezone_str: str = "UTC") -> DateRange:
         """Parse date range like '01.12-05.12'"""
         if today is None:
-            from datetime import timezone as dt_timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(dt_timezone.utc).date()
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(timezone_str)
+            today = datetime.now(tz).date()
 
         if '-' not in range_str:
-            single_date = DateParser.parse_date_string(range_str, today)
+            single_date = DateParser.parse_date_string(range_str, today, timezone_str)
             return DateRange(single_date, single_date)
 
         parts = range_str.split('-')
         if len(parts) != 2:
             raise CommandError(f"Invalid date range format: {range_str}")
 
-        start = DateParser.parse_date_string(parts[0].strip(), today)
-        end = DateParser.parse_date_string(parts[1].strip(), today)
+        start = DateParser.parse_date_string(parts[0].strip(), today, timezone_str)
+        end = DateParser.parse_date_string(parts[1].strip(), today, timezone_str)
 
         if start > end:
             raise CommandError(f"Start date is after end date: {range_str}")
@@ -115,14 +116,14 @@ class DateParser:
         return DateRange(start, end)
 
     @staticmethod
-    def get_month_dates(month_str: str, today: date = None) -> DateRange:
+    def get_month_dates(month_str: str, today: date = None, timezone_str: str = "UTC") -> DateRange:
         """Get first and last day of month"""
         if today is None:
-            from datetime import timezone as dt_timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(dt_timezone.utc).date()
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(timezone_str)
+            today = datetime.now(tz).date()
 
-        first_day = DateParser.parse_date_string(month_str, today)
+        first_day = DateParser.parse_date_string(month_str, today, timezone_str)
         first_day = first_day.replace(day=1)
 
         # Get last day of month
@@ -162,12 +163,12 @@ class CommandParser:
         return re.sub(r'--\w+', '', text)
 
     @staticmethod
-    def get_current_week_dates(today: date = None) -> DateRange:
+    def get_current_week_dates(today: date = None, timezone_str: str = "UTC") -> DateRange:
         """Get Monday-Sunday of current week"""
         if today is None:
-            from datetime import timezone as dt_timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(dt_timezone.utc).date()
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(timezone_str)
+            today = datetime.now(tz).date()
 
         monday = today - timedelta(days=today.weekday())
         sunday = monday + timedelta(days=6)
@@ -175,14 +176,14 @@ class CommandParser:
         return DateRange(monday, sunday)
 
     @staticmethod
-    def get_next_week_dates(today: date = None) -> DateRange:
+    def get_next_week_dates(today: date = None, timezone_str: str = "UTC") -> DateRange:
         """Get Monday-Sunday of next week"""
         if today is None:
-            from datetime import timezone as dt_timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(dt_timezone.utc).date()
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(timezone_str)
+            today = datetime.now(tz).date()
 
-        current_week = CommandParser.get_current_week_dates(today)
+        current_week = CommandParser.get_current_week_dates(today, timezone_str)
         monday = current_week.end + timedelta(days=1)
         sunday = monday + timedelta(days=6)
 

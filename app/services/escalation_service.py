@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.models import Escalation, EscalationEvent, Team, User
+from app.config import get_settings
 
 
 class EscalationService:
@@ -70,14 +72,18 @@ class EscalationService:
 
     async def acknowledge_escalation(self, event: EscalationEvent) -> EscalationEvent:
         """Acknowledge escalation event"""
-        event.acknowledged_at = datetime.now(timezone.utc)
+        settings = get_settings()
+        tz = ZoneInfo(settings.timezone)
+        event.acknowledged_at = datetime.now(tz)
         await self.db.commit()
         await self.db.refresh(event)
         return event
 
     async def escalate_to_level2(self, event: EscalationEvent) -> EscalationEvent:
         """Mark escalation as escalated to level 2"""
-        event.escalated_to_level2_at = datetime.now(timezone.utc)
+        settings = get_settings()
+        tz = ZoneInfo(settings.timezone)
+        event.escalated_to_level2_at = datetime.now(tz)
         await self.db.commit()
         await self.db.refresh(event)
         return event

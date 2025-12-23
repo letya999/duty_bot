@@ -118,7 +118,7 @@ class TelegramHandler:
                     result = await handler.duty_today()
                 else:
                     # Mention specific team's duty
-                    team_name = args[0]
+                    team_name = args[0].strip()
                     result = await handler.mention_duty(team_name)
 
                 await update.effective_message.reply_text(result)
@@ -149,13 +149,13 @@ class TelegramHandler:
                 if not args:
                     raise CommandError("Usage: /team <command> [args]")
 
-                command = args[0]
+                command = args[0].strip()
 
                 if command == "list":
                     result = await handler.team_list()
 
                 elif command == "add" and len(args) >= 2:
-                    name = args[1]
+                    name = args[1].strip()
                     display_name = CommandParser.extract_quote_content(" ".join(args))
                     if not display_name:
                         raise CommandError('Usage: /team add <name> "<display_name>" [--shifts]')
@@ -164,7 +164,7 @@ class TelegramHandler:
                     result = await handler.team_add(name, display_name, has_shifts)
 
                 elif command == "edit" and len(args) >= 2:
-                    team_name = args[1]
+                    team_name = args[1].strip()
                     full_text = " ".join(args)
 
                     if "--name" in full_text:
@@ -188,7 +188,7 @@ class TelegramHandler:
                         raise CommandError("Unknown team edit option")
 
                 elif command == "lead" and len(args) >= 3:
-                    team_name = args[1]
+                    team_name = args[1].strip()
                     mentions = CommandParser.extract_mentions(" ".join(args[2:]))
                     if not mentions:
                         raise CommandError("Usage: /team lead <team> @user")
@@ -200,7 +200,7 @@ class TelegramHandler:
                     result = await handler.team_set_lead(team_name, user)
 
                 elif command == "add-member" and len(args) >= 2:
-                    team_name = args[1]
+                    team_name = args[1].strip()
                     mentions = CommandParser.extract_mentions(" ".join(args[2:]))
                     if not mentions:
                         raise CommandError("Usage: /team add-member <team> @user")
@@ -212,7 +212,7 @@ class TelegramHandler:
                     result = await handler.team_add_member(team_name, user)
 
                 elif command == "remove-member" and len(args) >= 2:
-                    team_name = args[1]
+                    team_name = args[1].strip()
                     mentions = CommandParser.extract_mentions(" ".join(args[2:]))
                     if not mentions:
                         raise CommandError("Usage: /team remove-member <team> @user")
@@ -225,8 +225,8 @@ class TelegramHandler:
 
                 elif command == "move" and len(args) >= 4:
                     mentions = CommandParser.extract_mentions(" ".join(args[1:]))
-                    from_team = args[2]
-                    to_team = args[3]
+                    from_team = args[2].strip()
+                    to_team = args[3].strip()
 
                     if not mentions:
                         raise CommandError("Usage: /team move @user <from_team> <to_team>")
@@ -238,12 +238,12 @@ class TelegramHandler:
                     result = await handler.team_move_member(user, from_team, to_team)
 
                 elif command == "delete" and len(args) >= 2:
-                    team_name = args[1]
+                    team_name = args[1].strip()
                     result = await handler.team_delete(team_name)
 
                 else:
                     # Show team info
-                    team_name = command
+                    team_name = command.strip()
                     result = await handler.team_info(team_name)
 
                 await update.effective_message.reply_text(result)
@@ -274,7 +274,7 @@ class TelegramHandler:
                 if not args:
                     raise CommandError("Usage: /schedule <team> [period] [set/clear] [date] [@user]")
 
-                team_name = args[0]
+                team_name = args[0].strip()
                 full_text = " ".join(args)
 
                 if "set" in full_text and len(args) >= 3:
@@ -328,7 +328,7 @@ class TelegramHandler:
                 if not args:
                     raise CommandError("Usage: /shift <team> [period] [set/add/remove/clear] [date] [@users]")
 
-                team_name = args[0]
+                team_name = args[0].strip()
                 full_text = " ".join(args)
 
                 if "set" in full_text and len(args) >= 3:

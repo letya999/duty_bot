@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone as dt_timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -7,7 +7,7 @@ from pytz import timezone
 from slack_sdk.web.async_client import AsyncWebClient
 from telegram import Bot
 from app.database import AsyncSessionLocal
-from app.commands.handlers import CommandHandler
+from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.services.escalation_service import EscalationService
 from app.config import get_settings
 
@@ -59,7 +59,7 @@ class ScheduledTasks:
         """Send morning digest with today's duties"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
                 today = date.today()
                 message = await handler.duty_today()
 
@@ -93,7 +93,7 @@ class ScheduledTasks:
         """Send reminders to duty people"""
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
                 today = date.today()
 
                 teams = (await handler.team_service.get_all_teams())
@@ -130,7 +130,7 @@ class ScheduledTasks:
         try:
             async with AsyncSessionLocal() as db:
                 escalation_service = EscalationService(db)
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
 
                 teams = (await handler.team_service.get_all_teams())
 
@@ -141,7 +141,7 @@ class ScheduledTasks:
                             continue
 
                         # Check if timeout exceeded
-                        elapsed = datetime.utcnow() - event.initiated_at
+                        elapsed = datetime.now(dt_timezone.utc) - event.initiated_at
                         timeout = timedelta(minutes=settings.escalation_timeout_minutes)
 
                         if elapsed > timeout and not event.escalated_to_level2_at:

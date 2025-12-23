@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Table, Text, Enum
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.orm import relationship
@@ -22,7 +22,7 @@ class User(Base):
     telegram_username = Column(String, nullable=True, unique=True, index=True)
     slack_user_id = Column(String, nullable=True, unique=True, index=True)
     display_name = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     teams = relationship('Team', secondary=team_members, back_populates='members')
@@ -40,7 +40,7 @@ class Team(Base):
     display_name = Column(String, nullable=False)
     has_shifts = Column(Boolean, default=False)
     team_lead_id = Column(Integer, ForeignKey('user.id'), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     members = relationship('User', secondary=team_members, back_populates='teams')
@@ -58,7 +58,7 @@ class Schedule(Base):
     team_id = Column(Integer, ForeignKey('team.id'), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey('user.id'), nullable=True)
     date = Column(Date, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     team = relationship('Team', back_populates='schedules')
@@ -85,7 +85,7 @@ class Shift(Base):
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey('team.id'), nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     team = relationship('Team', back_populates='shifts')
@@ -108,7 +108,7 @@ class Escalation(Base):
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey('team.id'), nullable=True, index=True)  # NULL for global CTO
     cto_id = Column(Integer, ForeignKey('user.id'), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     team = relationship('Team', back_populates='escalations')
@@ -122,10 +122,10 @@ class EscalationEvent(Base):
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey('team.id'), nullable=False, index=True)
     messenger = Column(String, nullable=False)  # 'telegram' or 'slack'
-    initiated_at = Column(DateTime, default=datetime.utcnow)
+    initiated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     acknowledged_at = Column(DateTime, nullable=True)
     escalated_to_level2_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     team = relationship('Team')

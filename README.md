@@ -9,6 +9,7 @@ A bot for managing duty schedules and shifts in IT teams. Works simultaneously i
 - **Team Management**: Create and manage teams with members
 - **Escalation**: Multi-level escalation with automatic escalation
 - **Automation**: Daily digest, duty reminders, auto-escalation
+- **Telegram Mini App**: Interactive calendar-based schedule viewer for Telegram with responsive UI
 
 ## Setup
 
@@ -55,6 +56,7 @@ The bot will:
 - Start Telegram bot
 - Start Slack bot
 - Setup scheduled tasks
+- Start Telegram mini app server (if using webapp service)
 
 ### Manual Setup (without Docker)
 
@@ -146,13 +148,54 @@ All configuration is done via environment variables:
 - `HOST` - Server host (default: 0.0.0.0)
 - `PORT` - Server port (default: 8000)
 
+## Telegram Mini App
+
+The Duty Bot includes a modern Telegram Mini App for convenient schedule management with an interactive calendar interface.
+
+### Features
+
+- 📅 **Interactive Calendar** - Visual month view showing all duty assignments
+- 👥 **Team Management** - Browse teams and assign duties
+- 📱 **Mobile Optimized** - Fully responsive design for all devices
+- 🎨 **Theme Support** - Automatically matches your Telegram theme
+- ⚡ **Fast** - Built with React and Vite for optimal performance
+
+### Setup Mini App
+
+1. The mini app is located in the `webapp/` directory
+2. Environment variables are in `webapp/.env` (copy from `webapp/.env.example`)
+3. Development: `cd webapp && npm install && npm run dev`
+4. Production: Use Docker Compose to run all services together
+
+### Using the Mini App
+
+The mini app is available when the bot sends a keyboard button with the mini app action. Users can:
+- View the entire month's schedule in a calendar
+- Click any day to see who's on duty
+- Assign duties to team members for specific dates
+- View team member profiles
+
+### API Endpoints
+
+The mini app uses these API endpoints (all require valid Telegram authentication):
+
+- `GET /api/miniapp/user/info` - Get current user information
+- `GET /api/miniapp/schedule/month?year=2024&month=12` - Get monthly schedule
+- `GET /api/miniapp/schedule/day/{date}` - Get daily schedule
+- `POST /api/miniapp/schedule/assign` - Assign duty to user
+- `DELETE /api/miniapp/schedule/{schedule_id}` - Remove duty assignment
+- `GET /api/miniapp/teams` - List all teams
+- `GET /api/miniapp/teams/{team_id}/members` - Get team members
+
+For more details, see [webapp/README.md](webapp/README.md)
+
 ## Development
 
 ### Project Structure
 
 ```
 duty_bot/
-├── app/
+├── app/                     # Backend application
 │   ├── main.py              # FastAPI application
 │   ├── config.py            # Configuration
 │   ├── database.py          # Database setup
@@ -160,6 +203,8 @@ duty_bot/
 │   ├── handlers/            # Telegram and Slack handlers
 │   │   ├── telegram_handler.py
 │   │   └── slack_handler.py
+│   ├── routes/              # API routes
+│   │   └── miniapp.py       # Mini app API endpoints
 │   ├── services/            # Business logic
 │   │   ├── user_service.py
 │   │   ├── team_service.py
@@ -171,8 +216,22 @@ duty_bot/
 │   │   └── handlers.py
 │   └── tasks/               # Scheduled tasks
 │       └── scheduled_tasks.py
+├── webapp/                  # Telegram Mini App (React + TypeScript)
+│   ├── src/
+│   │   ├── components/      # React components
+│   │   ├── hooks/           # Custom React hooks
+│   │   ├── services/        # API client
+│   │   ├── types/           # TypeScript types
+│   │   ├── styles/          # Global styles
+│   │   ├── App.tsx          # Main app component
+│   │   └── main.tsx         # Entry point
+│   ├── package.json         # Node.js dependencies
+│   ├── vite.config.ts       # Vite configuration
+│   ├── Dockerfile           # Docker image for mini app
+│   └── README.md            # Mini app documentation
+├── migrations/              # Database migrations
 ├── docker-compose.yml       # Docker Compose setup
-├── Dockerfile               # Docker image
+├── Dockerfile               # Docker image for backend
 ├── requirements.txt         # Python dependencies
 └── .env.example             # Example environment file
 ```

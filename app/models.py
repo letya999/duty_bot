@@ -6,6 +6,45 @@ from app.database import Base
 import enum as python_enum
 
 
+class Workspace(Base):
+    """Multi-workspace support for data isolation"""
+    __tablename__ = 'workspace'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)  # Display name
+    workspace_type = Column(String, nullable=False)  # 'telegram' or 'slack'
+    external_id = Column(String, nullable=False, index=True)  # chat_id or workspace_id
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    chat_channels = relationship('ChatChannel', back_populates='workspace', cascade='all, delete-orphan')
+    users = relationship('User', back_populates='workspace', cascade='all, delete-orphan')
+    teams = relationship('Team', back_populates='workspace', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        UniqueConstraint('workspace_type', 'external_id', name='workspace_type_external_id_unique'),
+    )
+
+
+class ChatChannel(Base):
+    """Specific chat/channel in a workspace"""
+    __tablename__ = 'chat_channel'
+
+    id = Column(Integer, primary_key=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    messenger = Column(String, nullable=False)  # 'telegram' or 'slack'
+    external_id = Column(String, nullable=False)  # chat_id or channel_id
+    display_name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    workspace = relationship('Workspace', back_populates='chat_channels')
+
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'external_id', name='chat_channel_workspace_external_id_unique'),
+    )
+
+
 # Association table for many-to-many team members
 team_members = Table(
     'team_members',
@@ -19,35 +58,48 @@ class User(Base):
     __tablename__ = 'user'
 
     id = Column(Integer, primary_key=True)
-    telegram_username = Column(String, nullable=True, unique=True, index=True)
-    slack_user_id = Column(String, nullable=True, unique=True, index=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    telegram_username = Column(String, nullable=True, index=True)
+    slack_user_id = Column(String, nullable=True, index=True)
     display_name = Column(String, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
+    workspace = relationship('Workspace', back_populates='users')
     teams = relationship('Team', secondary=team_members, back_populates='members')
     led_teams = relationship('Team', back_populates='team_lead_user', foreign_keys='Team.team_lead_id')
     schedules = relationship('Schedule', back_populates='user')
     shifts = relationship('Shift', secondary='shift_members', back_populates='users')
     escalation_as_cto = relationship('Escalation', back_populates='cto_user', foreign_keys='Escalation.cto_id')
 
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'telegram_username', name='user_workspace_telegram_username_unique'),
+        UniqueConstraint('workspace_id', 'slack_user_id', name='user_workspace_slack_user_id_unique'),
+    )
+
 
 class Team(Base):
     __tablename__ = 'team'
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True, nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
     display_name = Column(String, nullable=False)
     has_shifts = Column(Boolean, default=False)
     team_lead_id = Column(Integer, ForeignKey('user.id'), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
+    workspace = relationship('Workspace', back_populates='teams')
     members = relationship('User', secondary=team_members, back_populates='teams')
     team_lead_user = relationship('User', back_populates='led_teams', foreign_keys=[team_lead_id])
     schedules = relationship('Schedule', back_populates='team', cascade='all, delete-orphan')
     shifts = relationship('Shift', back_populates='team', cascade='all, delete-orphan')
     escalations = relationship('Escalation', back_populates='team', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'name', name='team_workspace_name_unique'),
+    )
 
 
 class Schedule(Base):

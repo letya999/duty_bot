@@ -1,8 +1,7 @@
 import logging
-import re
 from datetime import date
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
 from app.commands.handlers import CommandHandler as BotCommandHandler

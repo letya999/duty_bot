@@ -1,9 +1,8 @@
 import logging
-import re
 from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
 from app.database import AsyncSessionLocal
-from app.commands.handlers import CommandHandler
+from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.commands.parser import CommandParser, DateParser, CommandError
 from app.services.user_service import UserService
 from app.config import get_settings
@@ -41,7 +40,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
 
                 text = command.get("text", "").strip()
                 if not text:
@@ -75,7 +74,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
                 text = command.get("text", "").strip()
@@ -202,7 +201,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
                 text = command.get("text", "").strip()
@@ -258,7 +257,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
                 text = command.get("text", "").strip()
@@ -345,7 +344,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
                 text = command.get("text", "").strip()
@@ -386,7 +385,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                handler = CommandHandler(db)
+                handler = BotCommandHandler(db)
 
                 text = command.get("text", "").strip()
                 if not text:

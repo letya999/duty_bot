@@ -1,6 +1,6 @@
 import logging
 from datetime import date
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
@@ -32,8 +32,10 @@ class TelegramHandler:
         self.app.add_handler(CommandHandler("shift", self.shift_command))
         self.app.add_handler(CommandHandler("escalation", self.escalation_command))
         self.app.add_handler(CommandHandler("escalate", self.escalate_command))
+        self.app.add_handler(CommandHandler("help", self.help_command))
 
         await self.app.initialize()
+        await self.set_bot_commands()
         await self.app.start()
         await self.app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
 
@@ -43,6 +45,20 @@ class TelegramHandler:
             await self.app.updater.stop()
             await self.app.stop()
             await self.app.shutdown()
+
+    async def set_bot_commands(self):
+        """Register bot commands menu"""
+        commands = [
+            BotCommand("duty", "Показать дежурства на сегодня"),
+            BotCommand("team", "Управление командами"),
+            BotCommand("schedule", "Управление графиком дежурства"),
+            BotCommand("shift", "Управление сменами"),
+            BotCommand("escalation", "Управление эскалацией"),
+            BotCommand("escalate", "Эскалировать проблему"),
+            BotCommand("help", "Показать справку по командам"),
+        ]
+        await self.app.bot.set_my_commands(commands)
+        logger.info("Bot commands registered")
 
     async def duty_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /duty command"""
@@ -361,3 +377,41 @@ class TelegramHandler:
         except Exception as e:
             logger.exception(f"Error in escalate_command: {e}")
             await update.message.reply_text("❌ An error occurred")
+
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /help command"""
+        help_text = """📋 *Доступные команды:*
+
+*/duty* - Показать дежурства на сегодня
+*/team* - Управление командами
+  • /team list - Список команд
+  • /team add <name> "<display_name>" - Создать команду
+  • /team edit <name> --name <new_name> - Переименовать
+  • /team edit <name> --display "<new_name>" - Изменить отображаемое имя
+  • /team lead <team> @user - Установить лидера
+  • /team add-member <team> @user - Добавить члена
+  • /team remove-member <team> @user - Удалить члена
+
+*/schedule* - Управление графиком дежурства
+  • /schedule <team> - Показать график
+  • /schedule <team> set <date> @user - Установить дежурство
+  • /schedule <team> clear <date> - Очистить дежурство
+
+*/shift* - Управление сменами
+  • /shift <team> - Показать смены
+  • /shift <team> set <date> @user1 @user2 - Установить смену
+  • /shift <team> add <date> @user - Добавить в смену
+  • /shift <team> remove <date> @user - Удалить из смены
+
+*/escalation* - Управление эскалацией
+  • /escalation - Показать настройки
+  • /escalation cto @user - Установить CTO
+
+*/escalate* - Эскалировать проблему
+  • /escalate <team> - Эскалировать команде
+  • /escalate level2 - Эскалировать на уровень 2 (CTO)
+  • /escalate ack - Подтвердить эскалацию
+
+*/help* - Показать эту справку"""
+
+        await update.message.reply_text(help_text, parse_mode='Markdown')

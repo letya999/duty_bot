@@ -33,6 +33,7 @@ class SlackHandler:
         self.app.command("/shift")(self.shift_command)
         self.app.command("/escalation")(self.escalation_command)
         self.app.command("/escalate")(self.escalate_command)
+        self.app.command("/help")(self.help_command)
 
     async def duty_command(self, ack, command, body):
         """Handle /duty command"""
@@ -412,6 +413,33 @@ class SlackHandler:
             )
         except Exception as e:
             logger.exception(f"Error in escalate_command: {e}")
+            await self.client.chat_postMessage(
+                channel=command["channel_id"],
+                text="❌ An error occurred"
+            )
+
+    async def help_command(self, ack, command, body):
+        """Handle /help command"""
+        await ack()
+
+        help_text = """📋 *Доступные команды:*
+
+*/duty* - Показать дежурства на сегодня
+*/team* - Управление командами (list, add, edit, lead, add-member, remove-member, move, delete)
+*/schedule* - Управление графиком дежурства (show, set, clear)
+*/shift* - Управление сменами (show, set, add, remove, clear)
+*/escalation* - Управление эскалацией (show, cto)
+*/escalate* - Эскалировать проблему (team, level2, ack)
+*/help* - Показать эту справку"""
+
+        try:
+            await self.client.chat_postMessage(
+                channel=command["channel_id"],
+                text=help_text,
+                mrkdwn=True
+            )
+        except Exception as e:
+            logger.exception(f"Error in help_command: {e}")
             await self.client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"

@@ -9,30 +9,40 @@ class EscalationService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def set_cto(self, user: User) -> Escalation:
-        """Set global CTO (level 2)"""
-        stmt = select(Escalation).where(Escalation.team_id.is_(None))
+    async def set_cto(self, workspace_id: int, user: User) -> Escalation:
+        """Set CTO (level 2) for workspace"""
+        stmt = select(Escalation).where(
+            (Escalation.team_id.is_(None)) &
+            (Escalation.cto_id == user.id)
+        )
+        # Try to get existing escalation with this CTO
         result = await self.db.execute(stmt)
         escalation = result.scalars().first()
 
-        if escalation:
-            escalation.cto_id = user.id
-        else:
+        if not escalation:
+            # Create new escalation record
             escalation = Escalation(cto_id=user.id)
             self.db.add(escalation)
+            await self.db.commit()
+            await self.db.refresh(escalation)
 
-        await self.db.commit()
-        await self.db.refresh(escalation)
         return escalation
 
-    async def get_cto(self) -> User | None:
-        """Get CTO"""
+    async def get_cto(self, workspace_id: int) -> User | None:
+        """Get CTO for workspace
+
+        Note: Since CTOs are not directly workspace-scoped in the model,
+        we get the user's workspace to ensure we return the correct context.
+        """
         stmt = select(Escalation).options(
             selectinload(Escalation.cto_user)
         ).where(Escalation.team_id.is_(None))
         result = await self.db.execute(stmt)
         escalation = result.scalars().first()
-        return escalation.cto_user if escalation else None
+
+        if escalation and escalation.cto_user and escalation.cto_user.workspace_id == workspace_id:
+            return escalation.cto_user
+        return None
 
     async def create_escalation_event(
         self,

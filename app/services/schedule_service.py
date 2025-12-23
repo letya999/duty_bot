@@ -1,0 +1,84 @@
+from datetime import date
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from app.models import Schedule, Team, User
+
+
+class ScheduleService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def set_duty(
+        self,
+        team: Team,
+        user: User | None,
+        duty_date: date
+    ) -> Schedule:
+        """Set or update duty for a date"""
+        stmt = select(Schedule).where(
+            (Schedule.team_id == team.id) & (Schedule.date == duty_date)
+        )
+        result = await self.db.execute(stmt)
+        schedule = result.scalars().first()
+
+        if schedule:
+            schedule.user_id = user.id if user else None
+        else:
+            schedule = Schedule(
+                team_id=team.id,
+                user_id=user.id if user else None,
+                date=duty_date,
+            )
+            self.db.add(schedule)
+
+        await self.db.commit()
+        await self.db.refresh(schedule)
+        return schedule
+
+    async def get_duty(self, team: Team, duty_date: date) -> Schedule | None:
+        """Get duty for a specific date"""
+        stmt = select(Schedule).options(
+            selectinload(Schedule.user)
+        ).where(
+            (Schedule.team_id == team.id) & (Schedule.date == duty_date)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_duties_by_date_range(
+        self,
+        team: Team,
+        start_date: date,
+        end_date: date
+    ) -> list[Schedule]:
+        """Get duties for a date range"""
+        stmt = select(Schedule).options(
+            selectinload(Schedule.user)
+        ).where(
+            (Schedule.team_id == team.id) &
+            (Schedule.date >= start_date) &
+            (Schedule.date <= end_date)
+        ).order_by(Schedule.date)
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def clear_duty(self, team: Team, duty_date: date) -> bool:
+        """Clear duty for a date"""
+        stmt = select(Schedule).where(
+            (Schedule.team_id == team.id) & (Schedule.date == duty_date)
+        )
+        result = await self.db.execute(stmt)
+        schedule = result.scalars().first()
+
+        if schedule:
+            await self.db.delete(schedule)
+            await self.db.commit()
+            return True
+
+        return False
+
+    async def get_today_duty(self, team: Team, today: date) -> User | None:
+        """Get today's duty person"""
+        schedule = await self.get_duty(team, today)
+        return schedule.user if schedule else None

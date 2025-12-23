@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: duty_bot_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-duty_bot}
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: duty_bot_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-duty_bot}
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET}
+      TIMEZONE: ${TIMEZONE:-UTC}
+      MORNING_DIGEST_TIME: ${MORNING_DIGEST_TIME:-09:00}
+      REMINDER_BEFORE_MINUTES: ${REMINDER_BEFORE_MINUTES:-30}
+      ESCALATION_TIMEOUT_MINUTES: ${ESCALATION_TIMEOUT_MINUTES:-15}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

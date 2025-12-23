@@ -4,7 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from pytz import timezone
-from slack_sdk.web import WebClient
+from slack_sdk.web.async_client import AsyncWebClient
 from telegram import Bot
 from app.database import AsyncSessionLocal
 from app.commands.handlers import CommandHandler
@@ -16,7 +16,7 @@ settings = get_settings()
 
 
 class ScheduledTasks:
-    def __init__(self, telegram_bot: Bot = None, slack_client: WebClient = None, telegram_chat_id: int = None, slack_channel_id: str = None):
+    def __init__(self, telegram_bot: Bot = None, slack_client: AsyncWebClient = None, telegram_chat_id: int = None, slack_channel_id: str = None):
         self.scheduler = AsyncIOScheduler(timezone=settings.timezone)
         self.telegram_bot = telegram_bot
         self.slack_client = slack_client
@@ -77,7 +77,7 @@ class ScheduledTasks:
                 # Send to Slack
                 if self.slack_client and self.slack_channel_id:
                     try:
-                        self.slack_client.chat_postMessage(
+                        await self.slack_client.chat_postMessage(
                             channel=self.slack_channel_id,
                             text=f"📅 Today's Duties\n\n{message}"
                         )
@@ -169,7 +169,7 @@ class ScheduledTasks:
 
                             elif event.messenger == 'slack' and self.slack_client and self.slack_channel_id:
                                 try:
-                                    self.slack_client.chat_postMessage(
+                                    await self.slack_client.chat_postMessage(
                                         channel=self.slack_channel_id,
                                         text=message
                                     )

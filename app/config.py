@@ -1,14 +1,15 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import Optional
 
 
 class Settings(BaseSettings):
     # Telegram
-    telegram_token: str
+    telegram_token: Optional[str] = None
 
     # Slack
-    slack_bot_token: str
-    slack_signing_secret: str
+    slack_bot_token: Optional[str] = None
+    slack_signing_secret: Optional[str] = None
 
     # Database
     database_url: str

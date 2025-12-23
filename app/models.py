@@ -1,5 +1,6 @@
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Table, Text, Enum
+from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
 import enum as python_enum
@@ -64,7 +65,7 @@ class Schedule(Base):
     user = relationship('User', back_populates='schedules')
 
     __table_args__ = (
-        ('schedule_team_date_unique', 'unique', ('team_id', 'date')),
+        UniqueConstraint("team_id", "date", name="schedule_team_date_unique"),
     )
 
 
@@ -91,7 +92,7 @@ class Shift(Base):
     users = relationship('User', secondary=shift_members, back_populates='shifts')
 
     __table_args__ = (
-        ('shift_team_date_unique', 'unique', ('team_id', 'date')),
+        UniqueConstraint("team_id", "date", name="shift_team_date_unique"),
     )
 
 

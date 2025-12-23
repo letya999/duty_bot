@@ -20,6 +20,10 @@ class TelegramHandler:
 
     async def start(self):
         """Start Telegram bot"""
+        if not settings.telegram_token:
+            logger.warning("Telegram token is not set, skipping Telegram bot start")
+            return
+
         self.app = Application.builder().token(settings.telegram_token).build()
 
         # Add handlers

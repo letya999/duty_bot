@@ -1,8 +1,7 @@
 import logging
 import re
-from slack_bolt import App
-from slack_bolt.response import Response
-from slack_sdk.web import WebClient
+from slack_bolt.async_app import AsyncApp
+from slack_sdk.web.async_client import AsyncWebClient
 from app.database import AsyncSessionLocal
 from app.commands.handlers import CommandHandler
 from app.commands.parser import CommandParser, DateParser, CommandError
@@ -15,11 +14,16 @@ settings = get_settings()
 
 class SlackHandler:
     def __init__(self):
-        self.app = App(
+        if not settings.slack_bot_token or not settings.slack_signing_secret:
+            self.app = None
+            self.client = None
+            return
+
+        self.app = AsyncApp(
             token=settings.slack_bot_token,
             signing_secret=settings.slack_signing_secret,
         )
-        self.client = WebClient(token=settings.slack_bot_token)
+        self.client = AsyncWebClient(token=settings.slack_bot_token)
         self.setup_handlers()
 
     def setup_handlers(self):
@@ -33,7 +37,7 @@ class SlackHandler:
 
     async def duty_command(self, ack, command, body):
         """Handle /duty command"""
-        ack()
+        await ack()
 
         try:
             async with AsyncSessionLocal() as db:
@@ -67,7 +71,7 @@ class SlackHandler:
 
     async def team_command(self, ack, command, body):
         """Handle /team command"""
-        ack()
+        await ack()
 
         try:
             async with AsyncSessionLocal() as db:
@@ -194,7 +198,7 @@ class SlackHandler:
 
     async def schedule_command(self, ack, command, body):
         """Handle /schedule command"""
-        ack()
+        await ack()
 
         try:
             async with AsyncSessionLocal() as db:
@@ -250,7 +254,7 @@ class SlackHandler:
 
     async def shift_command(self, ack, command, body):
         """Handle /shift command"""
-        ack()
+        await ack()
 
         try:
             async with AsyncSessionLocal() as db:
@@ -337,7 +341,7 @@ class SlackHandler:
 
     async def escalation_command(self, ack, command, body):
         """Handle /escalation command"""
-        ack()
+        await ack()
 
         try:
             async with AsyncSessionLocal() as db:
@@ -378,7 +382,7 @@ class SlackHandler:
 
     async def escalate_command(self, ack, command, body):
         """Handle /escalate command"""
-        ack()
+        await ack()
 
         try:
             async with AsyncSessionLocal() as db:

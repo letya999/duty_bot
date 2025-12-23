@@ -1,11 +1,14 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from slack_bolt.app import AsyncApp
-from slack_bolt.adapter.fastapi import AsyncSlackRequestHandler
+from fastapi import FastAPI, Request
+from slack_bolt.async_app import AsyncApp
+from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from telegram import Bot
-from slack_sdk.web import AsyncWebClient
+try:
+    from slack_sdk.web.async_client import AsyncWebClient
+except ImportError:
+    from slack_sdk.web import AsyncWebClient
 from app.config import get_settings
 from app.database import init_db, close_db, AsyncSessionLocal
 from app.handlers.telegram_handler import TelegramHandler
@@ -37,19 +40,30 @@ async def lifespan(app: FastAPI):
 
         # Setup Telegram
         global telegram_handler
-        telegram_handler = TelegramHandler()
-        await telegram_handler.start()
-        logger.info("Telegram bot started")
+        if settings.telegram_token:
+            telegram_handler = TelegramHandler()
+            await telegram_handler.start()
+            logger.info("Telegram bot started")
+        else:
+            logger.warning("Telegram token not provided, Telegram bot will not start")
 
         # Setup Slack
         global slack_handler
-        slack_handler = SlackHandler()
-        logger.info("Slack bot started")
+        if settings.slack_bot_token and settings.slack_signing_secret:
+            slack_handler = SlackHandler()
+            logger.info("Slack bot started")
+        else:
+            logger.warning("Slack tokens not provided, Slack bot will not start")
 
         # Setup scheduled tasks
         global scheduled_tasks
-        slack_client = AsyncWebClient(token=settings.slack_bot_token)
-        telegram_bot = Bot(token=settings.telegram_token)
+        slack_client = None
+        if settings.slack_bot_token:
+            slack_client = AsyncWebClient(token=settings.slack_bot_token)
+        
+        telegram_bot = None
+        if settings.telegram_token:
+            telegram_bot = Bot(token=settings.telegram_token)
 
         scheduled_tasks = ScheduledTasks(
             telegram_bot=telegram_bot,
@@ -100,11 +114,11 @@ async def health():
 
 
 @app.post("/slack/events")
-async def slack_events(body: dict):
+async def slack_events(request: Request):
     """Slack events endpoint"""
-    if slack_handler:
+    if slack_handler and slack_handler.app:
         handler = AsyncSlackRequestHandler(slack_handler.app)
-        return await handler.handle(body)
+        return await handler.handle(request)
     return {"error": "Slack handler not initialized"}
 
 

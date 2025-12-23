@@ -9,10 +9,12 @@ class Settings(BaseSettings):
 
     # Telegram
     telegram_token: Optional[str] = None
+    telegram_chat_id: Optional[int] = None
 
     # Slack
     slack_bot_token: Optional[str] = None
     slack_signing_secret: Optional[str] = None
+    slack_channel_id: Optional[str] = None
 
     # Database
     database_url: str

@@ -68,8 +68,8 @@ async def lifespan(app: FastAPI):
         scheduled_tasks = ScheduledTasks(
             telegram_bot=telegram_bot,
             slack_client=slack_client,
-            telegram_chat_id=None,  # Will be set from environment or config
-            slack_channel_id=None   # Will be set from environment or config
+            telegram_chat_id=settings.telegram_chat_id,
+            slack_channel_id=settings.slack_channel_id
         )
         await scheduled_tasks.start()
         logger.info("Scheduled tasks started")

@@ -1,6 +1,6 @@
 import logging
 from datetime import date
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
@@ -34,6 +34,19 @@ class TelegramHandler:
         self.app.add_handler(CommandHandler("escalate", self.escalate_command))
 
         await self.app.initialize()
+
+        # Register commands menu
+        commands = [
+            BotCommand("duty", "Show who is on duty today"),
+            BotCommand("team", "Manage teams (list, add, edit, members)"),
+            BotCommand("schedule", "Manage schedule/duty assignments"),
+            BotCommand("shift", "Manage shifts for teams"),
+            BotCommand("escalation", "Manage escalation settings"),
+            BotCommand("escalate", "Escalate an issue"),
+        ]
+        await self.app.bot.set_my_commands(commands)
+        logger.info("Bot commands registered")
+
         await self.app.start()
         await self.app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
 

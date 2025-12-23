@@ -27,6 +27,68 @@ AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_co
 Base = declarative_base()
 
 
+def split_sql_statements(sql_text: str) -> list[str]:
+    """
+    Split SQL statements by semicolon, handling DO $$ $$ blocks.
+
+    PostgreSQL DO blocks (DO $$ ... END $$;) contain semicolons that should not
+    be used as statement delimiters. This function properly handles them.
+    """
+    statements = []
+    current_statement = []
+    in_do_block = False
+    i = 0
+
+    while i < len(sql_text):
+        char = sql_text[i]
+
+        # Check for DO $$ block start
+        if not in_do_block and i < len(sql_text) - 2 and sql_text[i:i+2] == 'DO':
+            # Look ahead to find the $$ delimiter
+            j = i + 2
+            while j < len(sql_text) - 1:
+                if sql_text[j:j+2] == '$$':
+                    in_do_block = True
+                    break
+                j += 1
+
+        # Check for DO $$ block end
+        if in_do_block and i < len(sql_text) - 1 and sql_text[i:i+2] == '$$':
+            current_statement.append(char)
+            i += 1
+            current_statement.append(sql_text[i])
+            i += 1
+            # Look for the closing semicolon
+            while i < len(sql_text):
+                char = sql_text[i]
+                current_statement.append(char)
+                if char == ';':
+                    in_do_block = False
+                    break
+                i += 1
+            i += 1
+            continue
+
+        # Handle regular semicolon as statement delimiter
+        if char == ';' and not in_do_block:
+            current_statement.append(char)
+            statement_text = ''.join(current_statement).strip()
+            if statement_text:
+                statements.append(statement_text)
+            current_statement = []
+        else:
+            current_statement.append(char)
+
+        i += 1
+
+    # Add any remaining statement
+    statement_text = ''.join(current_statement).strip()
+    if statement_text:
+        statements.append(statement_text)
+
+    return statements
+
+
 async def get_db():
     """Dependency for getting database session"""
     async with AsyncSessionLocal() as session:
@@ -52,9 +114,13 @@ async def apply_migrations():
                 logger.info(f"Applying migration: {migration_file.name}")
                 migration_sql = migration_file.read_text()
 
-                # Execute the entire SQL file as one block
-                # This ensures DO $$ blocks and other semi-colon containing constructs work
-                await conn.execute(text(migration_sql))
+                # Split SQL statements by semicolon, handling DO blocks
+                # This is necessary because asyncpg doesn't support multiple statements in one prepared statement
+                statements = split_sql_statements(migration_sql)
+
+                for statement in statements:
+                    if statement.strip():  # Skip empty statements
+                        await conn.execute(text(statement))
 
                 logger.info(f"✓ Migration applied: {migration_file.name}")
             except Exception as e:

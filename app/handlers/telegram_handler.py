@@ -100,6 +100,16 @@ class TelegramHandler:
         try:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                user_service = UserService(db)
+
+                # Create or update user if they don't exist
+                user_info = update.effective_user
+                await user_service.get_or_create_by_telegram(
+                    workspace_id,
+                    user_info.username or f"user_{user_info.id}",
+                    user_info.first_name or "Unknown"
+                )
+
                 handler = BotCommandHandler(db, workspace_id)
 
                 args = context.args
@@ -126,6 +136,14 @@ class TelegramHandler:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
+
+                # Create or update user if they don't exist
+                user_info = update.effective_user
+                await user_service.get_or_create_by_telegram(
+                    workspace_id,
+                    user_info.username or f"user_{user_info.id}",
+                    user_info.first_name or "Unknown"
+                )
 
                 args = context.args
                 if not args:
@@ -244,6 +262,14 @@ class TelegramHandler:
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
+                # Create or update user if they don't exist
+                user_info = update.effective_user
+                await user_service.get_or_create_by_telegram(
+                    workspace_id,
+                    user_info.username or f"user_{user_info.id}",
+                    user_info.first_name or "Unknown"
+                )
+
                 args = context.args
                 if not args:
                     raise CommandError("Usage: /schedule <team> [period] [set/clear] [date] [@user]")
@@ -289,6 +315,14 @@ class TelegramHandler:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
+
+                # Create or update user if they don't exist
+                user_info = update.effective_user
+                await user_service.get_or_create_by_telegram(
+                    workspace_id,
+                    user_info.username or f"user_{user_info.id}",
+                    user_info.first_name or "Unknown"
+                )
 
                 args = context.args
                 if not args:
@@ -367,6 +401,14 @@ class TelegramHandler:
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
+                # Create or update user if they don't exist
+                user_info = update.effective_user
+                await user_service.get_or_create_by_telegram(
+                    workspace_id,
+                    user_info.username or f"user_{user_info.id}",
+                    user_info.first_name or "Unknown"
+                )
+
                 args = context.args
                 full_text = " ".join(args) if args else ""
 
@@ -397,6 +439,15 @@ class TelegramHandler:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
+                user_service = UserService(db)
+
+                # Create or update user if they don't exist
+                user_info = update.effective_user
+                await user_service.get_or_create_by_telegram(
+                    workspace_id,
+                    user_info.username or f"user_{user_info.id}",
+                    user_info.first_name or "Unknown"
+                )
 
                 args = context.args
                 if not args:
@@ -424,6 +475,16 @@ class TelegramHandler:
         try:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                user_service = UserService(db)
+
+                # Create or update user if they don't exist
+                user_info = update.effective_user
+                await user_service.get_or_create_by_telegram(
+                    workspace_id,
+                    user_info.username or f"user_{user_info.id}",
+                    user_info.first_name or "Unknown"
+                )
+
                 handler = BotCommandHandler(db, workspace_id)
                 result = await handler.help()
                 await update.effective_message.reply_text(result, parse_mode='Markdown')

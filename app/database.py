@@ -29,48 +29,29 @@ Base = declarative_base()
 
 def split_sql_statements(sql_text: str) -> list[str]:
     """
-    Split SQL statements by semicolon, handling DO $$ $$ blocks.
+    Split SQL statements by semicolon, handling DO $$ $$ blocks and $$ quoted strings.
 
-    PostgreSQL DO blocks (DO $$ ... END $$;) contain semicolons that should not
-    be used as statement delimiters. This function properly handles them.
+    PostgreSQL DO blocks (DO $$ ... END $$;) and other $$ quoted strings contain
+    semicolons that should not be used as statement delimiters. This function
+    properly handles them by tracking $$ delimiters.
     """
     statements = []
     current_statement = []
-    in_do_block = False
+    in_quoted_string = False
     i = 0
 
     while i < len(sql_text):
-        char = sql_text[i]
-
-        # Check for DO $$ block start
-        if not in_do_block and i < len(sql_text) - 2 and sql_text[i:i+2] == 'DO':
-            # Look ahead to find the $$ delimiter
-            j = i + 2
-            while j < len(sql_text) - 1:
-                if sql_text[j:j+2] == '$$':
-                    in_do_block = True
-                    break
-                j += 1
-
-        # Check for DO $$ block end
-        if in_do_block and i < len(sql_text) - 1 and sql_text[i:i+2] == '$$':
-            current_statement.append(char)
-            i += 1
-            current_statement.append(sql_text[i])
-            i += 1
-            # Look for the closing semicolon
-            while i < len(sql_text):
-                char = sql_text[i]
-                current_statement.append(char)
-                if char == ';':
-                    in_do_block = False
-                    break
-                i += 1
-            i += 1
+        # Check for $$ delimiter (starts or ends a quoted string)
+        if i < len(sql_text) - 1 and sql_text[i:i+2] == '$$':
+            current_statement.append(sql_text[i:i+2])
+            i += 2
+            in_quoted_string = not in_quoted_string
             continue
 
-        # Handle regular semicolon as statement delimiter
-        if char == ';' and not in_do_block:
+        char = sql_text[i]
+
+        # Only treat semicolon as delimiter if we're not inside a $$ quoted string
+        if char == ';' and not in_quoted_string:
             current_statement.append(char)
             statement_text = ''.join(current_statement).strip()
             if statement_text:

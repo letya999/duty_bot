@@ -7,8 +7,9 @@ CREATE TABLE IF NOT EXISTS workspace (
     id SERIAL PRIMARY KEY,
     name VARCHAR NOT NULL,
     workspace_type VARCHAR NOT NULL,  -- 'telegram' or 'slack'
-    external_id VARCHAR NOT NULL UNIQUE,  -- chat_id or workspace_id
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    external_id VARCHAR NOT NULL,  -- chat_id or workspace_id
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(workspace_type, external_id)
 );
 
 -- Step 2: Create ChatChannel table
@@ -23,10 +24,20 @@ CREATE TABLE IF NOT EXISTS chat_channel (
     UNIQUE(workspace_id, external_id)
 );
 
+-- Step 2.5: Ensure Workspace unique constraint exists (in case it was created without it)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'workspace_type_external_id_unique'
+    ) THEN
+        ALTER TABLE workspace ADD CONSTRAINT workspace_type_external_id_unique UNIQUE (workspace_type, external_id);
+    END IF;
+END $$;
+
 -- Step 3: Create default workspace (for migrating existing data)
 INSERT INTO workspace (name, workspace_type, external_id, created_at)
 VALUES ('Default Workspace', 'telegram', '0', CURRENT_TIMESTAMP)
-ON CONFLICT (external_id) DO NOTHING;
+ON CONFLICT (workspace_type, external_id) DO NOTHING;
 
 -- Step 4: Add workspace_id to user table if not exists
 -- Check if column exists, if not add it

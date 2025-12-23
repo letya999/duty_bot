@@ -38,10 +38,9 @@ async def apply_migrations():
                 logger.info(f"Applying migration: {migration_file.name}")
                 migration_sql = migration_file.read_text()
 
-                # Split by semicolon and execute each statement
-                statements = [s.strip() for s in migration_sql.split(';') if s.strip()]
-                for statement in statements:
-                    await conn.execute(text(statement))
+                # Execute the entire SQL file as one block
+                # This ensures DO $$ blocks and other semi-colon containing constructs work
+                await conn.execute(text(migration_sql))
 
                 logger.info(f"✓ Migration applied: {migration_file.name}")
             except Exception as e:

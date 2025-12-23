@@ -66,6 +66,9 @@ class DateParser:
             elif len(parts) == 3:
                 try:
                     day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+                    # Handle 2-digit years: convert to 4-digit year
+                    if year < 100:
+                        year += 2000
                     return date(year, month, day)
                 except ValueError as e:
                     raise CommandError(f"Invalid date format: {date_str}") from e

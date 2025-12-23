@@ -68,8 +68,8 @@ async def lifespan(app: FastAPI):
         scheduled_tasks = ScheduledTasks(
             telegram_bot=telegram_bot,
             slack_client=slack_client,
-            telegram_chat_id=None,  # Will be set from environment or config
-            slack_channel_id=None   # Will be set from environment or config
+            telegram_chat_id=settings.telegram_chat_id,
+            slack_channel_id=settings.slack_channel_id
         )
         await scheduled_tasks.start()
         logger.info("Scheduled tasks started")
@@ -120,6 +120,63 @@ async def slack_events(request: Request):
         handler = AsyncSlackRequestHandler(slack_handler.app)
         return await handler.handle(request)
     return {"error": "Slack handler not initialized"}
+
+
+# Test endpoints for manual task triggering
+@app.post("/test/morning-digest")
+async def test_morning_digest():
+    """Manually trigger morning digest"""
+    if not scheduled_tasks:
+        return {"error": "Scheduled tasks not initialized"}
+
+    try:
+        await scheduled_tasks.morning_digest()
+        return {"status": "success", "message": "Morning digest triggered"}
+    except Exception as e:
+        logger.exception(f"Error triggering morning digest: {e}")
+        return {"error": str(e), "status": "failed"}
+
+
+@app.post("/test/check-escalations")
+async def test_check_escalations():
+    """Manually trigger escalation check"""
+    if not scheduled_tasks:
+        return {"error": "Scheduled tasks not initialized"}
+
+    try:
+        await scheduled_tasks.check_auto_escalations()
+        return {"status": "success", "message": "Escalation check triggered"}
+    except Exception as e:
+        logger.exception(f"Error triggering escalation check: {e}")
+        return {"error": str(e), "status": "failed"}
+
+
+@app.get("/test/scheduler-status")
+async def test_scheduler_status():
+    """Get scheduler status"""
+    if not scheduled_tasks:
+        return {"error": "Scheduled tasks not initialized"}
+
+    try:
+        jobs = scheduled_tasks.scheduler.get_jobs()
+        job_list = []
+        for job in jobs:
+            job_list.append({
+                "id": job.id,
+                "name": job.name,
+                "next_run_time": str(job.next_run_time),
+                "trigger": str(job.trigger)
+            })
+
+        return {
+            "status": "ok",
+            "scheduler_running": scheduled_tasks.scheduler.running,
+            "jobs_count": len(job_list),
+            "jobs": job_list
+        }
+    except Exception as e:
+        logger.exception(f"Error getting scheduler status: {e}")
+        return {"error": str(e), "status": "failed"}
 
 
 if __name__ == "__main__":

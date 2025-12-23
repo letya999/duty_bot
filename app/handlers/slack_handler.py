@@ -1,15 +1,40 @@
 import logging
 from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
 from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.commands.parser import CommandParser, DateParser, CommandError
 from app.services.user_service import UserService
+from app.models import Workspace
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+async def get_or_create_slack_workspace(db, team_id: str) -> int:
+    """Get or create Slack workspace by team ID"""
+    stmt = select(Workspace).where(
+        (Workspace.workspace_type == 'slack') &
+        (Workspace.external_id == team_id)
+    )
+    result = await db.execute(stmt)
+    workspace = result.scalars().first()
+
+    if not workspace:
+        workspace = Workspace(
+            name=f"Slack Workspace {team_id}",
+            workspace_type='slack',
+            external_id=team_id
+        )
+        db.add(workspace)
+        await db.commit()
+        await db.refresh(workspace)
+        logger.info(f"Created new Slack workspace: {team_id} (id={workspace.id})")
+    else:
+        logger.debug(f"Using existing Slack workspace: {team_id} (id={workspace.id})")
+
+    return workspace.id
 
 
 class SlackHandler:
@@ -55,7 +80,6 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
 
                 text = command.get("text", "").strip()
@@ -90,7 +114,6 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -142,7 +165,7 @@ class SlackHandler:
                     if not mentions:
                         raise CommandError("Usage: /team lead <team> @user")
 
-                    user = await user_service.get_user_by_slack(mentions[0])
+                    user = await user_service.get_user_by_slack(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
@@ -154,7 +177,7 @@ class SlackHandler:
                     if not mentions:
                         raise CommandError("Usage: /team add-member <team> @user")
 
-                    user = await user_service.get_user_by_slack(mentions[0])
+                    user = await user_service.get_user_by_slack(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
@@ -166,7 +189,7 @@ class SlackHandler:
                     if not mentions:
                         raise CommandError("Usage: /team remove-member <team> @user")
 
-                    user = await user_service.get_user_by_slack(mentions[0])
+                    user = await user_service.get_user_by_slack(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
@@ -180,7 +203,7 @@ class SlackHandler:
                     if not mentions:
                         raise CommandError("Usage: /team move @user <from_team> <to_team>")
 
-                    user = await user_service.get_user_by_slack(mentions[0])
+                    user = await user_service.get_user_by_slack(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
@@ -218,7 +241,6 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -237,7 +259,7 @@ class SlackHandler:
                     if not mentions:
                         raise CommandError("Usage: /schedule <team> set <date> @user")
 
-                    user = await user_service.get_user_by_slack(mentions[0])
+                    user = await user_service.get_user_by_slack(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
@@ -275,7 +297,6 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -296,7 +317,7 @@ class SlackHandler:
 
                     users = []
                     for mention in mentions:
-                        user = await user_service.get_user_by_slack(mention)
+                        user = await user_service.get_user_by_slack(workspace_id, mention)
                         if not user:
                             raise CommandError(f"User not found: <@{mention}>")
                         users.append(user)
@@ -311,7 +332,7 @@ class SlackHandler:
                     if not mentions:
                         raise CommandError("Usage: /shift <team> add <date> @user")
 
-                    user = await user_service.get_user_by_slack(mentions[0])
+                    user = await user_service.get_user_by_slack(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
@@ -325,7 +346,7 @@ class SlackHandler:
                     if not mentions:
                         raise CommandError("Usage: /shift <team> remove <date> @user")
 
-                    user = await user_service.get_user_by_slack(mentions[0])
+                    user = await user_service.get_user_by_slack(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
@@ -363,7 +384,6 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -374,7 +394,7 @@ class SlackHandler:
                     if not mentions:
                         raise CommandError("Usage: /escalation cto @user")
 
-                    user = await user_service.get_user_by_slack(mentions[0])
+                    user = await user_service.get_user_by_slack(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
@@ -405,7 +425,6 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
-                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
 
                 text = command.get("text", "").strip()

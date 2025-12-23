@@ -110,7 +110,8 @@ class ScheduledTasks:
         try:
             async with get_db_with_retry() as db:
                 workspaces = await self.get_all_workspaces(db)
-                today = date.today()
+                # Use UTC for consistent date comparison across timezones
+                today = datetime.now(dt_timezone.utc).date()
 
                 for workspace in workspaces:
                     try:

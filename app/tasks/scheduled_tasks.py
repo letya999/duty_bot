@@ -4,6 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from pytz import timezone
+from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from slack_sdk.web.async_client import AsyncWebClient
 from telegram import Bot
@@ -110,8 +111,9 @@ class ScheduledTasks:
         try:
             async with get_db_with_retry() as db:
                 workspaces = await self.get_all_workspaces(db)
-                # Use UTC for consistent date comparison across timezones
-                today = datetime.now(dt_timezone.utc).date()
+                # Use application's configured timezone for consistent date comparison
+                tz = ZoneInfo(settings.timezone)
+                today = datetime.now(tz).date()
 
                 for workspace in workspaces:
                     try:
@@ -168,7 +170,8 @@ class ScheduledTasks:
                                     continue
 
                                 # Check if timeout exceeded
-                                elapsed = datetime.now(dt_timezone.utc) - event.initiated_at
+                                tz = ZoneInfo(settings.timezone)
+                                elapsed = datetime.now(tz) - event.initiated_at
                                 timeout = timedelta(minutes=settings.escalation_timeout_minutes)
 
                                 if elapsed > timeout and not event.escalated_to_level2_at:

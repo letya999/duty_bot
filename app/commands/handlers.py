@@ -7,6 +7,7 @@ from app.services.schedule_service import ScheduleService
 from app.services.shift_service import ShiftService
 from app.services.escalation_service import EscalationService
 from app.models import Team, User
+from app.config import get_settings
 
 
 class CommandHandler:
@@ -20,6 +21,7 @@ class CommandHandler:
         self.schedule_service = ScheduleService(db)
         self.shift_service = ShiftService(db)
         self.escalation_service = EscalationService(db)
+        self.settings = get_settings()
 
     async def help(self) -> str:
         """Return full list of commands"""
@@ -81,9 +83,11 @@ class CommandHandler:
     async def duty_today(self, today: date = None) -> str:
         """Show all on-duty people today"""
         if today is None:
-            from datetime import datetime, timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(timezone.utc).date()
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
 
         teams = await self.team_service.get_all_teams(self.workspace_id)
 
@@ -111,9 +115,11 @@ class CommandHandler:
     async def mention_duty(self, team_name: str, today: date = None) -> str:
         """Mention today's duty person/shift"""
         if today is None:
-            from datetime import datetime, timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(timezone.utc).date()
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -272,9 +278,11 @@ Members: {members_str}"""
     async def schedule_show(self, team_name: str, period: str = "week", today: date = None) -> str:
         """Show schedule"""
         if today is None:
-            from datetime import datetime, timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(timezone.utc).date()
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -285,11 +293,11 @@ Members: {members_str}"""
 
         # Determine date range
         if period == "week":
-            date_range = CommandParser.get_current_week_dates(today)
+            date_range = CommandParser.get_current_week_dates(today, self.settings.timezone)
         elif period == "next":
-            date_range = CommandParser.get_next_week_dates(today)
+            date_range = CommandParser.get_next_week_dates(today, self.settings.timezone)
         else:
-            date_range = DateParser.get_month_dates(period, today)
+            date_range = DateParser.get_month_dates(period, today, self.settings.timezone)
 
         schedules = await self.schedule_service.get_duties_by_date_range(
             team, date_range.start, date_range.end
@@ -314,9 +322,11 @@ Members: {members_str}"""
     ) -> str:
         """Set duty for date range"""
         if today is None:
-            from datetime import datetime, timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(timezone.utc).date()
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -325,7 +335,7 @@ Members: {members_str}"""
         if team.has_shifts:
             raise CommandError(f"{team.display_name} uses shift mode, use /shift instead")
 
-        date_range = DateParser.parse_date_range(date_range_str, today)
+        date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
 
         current = date_range.start
         count = 0
@@ -344,15 +354,17 @@ Members: {members_str}"""
     ) -> str:
         """Clear duty for date range"""
         if today is None:
-            from datetime import datetime, timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(timezone.utc).date()
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        date_range = DateParser.parse_date_range(date_range_str, today)
+        date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
 
         current = date_range.start
         count = 0
@@ -368,9 +380,11 @@ Members: {members_str}"""
     async def shift_show(self, team_name: str, period: str = "week", today: date = None) -> str:
         """Show shifts"""
         if today is None:
-            from datetime import datetime, timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(timezone.utc).date()
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -381,11 +395,11 @@ Members: {members_str}"""
 
         # Determine date range
         if period == "week":
-            date_range = CommandParser.get_current_week_dates(today)
+            date_range = CommandParser.get_current_week_dates(today, self.settings.timezone)
         elif period == "next":
-            date_range = CommandParser.get_next_week_dates(today)
+            date_range = CommandParser.get_next_week_dates(today, self.settings.timezone)
         else:
-            date_range = DateParser.get_month_dates(period, today)
+            date_range = DateParser.get_month_dates(period, today, self.settings.timezone)
 
         shifts = await self.shift_service.get_shifts_by_date_range(
             team, date_range.start, date_range.end
@@ -410,9 +424,11 @@ Members: {members_str}"""
     ) -> str:
         """Set shift for date range"""
         if today is None:
-            from datetime import datetime, timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(timezone.utc).date()
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -421,7 +437,7 @@ Members: {members_str}"""
         if not team.has_shifts:
             raise CommandError(f"{team.display_name} uses duty mode, use /schedule instead")
 
-        date_range = DateParser.parse_date_range(date_range_str, today)
+        date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
 
         current = date_range.start
         count = 0
@@ -442,15 +458,17 @@ Members: {members_str}"""
     ) -> str:
         """Add user to shift"""
         if today is None:
-            from datetime import datetime, timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(timezone.utc).date()
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        shift_date = DateParser.parse_date_string(shift_date_str, today)
+        shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
         await self.shift_service.add_user_to_shift(team, shift_date, user)
 
         return f"{user.display_name} added to shift on {shift_date}"
@@ -464,15 +482,17 @@ Members: {members_str}"""
     ) -> str:
         """Remove user from shift"""
         if today is None:
-            from datetime import datetime, timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(timezone.utc).date()
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        shift_date = DateParser.parse_date_string(shift_date_str, today)
+        shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
         await self.shift_service.remove_user_from_shift(team, shift_date, user)
 
         return f"{user.display_name} removed from shift on {shift_date}"
@@ -485,15 +505,17 @@ Members: {members_str}"""
     ) -> str:
         """Clear shifts for date range"""
         if today is None:
-            from datetime import datetime, timezone
-            # Use UTC for consistent date comparison across timezones
-            today = datetime.now(timezone.utc).date()
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            # Use application's configured timezone for consistent date comparison
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        date_range = DateParser.parse_date_range(date_range_str, today)
+        date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
 
         current = date_range.start
         count = 0

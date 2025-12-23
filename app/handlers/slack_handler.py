@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, get_db_with_retry
 from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.commands.parser import CommandParser, DateParser, CommandError
 from app.services.user_service import UserService
@@ -69,7 +69,7 @@ class SlackHandler:
         await ack()
 
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
 
@@ -104,7 +104,7 @@ class SlackHandler:
         await ack()
 
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
@@ -232,7 +232,7 @@ class SlackHandler:
         await ack()
 
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
@@ -289,7 +289,7 @@ class SlackHandler:
         await ack()
 
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
@@ -377,7 +377,7 @@ class SlackHandler:
         await ack()
 
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
@@ -419,7 +419,7 @@ class SlackHandler:
         await ack()
 
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
 
@@ -457,7 +457,7 @@ class SlackHandler:
         """Handle /help command"""
         await ack()
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
                 result = await handler.help()

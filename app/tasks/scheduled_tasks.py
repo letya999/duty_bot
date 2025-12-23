@@ -7,7 +7,7 @@ from pytz import timezone
 from sqlalchemy import select
 from slack_sdk.web.async_client import AsyncWebClient
 from telegram import Bot
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, get_db_with_retry
 from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.services.escalation_service import EscalationService
 from app.models import Workspace
@@ -66,7 +66,7 @@ class ScheduledTasks:
     async def morning_digest(self):
         """Send morning digest with today's duties to all workspaces"""
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspaces = await self.get_all_workspaces(db)
 
                 for workspace in workspaces:
@@ -108,7 +108,7 @@ class ScheduledTasks:
     async def send_reminders(self):
         """Send reminders to duty people in all workspaces"""
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspaces = await self.get_all_workspaces(db)
                 today = date.today()
 
@@ -150,7 +150,7 @@ class ScheduledTasks:
     async def check_auto_escalations(self):
         """Check if auto-escalation should be triggered in all workspaces"""
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspaces = await self.get_all_workspaces(db)
 
                 for workspace in workspaces:

@@ -4,7 +4,7 @@ from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, get_db_with_retry
 from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.commands.parser import CommandParser, DateParser, CommandError
 from app.services.user_service import UserService
@@ -98,7 +98,7 @@ class TelegramHandler:
     async def duty_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /duty command"""
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
 
@@ -122,7 +122,7 @@ class TelegramHandler:
     async def team_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /team command"""
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
@@ -239,7 +239,7 @@ class TelegramHandler:
     async def schedule_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /schedule command"""
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
@@ -285,7 +285,7 @@ class TelegramHandler:
     async def shift_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /shift command"""
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
@@ -362,7 +362,7 @@ class TelegramHandler:
     async def escalation_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /escalation command"""
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
@@ -394,7 +394,7 @@ class TelegramHandler:
     async def escalate_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /escalate command"""
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
 
@@ -422,7 +422,7 @@ class TelegramHandler:
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help and /start command"""
         try:
-            async with AsyncSessionLocal() as db:
+            async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
                 result = await handler.help()

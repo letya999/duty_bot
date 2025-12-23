@@ -15,12 +15,12 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-<<<<<<< HEAD
 async def format_telegram_text(text: str) -> str:
     """Convert markdown-like text to Telegram HTML/Markdown if needed"""
     # For now, we just use it as is since python-telegram-bot handles basic md
     return text
-=======
+
+
 async def get_or_create_telegram_workspace(db: AsyncSession, chat_id: int) -> int:
     """Get or create Telegram workspace by chat ID"""
     external_id = str(chat_id)
@@ -45,24 +45,12 @@ async def get_or_create_telegram_workspace(db: AsyncSession, chat_id: int) -> in
         logger.debug(f"Using existing Telegram workspace: {chat_id} (id={workspace.id})")
 
     return workspace.id
->>>>>>> 56f143b6c94adacebc1667215027fbe5fb0d5af3
 
 
 class TelegramHandler:
     def __init__(self):
         self.app = None
 
-    async def _get_or_create_user(self, db: AsyncSession, update: Update):
-        """Ensure current user is in database"""
-        tg_user = update.effective_user
-        if not tg_user:
-            return None
-        
-        user_service = UserService(db)
-        return await user_service.get_or_create_by_telegram(
-            telegram_username=tg_user.username,
-            display_name=tg_user.full_name or tg_user.username or "Unknown"
-        )
 
     async def start(self):
         """Start Telegram bot"""
@@ -111,13 +99,8 @@ class TelegramHandler:
         """Handle /duty command"""
         try:
             async with AsyncSessionLocal() as db:
-<<<<<<< HEAD
-                await self._get_or_create_user(db, update)
-                handler = BotCommandHandler(db)
-=======
-                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
->>>>>>> 56f143b6c94adacebc1667215027fbe5fb0d5af3
 
                 args = context.args
                 if not args:
@@ -140,13 +123,8 @@ class TelegramHandler:
         """Handle /team command"""
         try:
             async with AsyncSessionLocal() as db:
-<<<<<<< HEAD
-                await self._get_or_create_user(db, update)
-                handler = BotCommandHandler(db)
-=======
-                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
->>>>>>> 56f143b6c94adacebc1667215027fbe5fb0d5af3
                 user_service = UserService(db)
 
                 args = context.args
@@ -262,13 +240,8 @@ class TelegramHandler:
         """Handle /schedule command"""
         try:
             async with AsyncSessionLocal() as db:
-<<<<<<< HEAD
-                await self._get_or_create_user(db, update)
-                handler = BotCommandHandler(db)
-=======
-                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
->>>>>>> 56f143b6c94adacebc1667215027fbe5fb0d5af3
                 user_service = UserService(db)
 
                 args = context.args
@@ -313,13 +286,8 @@ class TelegramHandler:
         """Handle /shift command"""
         try:
             async with AsyncSessionLocal() as db:
-<<<<<<< HEAD
-                await self._get_or_create_user(db, update)
-                handler = BotCommandHandler(db)
-=======
-                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
->>>>>>> 56f143b6c94adacebc1667215027fbe5fb0d5af3
                 user_service = UserService(db)
 
                 args = context.args
@@ -395,13 +363,8 @@ class TelegramHandler:
         """Handle /escalation command"""
         try:
             async with AsyncSessionLocal() as db:
-<<<<<<< HEAD
-                await self._get_or_create_user(db, update)
-                handler = BotCommandHandler(db)
-=======
-                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
->>>>>>> 56f143b6c94adacebc1667215027fbe5fb0d5af3
                 user_service = UserService(db)
 
                 args = context.args
@@ -432,13 +395,8 @@ class TelegramHandler:
         """Handle /escalate command"""
         try:
             async with AsyncSessionLocal() as db:
-<<<<<<< HEAD
-                await self._get_or_create_user(db, update)
-                handler = BotCommandHandler(db)
-=======
-                workspace_id = await get_or_create_telegram_workspace(db, update.message.chat_id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
                 handler = BotCommandHandler(db, workspace_id)
->>>>>>> 56f143b6c94adacebc1667215027fbe5fb0d5af3
 
                 args = context.args
                 if not args:
@@ -465,8 +423,8 @@ class TelegramHandler:
         """Handle /help and /start command"""
         try:
             async with AsyncSessionLocal() as db:
-                await self._get_or_create_user(db, update)
-                handler = BotCommandHandler(db)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                handler = BotCommandHandler(db, workspace_id)
                 result = await handler.help()
                 await update.effective_message.reply_text(result, parse_mode='Markdown')
         except Exception as e:

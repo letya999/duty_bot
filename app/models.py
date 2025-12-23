@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Table, Text, Enum
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.orm import relationship
@@ -14,7 +14,7 @@ class Workspace(Base):
     name = Column(String, nullable=False)  # Display name
     workspace_type = Column(String, nullable=False)  # 'telegram' or 'slack'
     external_id = Column(String, nullable=False, index=True)  # chat_id or workspace_id
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     chat_channels = relationship('ChatChannel', back_populates='workspace', cascade='all, delete-orphan')
@@ -35,7 +35,7 @@ class ChatChannel(Base):
     messenger = Column(String, nullable=False)  # 'telegram' or 'slack'
     external_id = Column(String, nullable=False)  # chat_id or channel_id
     display_name = Column(String, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     workspace = relationship('Workspace', back_populates='chat_channels')

@@ -13,9 +13,27 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+async def format_telegram_text(text: str) -> str:
+    """Convert markdown-like text to Telegram HTML/Markdown if needed"""
+    # For now, we just use it as is since python-telegram-bot handles basic md
+    return text
+
+
 class TelegramHandler:
     def __init__(self):
         self.app = None
+
+    async def _get_or_create_user(self, db: AsyncSession, update: Update):
+        """Ensure current user is in database"""
+        tg_user = update.effective_user
+        if not tg_user:
+            return None
+        
+        user_service = UserService(db)
+        return await user_service.get_or_create_by_telegram(
+            telegram_username=tg_user.username,
+            display_name=tg_user.full_name or tg_user.username or "Unknown"
+        )
 
     async def start(self):
         """Start Telegram bot"""
@@ -32,17 +50,20 @@ class TelegramHandler:
         self.app.add_handler(CommandHandler("shift", self.shift_command))
         self.app.add_handler(CommandHandler("escalation", self.escalation_command))
         self.app.add_handler(CommandHandler("escalate", self.escalate_command))
+        self.app.add_handler(CommandHandler("help", self.help_command))
+        self.app.add_handler(CommandHandler("start", self.help_command))
 
         await self.app.initialize()
 
         # Register commands menu
         commands = [
-            BotCommand("duty", "Show who is on duty today"),
-            BotCommand("team", "Manage teams (list, add, edit, members)"),
-            BotCommand("schedule", "Manage schedule/duty assignments"),
-            BotCommand("shift", "Manage shifts for teams"),
-            BotCommand("escalation", "Manage escalation settings"),
+            BotCommand("duty", "Show on-duty people"),
+            BotCommand("team", "Manage teams & members"),
+            BotCommand("schedule", "Manage duty schedule"),
+            BotCommand("shift", "Manage team shifts"),
+            BotCommand("escalation", "Escalation settings"),
             BotCommand("escalate", "Escalate an issue"),
+            BotCommand("help", "Show full command list"),
         ]
         await self.app.bot.set_my_commands(commands)
         logger.info("Bot commands registered")
@@ -61,6 +82,7 @@ class TelegramHandler:
         """Handle /duty command"""
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, update)
                 handler = BotCommandHandler(db)
 
                 args = context.args
@@ -72,18 +94,19 @@ class TelegramHandler:
                     team_name = args[0]
                     result = await handler.mention_duty(team_name)
 
-                await update.message.reply_text(result)
+                await update.effective_message.reply_text(result)
 
         except CommandError as e:
-            await update.message.reply_text(f"❌ {str(e)}")
+            await update.effective_message.reply_text(f"❌ {str(e)}")
         except Exception as e:
             logger.exception(f"Error in duty_command: {e}")
-            await update.message.reply_text("❌ An error occurred")
+            await update.effective_message.reply_text("❌ An error occurred")
 
     async def team_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /team command"""
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, update)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -188,18 +211,19 @@ class TelegramHandler:
                     team_name = command
                     result = await handler.team_info(team_name)
 
-                await update.message.reply_text(result)
+                await update.effective_message.reply_text(result)
 
         except CommandError as e:
-            await update.message.reply_text(f"❌ {str(e)}")
+            await update.effective_message.reply_text(f"❌ {str(e)}")
         except Exception as e:
             logger.exception(f"Error in team_command: {e}")
-            await update.message.reply_text("❌ An error occurred")
+            await update.effective_message.reply_text("❌ An error occurred")
 
     async def schedule_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /schedule command"""
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, update)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -233,18 +257,19 @@ class TelegramHandler:
                     period = args[1] if len(args) > 1 else "week"
                     result = await handler.schedule_show(team_name, period)
 
-                await update.message.reply_text(result)
+                await update.effective_message.reply_text(result)
 
         except CommandError as e:
-            await update.message.reply_text(f"❌ {str(e)}")
+            await update.effective_message.reply_text(f"❌ {str(e)}")
         except Exception as e:
             logger.exception(f"Error in schedule_command: {e}")
-            await update.message.reply_text("❌ An error occurred")
+            await update.effective_message.reply_text("❌ An error occurred")
 
     async def shift_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /shift command"""
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, update)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -309,18 +334,19 @@ class TelegramHandler:
                     period = args[1] if len(args) > 1 else "week"
                     result = await handler.shift_show(team_name, period)
 
-                await update.message.reply_text(result)
+                await update.effective_message.reply_text(result)
 
         except CommandError as e:
-            await update.message.reply_text(f"❌ {str(e)}")
+            await update.effective_message.reply_text(f"❌ {str(e)}")
         except Exception as e:
             logger.exception(f"Error in shift_command: {e}")
-            await update.message.reply_text("❌ An error occurred")
+            await update.effective_message.reply_text("❌ An error occurred")
 
     async def escalation_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /escalation command"""
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, update)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -340,18 +366,19 @@ class TelegramHandler:
                 else:
                     result = await handler.escalation_show()
 
-                await update.message.reply_text(result)
+                await update.effective_message.reply_text(result)
 
         except CommandError as e:
-            await update.message.reply_text(f"❌ {str(e)}")
+            await update.effective_message.reply_text(f"❌ {str(e)}")
         except Exception as e:
             logger.exception(f"Error in escalation_command: {e}")
-            await update.message.reply_text("❌ An error occurred")
+            await update.effective_message.reply_text("❌ An error occurred")
 
     async def escalate_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /escalate command"""
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, update)
                 handler = BotCommandHandler(db)
 
                 args = context.args
@@ -367,10 +394,22 @@ class TelegramHandler:
                 else:
                     result = await handler.escalate_team(command)
 
-                await update.message.reply_text(result)
+                await update.effective_message.reply_text(result)
 
         except CommandError as e:
-            await update.message.reply_text(f"❌ {str(e)}")
+            await update.effective_message.reply_text(f"❌ {str(e)}")
         except Exception as e:
             logger.exception(f"Error in escalate_command: {e}")
-            await update.message.reply_text("❌ An error occurred")
+            await update.effective_message.reply_text("❌ An error occurred")
+
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /help and /start command"""
+        try:
+            async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, update)
+                handler = BotCommandHandler(db)
+                result = await handler.help()
+                await update.effective_message.reply_text(result, parse_mode='Markdown')
+        except Exception as e:
+            logger.exception(f"Error in help_command: {e}")
+            await update.effective_message.reply_text("❌ An error occurred")

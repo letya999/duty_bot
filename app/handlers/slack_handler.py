@@ -1,6 +1,7 @@
 import logging
 from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import AsyncSessionLocal
 from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.commands.parser import CommandParser, DateParser, CommandError
@@ -25,6 +26,19 @@ class SlackHandler:
         self.client = AsyncWebClient(token=settings.slack_bot_token)
         self.setup_handlers()
 
+    async def _get_or_create_user(self, db: AsyncSession, command: dict):
+        """Ensure current user is in database"""
+        user_id = command.get("user_id")
+        user_name = command.get("user_name")
+        if not user_id:
+            return None
+            
+        user_service = UserService(db)
+        return await user_service.get_or_create_by_slack(
+            slack_user_id=user_id,
+            display_name=user_name or user_id
+        )
+
     def setup_handlers(self):
         """Setup all Slack event handlers"""
         self.app.command("/duty")(self.duty_command)
@@ -33,6 +47,7 @@ class SlackHandler:
         self.app.command("/shift")(self.shift_command)
         self.app.command("/escalation")(self.escalation_command)
         self.app.command("/escalate")(self.escalate_command)
+        self.app.command("/help")(self.help_command)
 
     async def duty_command(self, ack, command, body):
         """Handle /duty command"""
@@ -40,6 +55,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
 
                 text = command.get("text", "").strip()
@@ -74,6 +90,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -201,6 +218,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -257,6 +275,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -344,6 +363,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
                 user_service = UserService(db)
 
@@ -385,6 +405,7 @@ class SlackHandler:
 
         try:
             async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, command)
                 handler = BotCommandHandler(db)
 
                 text = command.get("text", "").strip()
@@ -412,6 +433,25 @@ class SlackHandler:
             )
         except Exception as e:
             logger.exception(f"Error in escalate_command: {e}")
+            await self.client.chat_postMessage(
+                channel=command["channel_id"],
+                text="❌ An error occurred"
+            )
+
+    async def help_command(self, ack, command, body):
+        """Handle /help command"""
+        await ack()
+        try:
+            async with AsyncSessionLocal() as db:
+                await self._get_or_create_user(db, command)
+                handler = BotCommandHandler(db)
+                result = await handler.help()
+                await self.client.chat_postMessage(
+                    channel=command["channel_id"],
+                    text=result
+                )
+        except Exception as e:
+            logger.exception(f"Error in help_command: {e}")
             await self.client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"

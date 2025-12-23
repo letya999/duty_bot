@@ -20,6 +20,61 @@ class CommandHandler:
         self.shift_service = ShiftService(db)
         self.escalation_service = EscalationService(db)
 
+    async def help(self) -> str:
+        """Return full list of commands"""
+        return """*Available Commands*
+
+*📅 Duty*
+• `/duty` - Show all on-duty today
+• `/duty <team>` - Mention team's duty person/shift
+
+*👥 Team Management*
+• `/team list` - List all teams
+• `/team <name>` - Show team info
+• `/team add <name> "<display_name>"` - Create team
+• `/team add <name> "<display_name>" --shifts` - Create with shifts
+• `/team edit <name> --name <new_name>` - Rename team
+• `/team edit <name> --display "<new_name>"` - Change display name
+• `/team edit <name> --shifts` - Enable shifts
+• `/team edit <name> --no-shifts` - Disable shifts
+• `/team lead <team> @user` - Set team lead
+• `/team add-member <team> @user` - Add member
+• `/team remove-member <team> @user` - Remove member
+• `/team move @user <from_team> <to_team>` - Move member
+• `/team delete <team>` - Delete team
+
+*🗓 Scheduling (without shifts)*
+• `/schedule <team>` - Show current week
+• `/schedule <team> next` - Show next week
+• `/schedule <team> <month>` - Show month
+• `/schedule <team> set <date> @user` - Set duty
+• `/schedule <team> set <date>-<date> @user` - Set range
+• `/schedule <team> clear <date>` - Clear duty
+• `/schedule <team> clear <date>-<date>` - Clear range
+
+*🔄 Shifts (with shifts)*
+• `/shift <team>` - Show current week
+• `/shift <team> next` - Show next week
+• `/shift <team> <month>` - Show month
+• `/shift <team> set <date> @user1 @user2 ...` - Set shift
+• `/shift <team> set <date>-<date> @user1 @user2 ...` - Set range
+• `/shift <team> add <date> @user` - Add to shift
+• `/shift <team> remove <date> @user` - Remove from shift
+• `/shift <team> clear <date>` - Clear shift
+• `/shift <team> clear <date>-<date>` - Clear range
+
+*🚨 Escalation*
+• `/escalation` - Show escalation settings
+• `/escalation cto @user` - Set CTO
+• `/escalate <team>` - Escalate to team lead
+• `/escalate level2` - Escalate to CTO
+• `/escalate ack` - Acknowledge escalation
+
+*Date Format:*
+• `DD.MM`, `DD.MM.YYYY`
+• Month name (e.g., `december`)
+• `DD.MM-DD.MM` for ranges"""
+
     # ==================== Duty Commands ====================
 
     async def duty_today(self, today: date = None) -> str:

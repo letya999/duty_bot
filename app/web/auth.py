@@ -83,6 +83,53 @@ class TelegramOAuth(OAuthProvider):
             logger.error(f"Error validating Telegram init data: {e}")
             return None
 
+    async def validate_widget_data(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Validate Telegram Login Widget data"""
+        try:
+            # Get hash from data
+            data_hash = data.get('hash')
+            if not data_hash:
+                logger.warning("No hash in widget data")
+                return None
+
+            # Create data check string - must be sorted alphabetically and exclude hash
+            data_check_list = []
+            for key in sorted(data.keys()):
+                if key != 'hash':
+                    data_check_list.append(f"{key}={data[key]}")
+
+            data_check_string = '\n'.join(data_check_list)
+
+            # Validate signature using bot token
+            secret = hashlib.sha256(settings.telegram_token.encode()).digest()
+            expected_hash = hmac.new(
+                secret,
+                data_check_string.encode(),
+                hashlib.sha256
+            ).hexdigest()
+
+            if data_hash != expected_hash:
+                logger.warning(f"Invalid widget signature: {data_hash} != {expected_hash}")
+                return None
+
+            # Check if data is not too old (max 1 day)
+            auth_date = int(data.get('auth_date', 0))
+            if datetime.now().timestamp() - auth_date > 86400:
+                logger.warning("Widget auth data too old")
+                return None
+
+            return {
+                'platform': 'telegram',
+                'user_id': data.get('id'),
+                'username': data.get('username'),
+                'first_name': data.get('first_name'),
+                'last_name': data.get('last_name'),
+                'language_code': data.get('language_code'),
+            }
+        except Exception as e:
+            logger.error(f"Error validating widget data: {e}")
+            return None
+
 
 class SlackOAuth(OAuthProvider):
     """Slack OAuth provider"""

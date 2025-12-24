@@ -257,6 +257,64 @@ async def telegram_callback(request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/telegram-widget-callback")
+async def telegram_widget_callback(request: Request):
+    """Handle Telegram Login Widget callback (for web admin panel)"""
+    try:
+        data = await request.json()
+
+        if not data.get('id'):
+            raise HTTPException(status_code=400, detail="No user ID provided")
+
+        # Validate the widget data
+        user_info = await telegram_oauth.validate_widget_data(data)
+        if not user_info:
+            raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
+
+        # Get or create user
+        user = await get_or_create_user('telegram', user_info)
+        if not user:
+            raise HTTPException(status_code=500, detail="Failed to create user")
+
+        # Get user's workspace (first workspace by default)
+        async with AsyncSessionLocal() as db:
+            stmt = select(Workspace).limit(1)
+            result = await db.execute(stmt)
+            workspace = result.scalars().first()
+
+            if not workspace:
+                workspace = Workspace(
+                    platform='telegram',
+                    platform_id=str(user_info['user_id']),
+                    name=f"Workspace for {user_info.get('first_name', 'User')}"
+                )
+                db.add(workspace)
+                await db.commit()
+
+        # Create session
+        session_token = session_manager.create_session(
+            user.id,
+            workspace.id,
+            'telegram'
+        )
+
+        return {
+            "success": True,
+            "session_token": session_token,
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "is_admin": user.is_admin,
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error in Telegram widget callback: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/slack-login")
 async def slack_login(request: Request):
     """Slack login redirect"""

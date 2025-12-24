@@ -11,7 +11,10 @@ from app.dependencies import (
     get_team_repository,
     get_schedule_repository,
     get_shift_repository,
+    get_escalation_repository,
+    get_rotation_config_repository,
     get_admin_log_repository,
+    get_duty_stats_repository,
 )
 from app.models import User
 from app.web.auth import session_manager
@@ -28,9 +31,14 @@ from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
 from app.services.shift_service import ShiftService
+from app.services.escalation_service import EscalationService
+from app.services.rotation_service import RotationService
 from app.services.admin_service import AdminService
 from app.services.stats_service import StatsService
-from app.repositories import UserRepository, TeamRepository, ScheduleRepository, ShiftRepository, AdminLogRepository
+from app.repositories import (
+    UserRepository, TeamRepository, ScheduleRepository, ShiftRepository,
+    EscalationRepository, RotationConfigRepository, AdminLogRepository
+)
 from app.exceptions import (
     AuthenticationError,
     AuthorizationError,
@@ -61,6 +69,16 @@ async def get_schedule_service(schedule_repo: ScheduleRepository = Depends(get_s
 async def get_shift_service(shift_repo: ShiftRepository = Depends(get_shift_repository)) -> ShiftService:
     """Get shift service with repositories"""
     return ShiftService(shift_repo)
+
+
+async def get_escalation_service(escalation_repo: EscalationRepository = Depends(get_escalation_repository)) -> EscalationService:
+    """Get escalation service with repositories"""
+    return EscalationService(escalation_repo)
+
+
+async def get_rotation_service(rotation_config_repo: RotationConfigRepository = Depends(get_rotation_config_repository), schedule_repo: ScheduleRepository = Depends(get_schedule_repository), user_repo: UserRepository = Depends(get_user_repository)) -> RotationService:
+    """Get rotation service with repositories"""
+    return RotationService(rotation_config_repo, schedule_repo, user_repo)
 
 
 async def get_admin_service(admin_log_repo: AdminLogRepository = Depends(get_admin_log_repository), user_repo: UserRepository = Depends(get_user_repository)) -> AdminService:

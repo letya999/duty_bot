@@ -7,6 +7,7 @@ from app.services.schedule_service import ScheduleService
 from app.services.shift_service import ShiftService
 from app.services.escalation_service import EscalationService
 from app.services.admin_service import AdminService
+from app.services.rotation_service import RotationService
 from app.models import Team, User
 from app.config import get_settings
 
@@ -23,6 +24,7 @@ class CommandHandler:
         self.shift_service = ShiftService(db)
         self.escalation_service = EscalationService(db)
         self.admin_service = AdminService(db)
+        self.rotation_service = RotationService(db)
         self.settings = get_settings()
 
     async def help(self) -> str:
@@ -56,6 +58,12 @@ class CommandHandler:
 • `/schedule <team> set <date>-<date> @user` - Set range
 • `/schedule <team> clear <date>` - Clear duty
 • `/schedule <team> clear <date>-<date>` - Clear range
+
+*🔁 Auto-rotation*
+• `/schedule <team> rotate` - Show rotation status
+• `/schedule <team> rotate enable @user1 @user2 ...` - Enable rotation with order
+• `/schedule <team> rotate assign <date>` - Auto-assign next person
+• `/schedule <team> rotate disable` - Disable rotation
 
 *🔄 Shifts (with shifts)*
 • `/shift <team>` - Show current week
@@ -703,3 +711,87 @@ Members: {members_str}"""
 
         mention = f"@{cto.telegram_username or cto.slack_user_id}"
         return f"Escalating to CTO {mention}"
+
+    # ==================== Rotation Commands ====================
+
+    async def schedule_rotate_status(self, team_name: str) -> str:
+        """Show rotation status for a team"""
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
+        if not team:
+            raise CommandError(f"Team not found: {team_name}")
+
+        if team.has_shifts:
+            raise CommandError(f"{team.display_name} uses shift mode, rotation only works with duty mode")
+
+        return await self.rotation_service.get_rotation_status(team)
+
+    async def schedule_rotate_enable(
+        self,
+        team_name: str,
+        users: list[User]
+    ) -> str:
+        """Enable rotation for a team with a specific order of members"""
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
+        if not team:
+            raise CommandError(f"Team not found: {team_name}")
+
+        if team.has_shifts:
+            raise CommandError(f"{team.display_name} uses shift mode, rotation only works with duty mode")
+
+        if not users:
+            raise CommandError("At least one team member must be specified")
+
+        # Extract user IDs
+        user_ids = [u.id for u in users]
+
+        # Enable rotation
+        await self.rotation_service.enable_rotation(team, user_ids)
+
+        user_names = ", ".join([u.display_name for u in users])
+        return f"Rotation enabled for {team.display_name}\nOrder: {user_names}"
+
+    async def schedule_rotate_assign(
+        self,
+        team_name: str,
+        date_str: str,
+        today: date = None
+    ) -> str:
+        """Automatically assign the next person in rotation to a date"""
+        if today is None:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
+
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
+        if not team:
+            raise CommandError(f"Team not found: {team_name}")
+
+        if team.has_shifts:
+            raise CommandError(f"{team.display_name} uses shift mode, rotation only works with duty mode")
+
+        # Parse date
+        date_range = DateParser.parse_date_range(date_str, today, self.settings.timezone)
+        assignment_date = date_range.start
+
+        # Assign rotation
+        user, message = await self.rotation_service.assign_rotation(team, assignment_date)
+
+        if not user:
+            raise CommandError(message)
+
+        return message
+
+    async def schedule_rotate_disable(self, team_name: str) -> str:
+        """Disable rotation for a team"""
+        team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
+        if not team:
+            raise CommandError(f"Team not found: {team_name}")
+
+        if team.has_shifts:
+            raise CommandError(f"{team.display_name} uses shift mode, rotation only works with duty mode")
+
+        if await self.rotation_service.disable_rotation(team):
+            return f"Rotation disabled for {team.display_name}"
+        else:
+            raise CommandError(f"No rotation configured for {team.display_name}")

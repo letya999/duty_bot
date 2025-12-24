@@ -341,7 +341,50 @@ class TelegramHandler:
                 team_name = args[0].strip()
                 full_text = " ".join(args)
 
-                if "set" in full_text and len(args) >= 3:
+                if "rotate" in full_text:
+                    # Rotation command
+                    if "enable" in full_text and len(args) >= 3:
+                        # Check admin permission
+                        has_permission = await admin_service.check_permission(user.id, workspace_id, "rotation_enable")
+                        if not has_permission:
+                            raise CommandError("❌ You need admin permission to enable rotation")
+
+                        mentions = CommandParser.extract_mentions(full_text)
+                        if not mentions:
+                            raise CommandError("Usage: /schedule <team> rotate enable @user1 @user2 ...")
+
+                        users = []
+                        for mention in mentions:
+                            target_user = await user_service.get_user_by_telegram(workspace_id, mention)
+                            if not target_user:
+                                raise CommandError(f"User not found: @{mention}")
+                            users.append(target_user)
+
+                        result = await handler.schedule_rotate_enable(team_name, users)
+
+                    elif "assign" in full_text and len(args) >= 3:
+                        # Check admin permission
+                        has_permission = await admin_service.check_permission(user.id, workspace_id, "rotation_assign")
+                        if not has_permission:
+                            raise CommandError("❌ You need admin permission to assign rotation")
+
+                        date_idx = full_text.find("assign") + 6
+                        date_part = full_text[date_idx:].split()[0]
+                        result = await handler.schedule_rotate_assign(team_name, date_part)
+
+                    elif "disable" in full_text:
+                        # Check admin permission
+                        has_permission = await admin_service.check_permission(user.id, workspace_id, "rotation_disable")
+                        if not has_permission:
+                            raise CommandError("❌ You need admin permission to disable rotation")
+
+                        result = await handler.schedule_rotate_disable(team_name)
+
+                    else:
+                        # Show rotation status
+                        result = await handler.schedule_rotate_status(team_name)
+
+                elif "set" in full_text and len(args) >= 3:
                     # Check admin permission
                     has_permission = await admin_service.check_permission(user.id, workspace_id, "schedule_set")
                     if not has_permission:

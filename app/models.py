@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Table, Text, Enum
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Table, Text, Enum, JSON
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -102,10 +102,30 @@ class Team(Base):
     schedules = relationship('Schedule', back_populates='team', cascade='all, delete-orphan')
     shifts = relationship('Shift', back_populates='team', cascade='all, delete-orphan')
     escalations = relationship('Escalation', back_populates='team', cascade='all, delete-orphan')
+    rotation_config = relationship('RotationConfig', back_populates='team', cascade='all, delete-orphan', uselist=False)
 
     __table_args__ = (
         UniqueConstraint('workspace_id', 'name', name='team_workspace_name_unique'),
     )
+
+
+class RotationConfig(Base):
+    """Configuration for automatic duty rotation per team"""
+    __tablename__ = 'rotation_config'
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey('team.id'), nullable=False, unique=True)
+    enabled = Column(Boolean, default=False)
+    member_ids = Column(JSON, nullable=False)  # Ordered list of user IDs for rotation
+    last_assigned_user_id = Column(Integer, ForeignKey('user.id'), nullable=True)
+    last_assigned_date = Column(Date, nullable=True)
+    skip_unavailable = Column(Boolean, default=False)  # Skip users on vacation (future feature)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    team = relationship('Team', back_populates='rotation_config')
+    last_assigned_user = relationship('User', foreign_keys=[last_assigned_user_id])
 
 
 class Schedule(Base):

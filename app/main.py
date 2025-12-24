@@ -14,6 +14,7 @@ from app.database import init_db, close_db, AsyncSessionLocal
 from app.handlers.telegram_handler import TelegramHandler
 from app.handlers.slack_handler import SlackHandler
 from app.tasks.scheduled_tasks import ScheduledTasks
+from app.routes.miniapp import router as miniapp_router
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -105,6 +106,9 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(title="Duty Bot", lifespan=lifespan)
+
+# Register mini app router
+app.include_router(miniapp_router)
 
 
 @app.get("/health")

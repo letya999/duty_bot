@@ -1,0 +1,132 @@
+.daily-schedule {
+  background-color: var(--secondary-bg);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+.schedule-date {
+  color: var(--primary);
+  margin-bottom: var(--space-lg);
+  font-size: var(--text-lg);
+}
+
+.schedule-notes {
+  background-color: var(--bg);
+  border-left: 4px solid var(--primary);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-lg);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.schedule-notes strong {
+  color: var(--primary);
+}
+
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background-color: var(--bg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.user-card:active {
+  transform: scale(0.98);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.user-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary) 0%, rgba(0, 136, 204, 0.7) 100%);
+  color: var(--primary-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+}
+
+.user-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.user-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: var(--text-md);
+}
+
+.user-username {
+  color: var(--hint);
+  font-size: var(--text-xs);
+}
+
+.user-card .user-badge {
+  background-color: var(--primary);
+  color: var(--primary-text);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.users-count {
+  color: var(--hint);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.error-message {
+  padding: var(--space-lg);
+  background-color: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+  border-radius: var(--radius-md);
+  text-align: center;
+  border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .daily-schedule {
+    padding: var(--space-md);
+  }
+
+  .user-card {
+    padding: var(--space-sm);
+  }
+
+  .user-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: var(--text-md);
+  }
+
+  .user-name {
+    font-size: var(--text-sm);
+  }
+
+  .schedule-date {
+    font-size: var(--text-md);
+  }
+}

@@ -38,5 +38,19 @@ services:
       - .:/app
     restart: unless-stopped
 
+  webapp:
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile
+    container_name: duty_bot_webapp
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/miniapp}
+    volumes:
+      - ./webapp:/app
+      - /app/node_modules
+    restart: unless-stopped
+
 volumes:
   postgres_data:

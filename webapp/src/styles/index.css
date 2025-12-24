@@ -1,0 +1,359 @@
+/* CSS Variables for Telegram Theme */
+:root {
+  --tg-bg-color: #ffffff;
+  --tg-text-color: #000000;
+  --tg-hint-color: #999999;
+  --tg-link-color: #0088cc;
+  --tg-button-color: #0088cc;
+  --tg-button-text-color: #ffffff;
+  --tg-secondary-bg-color: #f5f5f5;
+
+  /* Additional colors */
+  --primary: var(--tg-button-color);
+  --primary-text: var(--tg-button-text-color);
+  --bg: var(--tg-bg-color);
+  --text: var(--tg-text-color);
+  --hint: var(--tg-hint-color);
+  --secondary-bg: var(--tg-secondary-bg-color);
+  --border-color: #e0e0e0;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-xxl: 32px;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Font sizes */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+}
+
+.dark-theme {
+  --tg-bg-color: #212121;
+  --tg-text-color: #ffffff;
+  --tg-hint-color: #888888;
+  --tg-secondary-bg-color: #2c2c2c;
+  --border-color: #3a3a3a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Typography */
+h1 {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  margin-bottom: var(--space-lg);
+}
+
+h2 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin-bottom: var(--space-md);
+}
+
+h3 {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+p {
+  color: var(--hint);
+  font-size: var(--text-sm);
+}
+
+/* Buttons */
+button {
+  font-family: inherit;
+  font-size: var(--text-md);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: var(--radius-md);
+  padding: var(--space-md) var(--space-lg);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: var(--primary-text);
+  font-weight: 500;
+}
+
+.btn-primary:active:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background-color: var(--secondary-bg);
+  color: var(--text);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:active:not(:disabled) {
+  background-color: var(--border-color);
+}
+
+.btn-sm {
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-sm);
+}
+
+.btn-icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+/* Input fields */
+input,
+textarea {
+  width: 100%;
+  padding: var(--space-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background-color: var(--secondary-bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-md);
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(0, 136, 204, 0.1);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--hint);
+}
+
+/* Containers */
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+.header {
+  padding: var(--space-lg);
+  background-color: var(--secondary-bg);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-lg);
+}
+
+.footer {
+  padding: var(--space-lg);
+  border-top: 1px solid var(--border-color);
+  background-color: var(--secondary-bg);
+  flex-shrink: 0;
+}
+
+/* Card */
+.card {
+  background-color: var(--secondary-bg);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-md);
+  border: 1px solid var(--border-color);
+}
+
+/* Badge */
+.badge {
+  display: inline-block;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  background-color: var(--primary);
+  color: var(--primary-text);
+}
+
+/* Grid */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: var(--space-md);
+}
+
+/* Utilities */
+.flex {
+  display: flex;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.gap-sm {
+  gap: var(--space-sm);
+}
+
+.gap-md {
+  gap: var(--space-md);
+}
+
+.gap-lg {
+  gap: var(--space-lg);
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-muted {
+  color: var(--hint);
+}
+
+.opacity-50 {
+  opacity: 0.5;
+}
+
+.mt-sm {
+  margin-top: var(--space-sm);
+}
+
+.mt-md {
+  margin-top: var(--space-md);
+}
+
+.mt-lg {
+  margin-top: var(--space-lg);
+}
+
+.mb-sm {
+  margin-bottom: var(--space-sm);
+}
+
+.mb-md {
+  margin-bottom: var(--space-md);
+}
+
+.mb-lg {
+  margin-bottom: var(--space-lg);
+}
+
+/* Loading and empty states */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  text-align: center;
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: var(--space-lg);
+  opacity: 0.5;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--hint);
+}

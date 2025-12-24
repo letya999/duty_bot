@@ -219,28 +219,39 @@ async def telegram_callback(request: Request):
 
         # Get or create user and workspace
         async with AsyncSessionLocal() as db:
-            # Get or create workspace for this user's Telegram account
-            workspace_stmt = select(Workspace).where(
-                (Workspace.workspace_type == 'telegram') &
-                (Workspace.external_id == str(user_info['user_id']))
-            )
-            result = await db.execute(workspace_stmt)
-            workspace = result.scalars().first()
+            # 1. Try to find an existing user record with this telegram_id
+            user_stmt = select(User).where(User.telegram_id == user_info['user_id']).order_by(User.is_admin.desc())
+            result = await db.execute(user_stmt)
+            existing_user = result.scalars().first()
 
-            if not workspace:
-                logger.info(f"Creating new workspace for Telegram user {user_info['user_id']}")
-                # Create workspace for this Telegram user
-                workspace = Workspace(
-                    workspace_type='telegram',
-                    external_id=str(user_info['user_id']),
-                    name=f"Workspace for {user_info.get('first_name', 'User')}"
-                )
-                db.add(workspace)
-                await db.commit()
-                await db.refresh(workspace)
-                logger.info(f"Created workspace: {workspace.id}")
+            if existing_user:
+                logger.info(f"Found existing user {existing_user.id} in workspace {existing_user.workspace_id}")
+                user = existing_user
+                workspace = await db.get(Workspace, user.workspace_id)
             else:
-                logger.info(f"Found existing workspace: {workspace.id}")
+                # 2. If no user found, look for or create a personal workspace
+                workspace_stmt = select(Workspace).where(
+                    (Workspace.workspace_type == 'telegram') &
+                    (Workspace.external_id == str(user_info['user_id']))
+                )
+                result = await db.execute(workspace_stmt)
+                workspace = result.scalars().first()
+
+                if not workspace:
+                    logger.info(f"Creating new workspace for Telegram user {user_info['user_id']}")
+                    workspace = Workspace(
+                        workspace_type='telegram',
+                        external_id=str(user_info['user_id']),
+                        name=f"Workspace for {user_info.get('first_name', 'User')}"
+                    )
+                    db.add(workspace)
+                    await db.commit()
+                    await db.refresh(workspace)
+                    logger.info(f"Created workspace: {workspace.id}")
+                else:
+                    logger.info(f"Found existing workspace: {workspace.id}")
+
+                user = None # Will be created below
 
             # Get or create user with workspace_id set
             # First try to find by telegram_id
@@ -338,28 +349,40 @@ async def telegram_widget_callback(request: Request):
 
         # Get or create user and workspace
         async with AsyncSessionLocal() as db:
-            # Get or create workspace for this user's Telegram account
-            workspace_stmt = select(Workspace).where(
-                (Workspace.workspace_type == 'telegram') &
-                (Workspace.external_id == str(user_info['user_id']))
-            )
-            result = await db.execute(workspace_stmt)
-            workspace = result.scalars().first()
+            # 1. Try to find an existing user record with this telegram_id
+            # Order by is_admin so we prefer workspaces where the user is an admin
+            user_stmt = select(User).where(User.telegram_id == user_info['user_id']).order_by(User.is_admin.desc())
+            result = await db.execute(user_stmt)
+            existing_user = result.scalars().first()
 
-            if not workspace:
-                logger.info(f"Creating new workspace for Telegram widget user {user_info['user_id']}")
-                # Create workspace for this Telegram user
-                workspace = Workspace(
-                    workspace_type='telegram',
-                    external_id=str(user_info['user_id']),
-                    name=f"Workspace for {user_info.get('first_name', 'User')}"
-                )
-                db.add(workspace)
-                await db.commit()
-                await db.refresh(workspace)
-                logger.info(f"Created workspace: {workspace.id}")
+            if existing_user:
+                logger.info(f"Found existing user {existing_user.id} in workspace {existing_user.workspace_id}")
+                user = existing_user
+                workspace = await db.get(Workspace, user.workspace_id)
             else:
-                logger.info(f"Found existing workspace: {workspace.id}")
+                # 2. If no user found, look for or create a personal workspace
+                workspace_stmt = select(Workspace).where(
+                    (Workspace.workspace_type == 'telegram') &
+                    (Workspace.external_id == str(user_info['user_id']))
+                )
+                result = await db.execute(workspace_stmt)
+                workspace = result.scalars().first()
+
+                if not workspace:
+                    logger.info(f"Creating new workspace for Telegram widget user {user_info['user_id']}")
+                    workspace = Workspace(
+                        workspace_type='telegram',
+                        external_id=str(user_info['user_id']),
+                        name=f"Workspace for {user_info.get('first_name', 'User')}"
+                    )
+                    db.add(workspace)
+                    await db.commit()
+                    await db.refresh(workspace)
+                    logger.info(f"Created workspace: {workspace.id}")
+                else:
+                    logger.info(f"Found existing workspace: {workspace.id}")
+                
+                user = None # Will be created/found below based on this workspace
 
             # Get or create user with workspace_id set
             # First try to find by telegram_id

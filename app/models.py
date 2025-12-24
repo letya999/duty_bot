@@ -20,7 +20,7 @@ class Workspace(Base):
     chat_channels = relationship('ChatChannel', back_populates='workspace', cascade='all, delete-orphan')
     users = relationship('User', back_populates='workspace', cascade='all, delete-orphan')
     teams = relationship('Team', back_populates='workspace', cascade='all, delete-orphan')
-    admin_logs = relationship('AdminLog', cascade='all, delete-orphan')
+    admin_logs = relationship('AdminLog', back_populates='workspace', cascade='all, delete-orphan')
 
     __table_args__ = (
         UniqueConstraint('workspace_type', 'external_id', name='workspace_type_external_id_unique'),
@@ -224,7 +224,7 @@ class AdminLog(Base):
     details = Column(Text, nullable=True)  # JSON with change details
 
     # Relationships
-    workspace = relationship('Workspace')
+    workspace = relationship('Workspace', back_populates='admin_logs')
     admin_user = relationship('User', back_populates='admin_logs_by_admin', foreign_keys=[admin_user_id])
     target_user = relationship('User', back_populates='admin_logs_by_target', foreign_keys=[target_user_id])
 

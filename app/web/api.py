@@ -104,7 +104,6 @@ async def get_teams(
             result_list.append({
                 "id": team.id,
                 "name": team.display_name or team.name,
-                "description": team.description or "",
                 "team_lead_id": team.team_lead_id,
                 "members": [
                     {
@@ -177,7 +176,7 @@ async def get_month_schedule(
         else:
             end_date = dt(year, month + 1, 1).date()
 
-        teams = await team_service.get_workspace_teams(user.workspace_id)
+        teams = await team_service.get_all_teams(user.workspace_id)
 
         schedule_by_date = {}
         for team in teams:
@@ -248,7 +247,7 @@ async def get_daily_schedule(
         schedule_service = ScheduleService(db)
         team_service = TeamService(db)
 
-        teams = await team_service.get_workspace_teams(user.workspace_id)
+        teams = await team_service.get_all_teams(user.workspace_id)
 
         duties = []
         seen_users = set()
@@ -539,7 +538,7 @@ async def get_schedules_by_date_range(
         schedule_service = ScheduleService(db)
         team_service = TeamService(db)
 
-        teams = await team_service.get_workspace_teams(user.workspace_id)
+        teams = await team_service.get_all_teams(user.workspace_id)
 
         schedules = []
         for team in teams:
@@ -606,7 +605,7 @@ async def get_schedule_statistics(
         schedule_service = ScheduleService(db)
         team_service = TeamService(db)
 
-        teams = await team_service.get_workspace_teams(user.workspace_id)
+        teams = await team_service.get_all_teams(user.workspace_id)
         total_duties = 0
         unique_users = set()
 

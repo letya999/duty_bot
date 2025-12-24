@@ -60,8 +60,13 @@ class AdminService:
 
     async def get_action_history(self, workspace_id: int, limit: int = 100) -> list[AdminLog]:
         """Get recent admin actions"""
+        from sqlalchemy.orm import selectinload
         stmt = (
             select(AdminLog)
+            .options(
+                selectinload(AdminLog.admin_user),
+                selectinload(AdminLog.target_user)
+            )
             .where(AdminLog.workspace_id == workspace_id)
             .order_by(desc(AdminLog.timestamp))
             .limit(limit)

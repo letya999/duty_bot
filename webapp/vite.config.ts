@@ -20,6 +20,11 @@ export default defineConfig({
         target: backendUrl,
         changeOrigin: true,
         rewrite: (path) => path
+      },
+      '/api': {
+        target: backendUrl,
+        changeOrigin: true,
+        rewrite: (path) => path
       }
     }
   },

@@ -174,6 +174,7 @@ async def telegram_login(request: Request):
                 try {
                     const response = await fetch('/web/auth/telegram-callback', {
                         method: 'POST',
+                        credentials: 'include',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: 'init_data=' + encodeURIComponent(initData)
                     });
@@ -205,12 +206,16 @@ async def telegram_callback(request: Request):
         init_data = form_data.get('init_data')
 
         if not init_data:
+            logger.error("No init data provided in request")
             raise HTTPException(status_code=400, detail="No init data provided")
 
         # Validate Telegram init data
         user_info = await telegram_oauth.validate_init_data(init_data)
         if not user_info:
+            logger.error(f"Failed to validate Telegram init data: {init_data[:50]}")
             raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
+
+        logger.info(f"Validated Telegram user: {user_info}")
 
         # Get or create user and workspace
         async with AsyncSessionLocal() as db:
@@ -223,6 +228,7 @@ async def telegram_callback(request: Request):
             workspace = result.scalars().first()
 
             if not workspace:
+                logger.info(f"Creating new workspace for Telegram user {user_info['user_id']}")
                 # Create workspace for this Telegram user
                 workspace = Workspace(
                     workspace_type='telegram',
@@ -232,6 +238,9 @@ async def telegram_callback(request: Request):
                 db.add(workspace)
                 await db.commit()
                 await db.refresh(workspace)
+                logger.info(f"Created workspace: {workspace.id}")
+            else:
+                logger.info(f"Found existing workspace: {workspace.id}")
 
             # Get or create user with workspace_id set
             user_stmt = select(User).where(
@@ -242,6 +251,7 @@ async def telegram_callback(request: Request):
             user = result.scalars().first()
 
             if not user:
+                logger.info(f"Creating new user for Telegram ID {user_info['user_id']}")
                 user = User(
                     workspace_id=workspace.id,
                     telegram_id=user_info['user_id'],
@@ -252,6 +262,9 @@ async def telegram_callback(request: Request):
                 db.add(user)
                 await db.commit()
                 await db.refresh(user)
+                logger.info(f"Created user: {user.id}")
+            else:
+                logger.info(f"Found existing user: {user.id}")
 
         # Create session
         session_token = session_manager.create_session(
@@ -259,6 +272,7 @@ async def telegram_callback(request: Request):
             workspace.id,
             'telegram'
         )
+        logger.info(f"Created session token for user {user.id}")
 
         response = RedirectResponse(url="/web/dashboard", status_code=302)
         response.set_cookie(
@@ -268,10 +282,13 @@ async def telegram_callback(request: Request):
             httponly=True,
             samesite="Lax"
         )
+        logger.info(f"Setting session cookie and redirecting to dashboard")
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in Telegram callback: {e}")
+        logger.error(f"Error in Telegram callback: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -282,12 +299,16 @@ async def telegram_widget_callback(request: Request):
         data = await request.json()
 
         if not data.get('id'):
+            logger.error("No user ID provided in widget callback")
             raise HTTPException(status_code=400, detail="No user ID provided")
 
         # Validate the widget data
         user_info = await telegram_oauth.validate_widget_data(data)
         if not user_info:
+            logger.error(f"Failed to validate widget data: {data}")
             raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
+
+        logger.info(f"Validated Telegram widget user: {user_info}")
 
         # Get or create user and workspace
         async with AsyncSessionLocal() as db:
@@ -300,6 +321,7 @@ async def telegram_widget_callback(request: Request):
             workspace = result.scalars().first()
 
             if not workspace:
+                logger.info(f"Creating new workspace for Telegram widget user {user_info['user_id']}")
                 # Create workspace for this Telegram user
                 workspace = Workspace(
                     workspace_type='telegram',
@@ -309,6 +331,9 @@ async def telegram_widget_callback(request: Request):
                 db.add(workspace)
                 await db.commit()
                 await db.refresh(workspace)
+                logger.info(f"Created workspace: {workspace.id}")
+            else:
+                logger.info(f"Found existing workspace: {workspace.id}")
 
             # Get or create user with workspace_id set
             user_stmt = select(User).where(
@@ -319,6 +344,7 @@ async def telegram_widget_callback(request: Request):
             user = result.scalars().first()
 
             if not user:
+                logger.info(f"Creating new user for Telegram widget user ID {user_info['user_id']}")
                 user = User(
                     workspace_id=workspace.id,
                     telegram_id=user_info['user_id'],
@@ -329,6 +355,9 @@ async def telegram_widget_callback(request: Request):
                 db.add(user)
                 await db.commit()
                 await db.refresh(user)
+                logger.info(f"Created user: {user.id}")
+            else:
+                logger.info(f"Found existing user: {user.id}")
 
         # Create session
         session_token = session_manager.create_session(
@@ -336,6 +365,7 @@ async def telegram_widget_callback(request: Request):
             workspace.id,
             'telegram'
         )
+        logger.info(f"Created session token for user {user.id}")
 
         return {
             "success": True,
@@ -349,8 +379,10 @@ async def telegram_widget_callback(request: Request):
             }
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in Telegram widget callback: {e}")
+        logger.error(f"Error in Telegram widget callback: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 

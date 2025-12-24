@@ -463,3 +463,151 @@ async def get_team_members(
     except Exception as e:
         logger.error(f"Error getting team members: {e}")
         raise HTTPException(status_code=500, detail="Failed to get team members")
+
+
+@router.get("/admins")
+async def get_admins(
+    user: User = Depends(get_user_from_telegram),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get list of all admins in workspace"""
+    try:
+        if not user.workspace_id:
+            raise HTTPException(status_code=400, detail="User not assigned to workspace")
+
+        # Get all admin users
+        stmt = select(User).where(
+            (User.workspace_id == user.workspace_id) &
+            (User.is_admin == True)
+        )
+        result = await db.execute(stmt)
+        admins = result.scalars().all()
+
+        return {
+            "success": True,
+            "admins": [
+                {
+                    "id": admin.id,
+                    "username": admin.username,
+                    "first_name": admin.first_name,
+                    "last_name": admin.last_name,
+                    "is_admin": admin.is_admin
+                }
+                for admin in admins
+            ]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting admins: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get admins")
+
+
+@router.post("/users/{user_id}/promote")
+async def promote_user(
+    user_id: int,
+    current_user: User = Depends(get_user_from_telegram),
+    db: AsyncSession = Depends(get_db)
+):
+    """Promote user to admin (admin only)"""
+    try:
+        # Check if current user is admin
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can promote users")
+
+        # Get target user
+        user = await db.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Check same workspace
+        if user.workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=403, detail="Cannot manage users from other workspaces")
+
+        # Promote user
+        user.is_admin = True
+        await db.commit()
+
+        # Log action
+        from app.services.admin_service import AdminService
+        admin_service = AdminService(db)
+        await admin_service.log_action(
+            workspace_id=current_user.workspace_id,
+            admin_user_id=current_user.id,
+            action="promote_admin",
+            target_user_id=user_id,
+            details={"promoted": True}
+        )
+
+        return {
+            "success": True,
+            "message": f"User {user.username} promoted to admin",
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "first_name": user.first_name,
+                "is_admin": user.is_admin
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error promoting user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to promote user")
+
+
+@router.post("/users/{user_id}/demote")
+async def demote_user(
+    user_id: int,
+    current_user: User = Depends(get_user_from_telegram),
+    db: AsyncSession = Depends(get_db)
+):
+    """Remove admin rights from user (admin only)"""
+    try:
+        # Check if current user is admin
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can demote users")
+
+        # Get target user
+        user = await db.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Check same workspace
+        if user.workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=403, detail="Cannot manage users from other workspaces")
+
+        # Prevent demoting yourself
+        if user.id == current_user.id:
+            raise HTTPException(status_code=400, detail="Cannot demote yourself")
+
+        # Demote user
+        user.is_admin = False
+        await db.commit()
+
+        # Log action
+        from app.services.admin_service import AdminService
+        admin_service = AdminService(db)
+        await admin_service.log_action(
+            workspace_id=current_user.workspace_id,
+            admin_user_id=current_user.id,
+            action="demote_admin",
+            target_user_id=user_id,
+            details={"demoted": True}
+        )
+
+        return {
+            "success": True,
+            "message": f"Admin rights removed from {user.username}",
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "first_name": user.first_name,
+                "is_admin": user.is_admin
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error demoting user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to demote user")

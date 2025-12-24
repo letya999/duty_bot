@@ -15,6 +15,11 @@ from app.handlers.telegram_handler import TelegramHandler
 from app.handlers.slack_handler import SlackHandler
 from app.tasks.scheduled_tasks import ScheduledTasks
 from app.routes.miniapp import router as miniapp_router
+from app.web.routes.auth import router as auth_router
+from app.web.routes.dashboard import router as dashboard_router
+from app.web.routes.schedules import router as schedules_router
+from app.web.routes.settings import router as settings_router
+from app.web.routes.reports import router as reports_router
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -109,6 +114,20 @@ app = FastAPI(title="Duty Bot", lifespan=lifespan)
 
 # Register mini app router
 app.include_router(miniapp_router)
+
+# Register web panel routers
+app.include_router(auth_router)
+app.include_router(dashboard_router)
+app.include_router(schedules_router)
+app.include_router(settings_router)
+app.include_router(reports_router)
+
+
+@app.get("/")
+async def root():
+    """Root redirect to web admin panel"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/web/auth/login")
 
 
 @app.get("/health")

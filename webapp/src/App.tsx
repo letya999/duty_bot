@@ -1,107 +1,81 @@
-import { useState, useEffect } from 'react';
-import { Calendar } from './components/Calendar';
-import { DailyScheduleComponent } from './components/DailySchedule';
-import { TeamManager } from './components/TeamManager';
-import { useTelegramWebApp, useTelegramBackButton } from './hooks/useTelegramWebApp';
-import './App.css';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { User } from './types';
+import './index.css';
 
-type ViewType = 'calendar' | 'schedule' | 'manage';
+// Pages
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import SchedulesPage from './pages/SchedulesPage';
+import SettingsPage from './pages/SettingsPage';
+import ReportsPage from './pages/ReportsPage';
 
-function App() {
-  const webApp = useTelegramWebApp();
-  const backButton = useTelegramBackButton();
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [currentView, setCurrentView] = useState<ViewType>('calendar');
+// Components
+import Navigation from './components/Navigation';
+import { LoadingSpinner } from './components/ui/LoadingSpinner';
 
-  // Initialize with today's date
+// Check if user is authenticated
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+
   useEffect(() => {
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    setSelectedDate(dateStr);
+    const sessionToken = localStorage.getItem('session_token');
+    if (sessionToken) {
+      setIsAuthenticated(true);
+      // Load user from localStorage
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        setUser(JSON.parse(userData));
+      }
+    } else {
+      setIsAuthenticated(false);
+    }
   }, []);
 
-  // Handle back button visibility
-  useEffect(() => {
-    if (currentView !== 'calendar') {
-      backButton.show();
-      const handleBack = () => {
-        setCurrentView('calendar');
-      };
-      backButton.onClick(handleBack);
+  if (isAuthenticated === null) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
 
-      return () => {
-        backButton.offClick(handleBack);
-        backButton.hide();
-      };
-    } else {
-      backButton.hide();
-    }
-  }, [currentView, backButton]);
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
 
-  const handleDateSelect = (date: string) => {
-    setSelectedDate(date);
-    setCurrentView('schedule');
-  };
+  return <>{children}</>;
+}
 
-  const handleManageClick = () => {
-    if (selectedDate) {
-      setCurrentView('manage');
-    }
-  };
-
-  const handleViewChange = (view: ViewType) => {
-    setCurrentView(view);
-  };
-
+function App() {
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Duty Bot</h1>
-        <p className="app-subtitle">Team duty schedule manager</p>
-      </header>
+    <Router>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
 
-      <main className="app-content">
-        {currentView === 'calendar' && (
-          <div className="view calendar-view">
-            <Calendar onDateSelect={handleDateSelect} selectedDate={selectedDate} />
-
-            <div className="quick-actions">
-              <button className="btn btn-primary" onClick={() => handleViewChange('schedule')}>
-                📅 Today's Schedule
-              </button>
-              <button className="btn btn-secondary" onClick={handleManageClick}>
-                ⚙️ Manage Duties
-              </button>
-            </div>
-          </div>
-        )}
-
-        {currentView === 'schedule' && selectedDate && (
-          <div className="view schedule-view">
-            <DailyScheduleComponent date={selectedDate} />
-            <button className="btn btn-secondary" onClick={handleManageClick}>
-              ⚙️ Assign for this day
-            </button>
-          </div>
-        )}
-
-        {currentView === 'manage' && selectedDate && (
-          <div className="view manage-view">
-            <TeamManager selectedDate={selectedDate} />
-          </div>
-        )}
-      </main>
-
-      <footer className="app-footer">
-        <p className="footer-text">
-          {webApp?.initDataUnsafe?.user?.first_name && (
-            <>
-              👋 Hello, <strong>{webApp.initDataUnsafe.user.first_name}</strong>
-            </>
-          )}
-        </p>
-      </footer>
-    </div>
+        {/* Protected routes */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <div className="flex h-screen bg-gray-50">
+                <Navigation />
+                <main className="flex-1 overflow-auto">
+                  <Routes>
+                    <Route path="/" element={<DashboardPage />} />
+                    <Route path="/schedules" element={<SchedulesPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/reports" element={<ReportsPage />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </main>
+              </div>
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </Router>
   );
 }
 

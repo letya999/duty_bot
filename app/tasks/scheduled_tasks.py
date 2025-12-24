@@ -11,6 +11,7 @@ from telegram import Bot
 from app.database import AsyncSessionLocal, get_db_with_retry
 from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.services.escalation_service import EscalationService
+from app.services.stats_service import StatsService
 from app.models import Workspace
 from app.config import get_settings
 
@@ -45,6 +46,14 @@ class ScheduledTasks:
             IntervalTrigger(minutes=1),
             id='check_escalations',
             name='Check auto-escalations'
+        )
+
+        # Recalculate statistics on the 1st of every month at 01:00
+        self.scheduler.add_job(
+            self.recalculate_monthly_stats,
+            CronTrigger(day=1, hour=1, minute=0, timezone=settings.timezone),
+            id='recalculate_stats',
+            name='Recalculate monthly statistics'
         )
 
     async def start(self):
@@ -218,3 +227,35 @@ class ScheduledTasks:
 
         except Exception as e:
             logger.exception(f"Error in check_auto_escalations: {e}")
+
+    async def recalculate_monthly_stats(self):
+        """Recalculate statistics for the previous month in all workspaces"""
+        try:
+            async with get_db_with_retry() as db:
+                workspaces = await self.get_all_workspaces(db)
+
+                # Calculate previous month
+                tz = ZoneInfo(settings.timezone)
+                today = datetime.now(tz).date()
+                # If today is the 1st, calculate for previous month
+                # Otherwise calculate for the month before previous
+                if today.day == 1:
+                    target_date = today - timedelta(days=1)
+                else:
+                    target_date = today - timedelta(days=today.day)
+
+                year = target_date.year
+                month = target_date.month
+
+                for workspace in workspaces:
+                    try:
+                        stats_service = StatsService(db)
+                        stats = await stats_service.recalculate_stats(workspace.id, year, month)
+                        logger.info(f"Recalculated {len(stats)} statistics records for workspace {workspace.id} ({year}-{month:02d})")
+                    except Exception as e:
+                        logger.warning(f"Error recalculating stats for workspace {workspace.id}: {e}")
+
+                logger.info(f"Monthly statistics recalculation completed for {year}-{month:02d}")
+
+        except Exception as e:
+            logger.exception(f"Error in recalculate_monthly_stats: {e}")

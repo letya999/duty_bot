@@ -2,14 +2,17 @@
 import logging
 import csv
 import io
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timedelta, date
+from calendar import month_name
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.orm import joinedload
 
 from app.database import AsyncSessionLocal
-from app.models import Schedule, User, Team, AdminLog, Workspace, Shift
+from app.models import Schedule, User, Team, AdminLog, Workspace, Shift, DutyStats
+from app.services.stats_service import StatsService
 from app.web.auth import session_manager
 
 logger = logging.getLogger(__name__)
@@ -31,61 +34,58 @@ def get_session_from_cookie(request: Request):
 
 @router.get("")
 async def reports_page(request: Request, session: dict = Depends(get_session_from_cookie)):
-    """Reports and analytics page"""
+    """Reports and analytics page with Phase 5 statistics"""
     try:
         async with AsyncSessionLocal() as db:
             workspace_id = session['workspace_id']
-
-            # Get statistics
-            # Total duties
-            stmt = select(func.count(Schedule.id)).where(
-                Schedule.workspace_id == workspace_id
-            )
-            result = await db.execute(stmt)
-            total_duties = result.scalar() or 0
-
-            # Duties this month
             today = datetime.now().date()
-            first_day = datetime(today.year, today.month, 1).date()
-            stmt = select(func.count(Schedule.id)).where(
-                (Schedule.workspace_id == workspace_id) &
-                (Schedule.duty_date >= first_day) &
-                (Schedule.duty_date <= today)
+
+            # Initialize stats service
+            stats_service = StatsService(db)
+
+            # Get current month statistics
+            current_month_stats = await stats_service.get_workspace_monthly_stats(
+                workspace_id, today.year, today.month
             )
-            result = await db.execute(stmt)
-            duties_this_month = result.scalar() or 0
+            top_users = await stats_service.get_top_users_by_duties(
+                workspace_id, today.year, today.month, 10
+            )
+            team_workload = await stats_service.get_team_workload(
+                workspace_id, today.year, today.month
+            )
 
-            # Get user statistics
-            stmt = select(User.id, func.count(Schedule.id).label('duty_count')).where(
-                Schedule.workspace_id == workspace_id
-            ).group_by(User.id).options(
-                joinedload(User)
-            ).order_by(func.count(Schedule.id).desc()).limit(10)
-            result = await db.execute(stmt)
-            user_stats = result.all()
-
-            # Get team statistics
-            stmt = select(Team.id, Team.name, func.count(Schedule.id).label('duty_count')).where(
-                Schedule.workspace_id == workspace_id
-            ).group_by(Team.id, Team.name).order_by(func.count(Schedule.id).desc()).limit(10)
-            result = await db.execute(stmt)
-            team_stats = result.all()
+            # Calculate summary stats
+            total_duty_days = sum(s.duty_days for s in current_month_stats)
+            total_shift_days = sum(s.shift_days for s in current_month_stats)
+            total_records = len(current_month_stats)
 
             # Build user stats HTML
             user_stats_html = ''
-            for user_id, duty_count in user_stats:
-                user = await db.get(User, user_id)
+            for rank, user in enumerate(top_users, 1):
                 user_stats_html += f'''<tr>
-                    <td>{user.first_name or user.username}</td>
-                    <td>{duty_count}</td>
+                    <td>{rank}</td>
+                    <td>{user['display_name']}</td>
+                    <td>{user['total_duties']}</td>
                 </tr>'''
+            if not user_stats_html:
+                user_stats_html = '<tr><td colspan="3">No data available</td></tr>'
 
+            # Build team workload HTML
             team_stats_html = ''
-            for team_id, team_name, duty_count in team_stats:
+            for team in team_workload:
+                avg_duties = (
+                    team['total_duties'] / team['team_members']
+                    if team['team_members'] > 0
+                    else 0
+                )
                 team_stats_html += f'''<tr>
-                    <td>{team_name}</td>
-                    <td>{duty_count}</td>
+                    <td>{team['team_name']}</td>
+                    <td>{team['total_duties']}</td>
+                    <td>{team['team_members']}</td>
+                    <td>{avg_duties:.1f}</td>
                 </tr>'''
+            if not team_stats_html:
+                team_stats_html = '<tr><td colspan="4">No data available</td></tr>'
 
             html = f"""
             <!DOCTYPE html>
@@ -193,6 +193,17 @@ async def reports_page(request: Request, session: dict = Depends(get_session_fro
                         cursor: pointer;
                         text-decoration: none;
                     }}
+                    .month-selector {{
+                        display: flex;
+                        gap: 10px;
+                        margin-bottom: 15px;
+                        align-items: center;
+                    }}
+                    .month-selector select {{
+                        padding: 10px;
+                        border: 1px solid #ddd;
+                        border-radius: 5px;
+                    }}
                 </style>
             </head>
             <body>
@@ -209,28 +220,30 @@ async def reports_page(request: Request, session: dict = Depends(get_session_fro
                 </nav>
 
                 <div class="container">
-                    <div class="stats">
-                        <div class="stat-card">
-                            <h3>Total Duties</h3>
-                            <div class="value">{total_duties}</div>
-                        </div>
-                        <div class="stat-card">
-                            <h3>This Month</h3>
-                            <div class="value">{duties_this_month}</div>
+                    <div class="section">
+                        <h2>📅 Monthly Statistics - {month_name[today.month]} {today.year}</h2>
+                        <div class="month-selector">
+                            <label>Select Month:</label>
+                            <select id="monthSelect" onchange="loadMonthStats()">
+                                <option value="{today.year}-{today.month:02d}">Current Month</option>
+                                <option value="custom">Custom Month</option>
+                            </select>
+                            <input type="month" id="monthInput" style="display:none;" onchange="loadMonthStats()">
                         </div>
                     </div>
 
-                    <div class="section">
-                        <h2>Export Reports</h2>
-                        <div class="report-controls">
-                            <input type="date" id="startDate" value="{(today - timedelta(days=30)).isoformat()}">
-                            <input type="date" id="endDate" value="{today.isoformat()}">
-                            <select id="reportFormat">
-                                <option value="csv">CSV</option>
-                                <option value="html">HTML</option>
-                                <option value="json">JSON</option>
-                            </select>
-                            <button onclick="generateReport()">📥 Generate Report</button>
+                    <div class="stats">
+                        <div class="stat-card">
+                            <h3>Total Duty Days</h3>
+                            <div class="value">{total_duty_days}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Total Shift Days</h3>
+                            <div class="value">{total_shift_days}</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Records</h3>
+                            <div class="value">{total_records}</div>
                         </div>
                     </div>
 
@@ -239,29 +252,54 @@ async def reports_page(request: Request, session: dict = Depends(get_session_fro
                         <table>
                             <thead>
                                 <tr>
+                                    <th>Rank</th>
                                     <th>User</th>
-                                    <th>Duty Count</th>
+                                    <th>Total Duties</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {user_stats_html if user_stats_html else '<tr><td colspan="2">No data available</td></tr>'}
+                                {user_stats_html}
                             </tbody>
                         </table>
                     </div>
 
                     <div class="section">
-                        <h2>Teams by Duty Count</h2>
+                        <h2>Team Workload Distribution</h2>
                         <table>
                             <thead>
                                 <tr>
                                     <th>Team</th>
-                                    <th>Duty Count</th>
+                                    <th>Total Duties</th>
+                                    <th>Team Members</th>
+                                    <th>Avg per Member</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {team_stats_html if team_stats_html else '<tr><td colspan="2">No data available</td></tr>'}
+                                {team_stats_html}
                             </tbody>
                         </table>
+                    </div>
+
+                    <div class="section">
+                        <h2>📥 Export Reports</h2>
+                        <div class="report-controls">
+                            <input type="date" id="startDate" value="{(today - timedelta(days=30)).isoformat()}">
+                            <input type="date" id="endDate" value="{today.isoformat()}">
+                            <select id="reportFormat">
+                                <option value="csv">CSV</option>
+                                <option value="html">HTML Report</option>
+                                <option value="json">JSON</option>
+                            </select>
+                            <button onclick="generateReport()">📥 Generate Report</button>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Generate Monthly Statistics Report</h2>
+                        <div class="report-controls">
+                            <input type="month" id="reportMonth" value="{today.year}-{today.month:02d}">
+                            <button onclick="generateStatsReport()">📊 Generate Stats Report</button>
+                        </div>
                     </div>
                 </div>
 
@@ -278,6 +316,24 @@ async def reports_page(request: Request, session: dict = Depends(get_session_fro
 
                         window.location.href = `/web/reports/generate?start_date=${{startDate}}&end_date=${{endDate}}&format=${{format}}`;
                     }}
+
+                    function generateStatsReport() {{
+                        const monthInput = document.getElementById('reportMonth').value;
+                        if (!monthInput) {{
+                            alert('Please select a month');
+                            return;
+                        }}
+                        const [year, month] = monthInput.split('-');
+                        window.location.href = `/web/reports/stats?year=${{year}}&month=${{month}}`;
+                    }}
+
+                    document.getElementById('monthSelect').addEventListener('change', (e) => {{
+                        if (e.target.value === 'custom') {{
+                            document.getElementById('monthInput').style.display = 'block';
+                        }} else {{
+                            document.getElementById('monthInput').style.display = 'none';
+                        }}
+                    }});
                 </script>
             </body>
             </html>
@@ -409,4 +465,64 @@ async def generate_report(
 
     except Exception as e:
         logger.error(f"Error generating report: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats")
+async def generate_stats_report(
+    request: Request,
+    year: int,
+    month: int,
+    format: str = "html",
+    session: dict = Depends(get_session_from_cookie)
+):
+    """Generate statistics report for a specific month"""
+    try:
+        async with AsyncSessionLocal() as db:
+            workspace_id = session['workspace_id']
+
+            # Initialize stats service
+            stats_service = StatsService(db)
+
+            if format == "html":
+                # Generate HTML report
+                html = await stats_service.generate_html_report(
+                    workspace_id, year, month
+                )
+                filename = f"duty_stats_{year}-{month:02d}.html"
+                return StreamingResponse(
+                    iter([html]),
+                    media_type="text/html",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
+
+            elif format == "csv":
+                # Generate CSV report
+                csv_content = await stats_service.generate_csv_report(
+                    workspace_id, year, month
+                )
+                filename = f"duty_stats_{year}-{month:02d}.csv"
+                return StreamingResponse(
+                    iter([csv_content]),
+                    media_type="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
+
+            elif format == "json":
+                # Generate JSON report
+                json_data = await stats_service.generate_json_report(
+                    workspace_id, year, month
+                )
+                filename = f"duty_stats_{year}-{month:02d}.json"
+                return StreamingResponse(
+                    iter([json.dumps(json_data, indent=2)]),
+                    media_type="application/json",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
+                )
+
+            else:
+                raise HTTPException(status_code=400, detail="Invalid format")
+
+    except Exception as e:
+        logger.error(f"Error generating stats report: {e}")
         raise HTTPException(status_code=500, detail=str(e))

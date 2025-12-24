@@ -233,7 +233,7 @@ async def get_month_schedule(
                                 "id": schedule.team.id if schedule.team else None,
                                 "name": schedule.team.display_name or schedule.team.name if schedule.team else None,
                             } if schedule.team else None,
-                            "notes": schedule.notes,
+                            "notes": None,
                         })
                         seen_users.add(schedule.user_id)
 
@@ -294,7 +294,7 @@ async def get_daily_schedule(
                         "id": duty.team.id if duty.team else None,
                         "name": duty.team.display_name or duty.team.name if duty.team else None,
                     } if duty.team else None,
-                    "notes": duty.notes,
+                    "notes": None,
                 })
                 seen_users.add(duty.user_id)
 
@@ -1002,7 +1002,7 @@ async def get_schedules_by_date_range(
                         "id": duty.team.id if duty.team else None,
                         "name": duty.team.display_name or duty.team.name if duty.team else None,
                     } if duty.team else None,
-                    "notes": duty.notes,
+                    "notes": None,
                 })
 
         return {

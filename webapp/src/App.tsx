@@ -58,7 +58,7 @@ function App() {
 
         {/* Protected routes */}
         <Route
-          path="/"
+          path="/*"
           element={
             <ProtectedRoute>
               <div className="flex h-screen bg-gray-50">
@@ -71,6 +71,10 @@ function App() {
                     <Route path="/escalations" element={<EscalationsPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
+                    <Route index element={<DashboardPage />} />
+                    <Route path="schedules" element={<SchedulesPage />} />
+                    <Route path="settings" element={<SettingsPage />} />
+                    <Route path="reports" element={<ReportsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </main>

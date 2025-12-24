@@ -15,6 +15,15 @@ from app.dependencies import (
 )
 from app.models import User
 from app.web.auth import session_manager
+from app.web.schemas import (
+    UserResponse,
+    TeamResponse,
+    TeamDetailResponse,
+    ScheduleResponse,
+    ShiftResponse,
+    ShiftDetailResponse,
+    ErrorResponse,
+)
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
@@ -22,6 +31,13 @@ from app.services.shift_service import ShiftService
 from app.services.admin_service import AdminService
 from app.services.stats_service import StatsService
 from app.repositories import UserRepository, TeamRepository, ScheduleRepository, ShiftRepository, AdminLogRepository
+from app.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    NotFoundError,
+    ValidationError,
+    ConflictError,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin")
@@ -58,18 +74,18 @@ async def get_user_from_token(
 ) -> User:
     """Extract and verify user from Bearer token"""
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+        raise AuthenticationError("Missing or invalid authorization header")
 
     token = authorization.split(" ", 1)[1]
     session = session_manager.validate_session(token)
 
     if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise AuthenticationError("Invalid or expired token")
 
     # Get user from repository
     user = await user_repo.get_by_id(session['user_id'])
     if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+        raise AuthenticationError("User not found")
 
     return user
 
@@ -176,7 +192,7 @@ async def get_team_members(
         team = await team_service.get_team(team_id, user.workspace_id)
 
         if not team:
-            raise HTTPException(status_code=404, detail="Team not found")
+            raise NotFoundError("Team")
 
         result = []
         for member in (team.members or []):
@@ -188,11 +204,11 @@ async def get_team_members(
             })
 
         return result
-    except HTTPException:
+    except NotFoundError:
         raise
     except Exception as e:
         logger.error(f"Error getting team members: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get team members")
+        raise ValidationError("Failed to get team members")
 
 
 # ============ Schedule Endpoints ============
@@ -399,25 +415,25 @@ async def remove_duty(
 
         schedule_obj = await db.get(Schedule, schedule_id)
         if not schedule_obj:
-            raise HTTPException(status_code=404, detail="Schedule not found")
+            raise NotFoundError("Schedule")
 
         # Verify schedule belongs to user's workspace
         if schedule_obj.team.workspace_id != user.workspace_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise AuthorizationError("Not authorized to modify this schedule")
 
         # Use ScheduleService to clear duty
         schedule_service = ScheduleService(db)
         success = await schedule_service.clear_duty(schedule_obj.team, schedule_obj.date)
 
         if not success:
-            raise HTTPException(status_code=400, detail="Failed to clear duty")
+            raise ValidationError("Failed to clear duty")
 
         return {"status": "removed", "schedule_id": schedule_id}
-    except HTTPException:
+    except (NotFoundError, AuthorizationError, ValidationError):
         raise
     except Exception as e:
         logger.error(f"Error removing duty: {e}")
-        raise HTTPException(status_code=500, detail="Failed to remove duty")
+        raise ValidationError("Failed to remove duty")
 
 
 # ============ Shift Endpoints (for teams with has_shifts=True) ============

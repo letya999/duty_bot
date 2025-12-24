@@ -74,37 +74,17 @@ class TeamService:
         # Add to team members if not already there
         if team and user_id not in [member.id for member in team.members]:
             user = User(id=user_id)
-            team.members.append(user)
-            await self.team_repo.db.commit()
-            await self.team_repo.db.refresh(team)
+            team = await self.team_repo.add_member(team_id, user)
 
         return team
 
     async def add_member(self, team_id: int, user: User) -> Team | None:
         """Add member to team"""
-        team = await self.team_repo.get_by_id_with_members(team_id)
-        if not team:
-            return None
-
-        if user not in team.members:
-            team.members.append(user)
-            await self.team_repo.db.commit()
-            await self.team_repo.db.refresh(team)
-
-        return team
+        return await self.team_repo.add_member(team_id, user)
 
     async def remove_member(self, team_id: int, user: User) -> Team | None:
         """Remove member from team"""
-        team = await self.team_repo.get_by_id_with_members(team_id)
-        if not team:
-            return None
-
-        if user in team.members:
-            team.members.remove(user)
-            await self.team_repo.db.commit()
-            await self.team_repo.db.refresh(team)
-
-        return team
+        return await self.team_repo.remove_member(team_id, user)
 
     async def delete_team(self, team_id: int) -> bool:
         """Delete team"""

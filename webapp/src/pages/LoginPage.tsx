@@ -20,31 +20,66 @@ const LoginPage: React.FC = () => {
 
   const handleTelegramAuth = async (data: any) => {
     try {
+      console.log('🔵 [LoginPage] handleTelegramAuth called');
+      console.log('🔵 [LoginPage] Data received from widget:', data);
+      console.log('🔵 [LoginPage] Data type:', typeof data);
+      console.log('🔵 [LoginPage] Data keys:', Object.keys(data || {}));
+      console.log('🔵 [LoginPage] Has id?', !!data?.id);
+      console.log('🔵 [LoginPage] Has hash?', !!data?.hash);
+      console.log('🔵 [LoginPage] Has auth_date?', !!data?.auth_date);
+
       setLoading(true);
       setError(null);
 
+      // Log before fetch
+      const requestUrl = '/web/auth/telegram-widget-callback';
+      const requestBody = JSON.stringify(data);
+      console.log('🔵 [LoginPage] About to fetch:', requestUrl);
+      console.log('🔵 [LoginPage] Request method: POST');
+      console.log('🔵 [LoginPage] Request headers: { Content-Type: application/json }');
+      console.log('🔵 [LoginPage] Request body:', requestBody);
+
       // Send auth data to backend
-      const response = await fetch('/web/auth/telegram-widget-callback', {
+      const response = await fetch(requestUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: requestBody,
+      });
+
+      console.log('✅ [LoginPage] Fetch completed');
+      console.log('✅ [LoginPage] Response status:', response.status);
+      console.log('✅ [LoginPage] Response statusText:', response.statusText);
+      console.log('✅ [LoginPage] Response OK?', response.ok);
+      console.log('✅ [LoginPage] Response headers:');
+      response.headers.forEach((value, key) => {
+        console.log(`  ${key}: ${value}`);
       });
 
       if (!response.ok) {
+        console.error('❌ [LoginPage] Response not OK, parsing error data');
         const errorData = await response.json();
+        console.error('❌ [LoginPage] Error response:', errorData);
         throw new Error(errorData.detail || 'Authentication failed');
       }
 
       const result = await response.json();
+      console.log('✅ [LoginPage] Response body parsed:', result);
+      console.log('✅ [LoginPage] Session token:', result.session_token ? '✓ Present' : '✗ Missing');
+      console.log('✅ [LoginPage] User data:', result.user);
 
       // Store session token and user data
       localStorage.setItem('session_token', result.session_token);
       localStorage.setItem('user', JSON.stringify(result.user));
+      console.log('✅ [LoginPage] Stored session_token and user in localStorage');
 
       // Redirect to dashboard
+      console.log('✅ [LoginPage] Auth success! Redirecting to dashboard...');
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      const errorMessage = err instanceof Error ? err.message : 'Login failed';
+      console.error('❌ [LoginPage] Error in handleTelegramAuth:', errorMessage);
+      console.error('❌ [LoginPage] Full error:', err);
+      setError(errorMessage);
       setLoading(false);
     }
   };

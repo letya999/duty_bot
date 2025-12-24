@@ -7,34 +7,48 @@ import './index.css'
 // This prevents re-initialization issues with React remounting
 const loadTelegramScript = (): Promise<void> => {
   return new Promise((resolve, reject) => {
-    // Check if already loaded
-    if ((window as any).Telegram?.Login) {
-      console.log('📍 [Main] Telegram script already loaded');
+    // Check if already loaded and properly initialized
+    if ((window as any).Telegram?.Login?.render) {
+      console.log('📍 [Main] Telegram script already loaded and ready');
       resolve();
       return;
     }
 
     const telegramScript = document.createElement('script');
-    telegramScript.src = 'https://telegram.org/js/telegram-widget.js?22';
-    // Don't use async - we're already waiting for onload before rendering
+    telegramScript.src = 'https://telegram.org/js/telegram-widget.js';
+    telegramScript.async = true;
 
     telegramScript.onload = () => {
-      console.log('✅ [Main] Telegram script loaded successfully');
-      // Wait a bit for the script to fully initialize its globals
-      setTimeout(() => {
-        if ((window as any).Telegram?.Login) {
-          console.log('✅ [Main] Telegram.Login is ready');
+      console.log('✅ [Main] Telegram script file loaded successfully');
+
+      // Wait for the Telegram library to fully initialize
+      // The library might take some time to set up its globals
+      let attempts = 0;
+      const maxAttempts = 100; // ~2 seconds timeout
+
+      const checkTelegramReady = () => {
+        attempts++;
+
+        if ((window as any).Telegram?.Login?.render) {
+          console.log('✅ [Main] Telegram.Login is fully ready and available');
           resolve();
+        } else if (attempts < maxAttempts) {
+          // Telegram not ready yet, wait a bit and try again
+          setTimeout(checkTelegramReady, 20);
         } else {
-          console.warn('⚠️ [Main] Telegram.Login not ready immediately after script load, resolving anyway');
+          console.error('❌ [Main] Timeout waiting for Telegram.Login to be ready');
+          // Still resolve to let app render - widget will try to initialize later
           resolve();
         }
-      }, 100);
+      };
+
+      checkTelegramReady();
     };
 
     telegramScript.onerror = (error) => {
       console.error('❌ [Main] Failed to load Telegram script:', error);
-      reject(new Error('Failed to load Telegram widget script'));
+      // Don't reject - let app render anyway, component will handle missing Telegram
+      resolve();
     };
 
     document.head.appendChild(telegramScript);

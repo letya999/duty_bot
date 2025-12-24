@@ -1,6 +1,5 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
 from app.models import AdminLog, User
+from app.repositories import AdminLogRepository, UserRepository
 from app.config import get_settings
 from datetime import datetime
 import json
@@ -9,8 +8,9 @@ import json
 class AdminService:
     """Manage admin operations and audit logs"""
 
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    def __init__(self, admin_log_repo: AdminLogRepository, user_repo: UserRepository):
+        self.admin_log_repo = admin_log_repo
+        self.user_repo = user_repo
         self.settings = get_settings()
 
     async def check_permission(self, user_id: int, workspace_id: int, action: str) -> bool:
@@ -27,9 +27,7 @@ class AdminService:
             return True
 
         # Check if user is admin
-        user = await self.db.execute(select(User).where(User.id == user_id))
-        user_obj = user.scalars().first()
-
+        user_obj = await self.user_repo.get_by_id(user_id)
         if not user_obj:
             return False
 
@@ -45,50 +43,29 @@ class AdminService:
         details: dict = None,
     ) -> AdminLog:
         """Log admin action for audit trail"""
-        log_entry = AdminLog(
+        details_str = json.dumps(details) if details else None
+        return await self.admin_log_repo.log_action(
             workspace_id=workspace_id,
             admin_user_id=admin_id,
             action=action,
             target_user_id=target_user_id,
-            timestamp=datetime.utcnow(),
-            details=json.dumps(details) if details else None,
+            details=details_str
         )
-        self.db.add(log_entry)
-        await self.db.commit()
-        await self.db.refresh(log_entry)
-        return log_entry
 
     async def get_action_history(self, workspace_id: int, limit: int = 100) -> list[AdminLog]:
         """Get recent admin actions"""
-        from sqlalchemy.orm import selectinload
-        stmt = (
-            select(AdminLog)
-            .options(
-                selectinload(AdminLog.admin_user),
-                selectinload(AdminLog.target_user)
-            )
-            .where(AdminLog.workspace_id == workspace_id)
-            .order_by(desc(AdminLog.timestamp))
-            .limit(limit)
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().all()
+        return await self.admin_log_repo.list_by_workspace(workspace_id, limit)
 
     async def get_user_action_history(
         self, user_id: int, workspace_id: int, limit: int = 50
     ) -> list[AdminLog]:
         """Get action history for a specific user (both as admin and target)"""
-        stmt = (
-            select(AdminLog)
-            .where(
-                (AdminLog.workspace_id == workspace_id)
-                & (
-                    (AdminLog.admin_user_id == user_id)
-                    | (AdminLog.target_user_id == user_id)
-                )
-            )
-            .order_by(desc(AdminLog.timestamp))
-            .limit(limit)
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().all()
+        # Get logs where user is admin
+        admin_logs = await self.admin_log_repo.list_by_admin(workspace_id, user_id, limit)
+        # Get logs where user is target
+        target_logs = await self.admin_log_repo.list_by_target_user(workspace_id, user_id, limit)
+
+        # Merge and sort by timestamp
+        all_logs = admin_logs + target_logs
+        all_logs.sort(key=lambda x: x.timestamp, reverse=True)
+        return all_logs[:limit]

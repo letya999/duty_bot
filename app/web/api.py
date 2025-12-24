@@ -4,7 +4,14 @@ from datetime import datetime, timedelta, date as date_type
 from fastapi import APIRouter, Depends, HTTPException, Header, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import AsyncSessionLocal
+from app.dependencies import (
+    get_db,
+    get_user_repository,
+    get_team_repository,
+    get_schedule_repository,
+    get_shift_repository,
+    get_admin_log_repository,
+)
 from app.models import User
 from app.web.auth import session_manager
 from app.services.user_service import UserService
@@ -13,20 +20,40 @@ from app.services.schedule_service import ScheduleService
 from app.services.shift_service import ShiftService
 from app.services.admin_service import AdminService
 from app.services.stats_service import StatsService
+from app.repositories import UserRepository, TeamRepository, ScheduleRepository, ShiftRepository, AdminLogRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin")
 
 
-async def get_db():
-    """Get database session"""
-    async with AsyncSessionLocal() as session:
-        yield session
+async def get_user_service(user_repo: UserRepository = Depends(get_user_repository), admin_log_repo: AdminLogRepository = Depends(get_admin_log_repository)) -> UserService:
+    """Get user service with repositories"""
+    return UserService(user_repo, admin_log_repo)
+
+
+async def get_team_service(team_repo: TeamRepository = Depends(get_team_repository)) -> TeamService:
+    """Get team service with repositories"""
+    return TeamService(team_repo)
+
+
+async def get_schedule_service(schedule_repo: ScheduleRepository = Depends(get_schedule_repository)) -> ScheduleService:
+    """Get schedule service with repositories"""
+    return ScheduleService(schedule_repo)
+
+
+async def get_shift_service(shift_repo: ShiftRepository = Depends(get_shift_repository)) -> ShiftService:
+    """Get shift service with repositories"""
+    return ShiftService(shift_repo)
+
+
+async def get_admin_service(admin_log_repo: AdminLogRepository = Depends(get_admin_log_repository), user_repo: UserRepository = Depends(get_user_repository)) -> AdminService:
+    """Get admin service with repositories"""
+    return AdminService(admin_log_repo, user_repo)
 
 
 async def get_user_from_token(
     authorization: str = Header(None),
-    db: AsyncSession = Depends(get_db)
+    user_repo: UserRepository = Depends(get_user_repository)
 ) -> User:
     """Extract and verify user from Bearer token"""
     if not authorization or not authorization.startswith("Bearer "):
@@ -38,8 +65,8 @@ async def get_user_from_token(
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    # Get user from database
-    user = await db.get(User, session['user_id'])
+    # Get user from repository
+    user = await user_repo.get_by_id(session['user_id'])
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
@@ -74,11 +101,10 @@ async def get_user_info(user: User = Depends(get_user_from_token)) -> dict:
 )
 async def get_all_users(
     user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
+    user_service: UserService = Depends(get_user_service)
 ) -> list:
     """Get all users in workspace - uses UserService"""
     try:
-        user_service = UserService(db)
         users = await user_service.get_all_users(user.workspace_id)
 
         return [
@@ -107,11 +133,10 @@ async def get_all_users(
 )
 async def get_teams(
     user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
+    team_service: TeamService = Depends(get_team_service)
 ) -> list:
     """Get all teams in workspace - uses TeamService"""
     try:
-        team_service = TeamService(db)
         teams = await team_service.get_all_teams(user.workspace_id)
 
         result_list = []
@@ -141,11 +166,10 @@ async def get_teams(
 async def get_team_members(
     team_id: int,
     user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
+    team_service: TeamService = Depends(get_team_service)
 ) -> list:
     """Get all members of a team - uses TeamService"""
     try:
-        team_service = TeamService(db)
         team = await team_service.get_team(team_id, user.workspace_id)
 
         if not team:

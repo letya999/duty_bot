@@ -243,12 +243,29 @@ async def telegram_callback(request: Request):
                 logger.info(f"Found existing workspace: {workspace.id}")
 
             # Get or create user with workspace_id set
+            # First try to find by telegram_id
             user_stmt = select(User).where(
                 (User.telegram_id == user_info['user_id']) &
                 (User.workspace_id == workspace.id)
             )
             result = await db.execute(user_stmt)
             user = result.scalars().first()
+
+            # If not found by ID, try to find by username (for backwards compatibility)
+            if not user and user_info.get('username'):
+                logger.info(f"User not found by telegram_id, trying by username: {user_info.get('username')}")
+                user_stmt = select(User).where(
+                    (User.telegram_username == user_info.get('username')) &
+                    (User.workspace_id == workspace.id)
+                )
+                result = await db.execute(user_stmt)
+                user = result.scalars().first()
+
+                if user:
+                    logger.info(f"Found existing user by username: {user.id}, updating telegram_id")
+                    user.telegram_id = user_info['user_id']
+                    await db.commit()
+                    await db.refresh(user)
 
             if not user:
                 logger.info(f"Creating new user for Telegram ID {user_info['user_id']}")
@@ -336,12 +353,29 @@ async def telegram_widget_callback(request: Request):
                 logger.info(f"Found existing workspace: {workspace.id}")
 
             # Get or create user with workspace_id set
+            # First try to find by telegram_id
             user_stmt = select(User).where(
                 (User.telegram_id == user_info['user_id']) &
                 (User.workspace_id == workspace.id)
             )
             result = await db.execute(user_stmt)
             user = result.scalars().first()
+
+            # If not found by ID, try to find by username (for backwards compatibility)
+            if not user and user_info.get('username'):
+                logger.info(f"User not found by telegram_id, trying by username: {user_info.get('username')}")
+                user_stmt = select(User).where(
+                    (User.telegram_username == user_info.get('username')) &
+                    (User.workspace_id == workspace.id)
+                )
+                result = await db.execute(user_stmt)
+                user = result.scalars().first()
+
+                if user:
+                    logger.info(f"Found existing user by username: {user.id}, updating telegram_id")
+                    user.telegram_id = user_info['user_id']
+                    await db.commit()
+                    await db.refresh(user)
 
             if not user:
                 logger.info(f"Creating new user for Telegram widget user ID {user_info['user_id']}")
@@ -403,20 +437,26 @@ async def slack_callback(code: str = None, state: str = None):
     """Handle Slack OAuth callback"""
     try:
         if not code or not state:
+            logger.error("Missing code or state in Slack callback")
             raise HTTPException(status_code=400, detail="Missing code or state")
 
         if state not in pending_states:
+            logger.error(f"Invalid state in Slack callback: {state}")
             raise HTTPException(status_code=400, detail="Invalid state")
 
         # Exchange code for token
         token_info = await slack_oauth.exchange_code_for_token(code)
         if not token_info:
+            logger.error("Failed to exchange Slack code for token")
             raise HTTPException(status_code=401, detail="Failed to get access token")
 
         # Get user info
         user_info = await slack_oauth.get_user_info(token_info['access_token'])
         if not user_info:
+            logger.error("Failed to get Slack user info")
             raise HTTPException(status_code=401, detail="Failed to get user info")
+
+        logger.info(f"Validated Slack user: {user_info}")
 
         # Get or create user and workspace
         async with AsyncSessionLocal() as db:
@@ -429,6 +469,7 @@ async def slack_callback(code: str = None, state: str = None):
             workspace = result.scalars().first()
 
             if not workspace:
+                logger.info(f"Creating new workspace for Slack team {token_info['team_id']}")
                 # Create workspace for this Slack team
                 workspace = Workspace(
                     workspace_type='slack',
@@ -438,8 +479,12 @@ async def slack_callback(code: str = None, state: str = None):
                 db.add(workspace)
                 await db.commit()
                 await db.refresh(workspace)
+                logger.info(f"Created workspace: {workspace.id}")
+            else:
+                logger.info(f"Found existing workspace: {workspace.id}")
 
             # Get or create user with workspace_id set
+            # First try to find by slack_user_id
             user_stmt = select(User).where(
                 (User.slack_user_id == user_info['user_id']) &
                 (User.workspace_id == workspace.id)
@@ -447,7 +492,24 @@ async def slack_callback(code: str = None, state: str = None):
             result = await db.execute(user_stmt)
             user = result.scalars().first()
 
+            # If not found by slack_user_id, try to find by username (for backwards compatibility)
+            if not user and user_info.get('username'):
+                logger.info(f"User not found by slack_user_id, trying by username: {user_info.get('username')}")
+                user_stmt = select(User).where(
+                    (User.username == user_info.get('username')) &
+                    (User.workspace_id == workspace.id)
+                )
+                result = await db.execute(user_stmt)
+                user = result.scalars().first()
+
+                if user:
+                    logger.info(f"Found existing user by username: {user.id}, updating slack_user_id")
+                    user.slack_user_id = user_info['user_id']
+                    await db.commit()
+                    await db.refresh(user)
+
             if not user:
+                logger.info(f"Creating new user for Slack user ID {user_info['user_id']}")
                 user = User(
                     workspace_id=workspace.id,
                     slack_user_id=user_info['user_id'],
@@ -456,6 +518,9 @@ async def slack_callback(code: str = None, state: str = None):
                 db.add(user)
                 await db.commit()
                 await db.refresh(user)
+                logger.info(f"Created user: {user.id}")
+            else:
+                logger.info(f"Found existing user: {user.id}")
 
         # Create session
         session_token = session_manager.create_session(
@@ -463,6 +528,7 @@ async def slack_callback(code: str = None, state: str = None):
             workspace.id,
             'slack'
         )
+        logger.info(f"Created session token for user {user.id}")
 
         response = RedirectResponse(url="/web/dashboard", status_code=302)
         response.set_cookie(
@@ -472,14 +538,17 @@ async def slack_callback(code: str = None, state: str = None):
             httponly=True,
             samesite="Lax"
         )
+        logger.info(f"Setting session cookie and redirecting to dashboard")
 
         # Clean up state
         del pending_states[state]
 
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in Slack callback: {e}")
+        logger.error(f"Error in Slack callback: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 

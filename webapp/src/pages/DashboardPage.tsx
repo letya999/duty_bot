@@ -11,7 +11,7 @@ const DashboardPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [todaySchedules, setTodaySchedules] = useState<Schedule[]>([]);
+  const [upcomingSchedules, setUpcomingSchedules] = useState<Schedule[]>([]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -25,10 +25,16 @@ const DashboardPage: React.FC = () => {
         setTeams(teamsData);
         setUsers(usersData);
 
-        // Get today's schedule
-        const today = new Date().toISOString().split('T')[0];
-        const dailySchedule = await apiService.getDailySchedule(today);
-        setTodaySchedules(dailySchedule.duties);
+        // Get upcoming schedules (next 7 days)
+        const today = new Date();
+        const nextWeek = new Date(today);
+        nextWeek.setDate(today.getDate() + 7);
+
+        const startDate = today.toISOString().split('T')[0];
+        const endDate = nextWeek.toISOString().split('T')[0];
+
+        const schedules = await apiService.getSchedulesByDateRange(startDate, endDate);
+        setUpcomingSchedules(schedules);
       } catch (err) {
         setError('Failed to load dashboard data');
         console.error(err);
@@ -93,8 +99,8 @@ const DashboardPage: React.FC = () => {
               <TrendingUp className="text-purple-600" size={24} />
             </div>
             <div>
-              <p className="text-gray-600 text-sm">Today's Duties</p>
-              <p className="text-2xl font-bold text-gray-900">{todaySchedules.length}</p>
+              <p className="text-gray-600 text-sm">Upcoming Duties</p>
+              <p className="text-2xl font-bold text-gray-900">{upcomingSchedules.length}</p>
             </div>
           </CardBody>
         </Card>
@@ -112,13 +118,13 @@ const DashboardPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* Today's Duties */}
+      {/* Upcoming Duties */}
       <Card className="mb-8">
         <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">Today's Duties</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Upcoming Duties (Next 7 Days)</h2>
         </CardHeader>
         <CardBody>
-          {todaySchedules.length > 0 ? (
+          {upcomingSchedules.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -129,7 +135,7 @@ const DashboardPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {todaySchedules.map((schedule) => (
+                  {upcomingSchedules.map((schedule) => (
                     <tr key={schedule.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-3 px-4 text-gray-900">{schedule.user.first_name} {schedule.user.last_name || ''}</td>
                       <td className="py-3 px-4 text-gray-600">{schedule.team?.name || 'N/A'}</td>
@@ -140,7 +146,7 @@ const DashboardPage: React.FC = () => {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500 text-center py-8">No duties scheduled for today</p>
+            <p className="text-gray-500 text-center py-8">No upcoming duties scheduled</p>
           )}
         </CardBody>
       </Card>

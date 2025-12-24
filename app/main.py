@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from telegram import Bot
@@ -122,12 +124,12 @@ app.include_router(schedules_router)
 app.include_router(settings_router)
 app.include_router(reports_router)
 
-
-@app.get("/")
-async def root():
-    """Root redirect to web admin panel"""
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/web/auth/login")
+# Serve React static files in production
+# Check if React build exists (production deployment)
+webapp_dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'webapp', 'dist')
+if os.path.isdir(webapp_dist_path):
+    logger.info(f"Serving React app from {webapp_dist_path}")
+    app.mount("/", StaticFiles(directory=webapp_dist_path, html=True), name="static")
 
 
 @app.get("/health")

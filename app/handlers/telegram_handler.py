@@ -129,7 +129,8 @@ class TelegramHandler:
                     user_info.username or f"user_{user_info.id}",
                     user_info.first_name or "Unknown",
                     first_name=user_info.first_name,
-                    last_name=user_info.last_name
+                    last_name=user_info.last_name,
+                    telegram_id=user_info.id
                 )
 
                 handler = BotCommandHandler(db, workspace_id)
@@ -556,7 +557,8 @@ class TelegramHandler:
                     user_info.username or f"user_{user_info.id}",
                     user_info.first_name or "Unknown",
                     first_name=user_info.first_name,
-                    last_name=user_info.last_name
+                    last_name=user_info.last_name,
+                    telegram_id=user_info.id
                 )
 
                 args = context.args
@@ -603,7 +605,8 @@ class TelegramHandler:
                     user_info.username or f"user_{user_info.id}",
                     user_info.first_name or "Unknown",
                     first_name=user_info.first_name,
-                    last_name=user_info.last_name
+                    last_name=user_info.last_name,
+                    telegram_id=user_info.id
                 )
 
                 args = context.args
@@ -641,7 +644,8 @@ class TelegramHandler:
                     user_info.username or f"user_{user_info.id}",
                     user_info.first_name or "Unknown",
                     first_name=user_info.first_name,
-                    last_name=user_info.last_name
+                    last_name=user_info.last_name,
+                    telegram_id=user_info.id
                 )
 
                 handler = BotCommandHandler(db, workspace_id)
@@ -668,7 +672,8 @@ class TelegramHandler:
                     user_info.username or f"user_{user_info.id}",
                     user_info.first_name or "Unknown",
                     first_name=user_info.first_name,
-                    last_name=user_info.last_name
+                    last_name=user_info.last_name,
+                    telegram_id=user_info.id
                 )
 
                 args = context.args

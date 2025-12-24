@@ -7,8 +7,20 @@ class UserService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_or_create_by_telegram(self, workspace_id: int, telegram_username: str, display_name: str, first_name: str = None, last_name: str = None) -> User:
-        """Get or create user by Telegram username in workspace"""
+    async def get_or_create_by_telegram(self, workspace_id: int, telegram_username: str, display_name: str, first_name: str = None, last_name: str = None, telegram_id: int = None) -> User:
+        """Get or create user by Telegram username or ID in workspace"""
+        # Try to find by telegram_id first if provided
+        if telegram_id:
+            stmt = select(User).where(
+                (User.workspace_id == workspace_id) &
+                (User.telegram_id == telegram_id)
+            )
+            result = await self.db.execute(stmt)
+            user = result.scalars().first()
+            if user:
+                return user
+
+        # Try to find by telegram_username
         stmt = select(User).where(
             (User.workspace_id == workspace_id) &
             (User.telegram_username == telegram_username)
@@ -19,6 +31,7 @@ class UserService:
         if not user:
             user = User(
                 workspace_id=workspace_id,
+                telegram_id=telegram_id,
                 telegram_username=telegram_username,
                 display_name=display_name,
                 first_name=first_name,
@@ -27,6 +40,12 @@ class UserService:
             self.db.add(user)
             await self.db.commit()
             await self.db.refresh(user)
+        else:
+            # Update telegram_id if it wasn't set before
+            if telegram_id and not user.telegram_id:
+                user.telegram_id = telegram_id
+                await self.db.commit()
+                await self.db.refresh(user)
 
         return user
 

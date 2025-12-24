@@ -16,11 +16,20 @@ const loadTelegramScript = (): Promise<void> => {
 
     const telegramScript = document.createElement('script');
     telegramScript.src = 'https://telegram.org/js/telegram-widget.js?22';
-    telegramScript.async = true;
+    // Don't use async - we're already waiting for onload before rendering
 
     telegramScript.onload = () => {
       console.log('✅ [Main] Telegram script loaded successfully');
-      resolve();
+      // Wait a bit for the script to fully initialize its globals
+      setTimeout(() => {
+        if ((window as any).Telegram?.Login) {
+          console.log('✅ [Main] Telegram.Login is ready');
+          resolve();
+        } else {
+          console.warn('⚠️ [Main] Telegram.Login not ready immediately after script load, resolving anyway');
+          resolve();
+        }
+      }, 100);
     };
 
     telegramScript.onerror = (error) => {

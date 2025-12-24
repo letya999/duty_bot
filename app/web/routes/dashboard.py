@@ -18,12 +18,15 @@ def get_session_from_cookie(request: Request):
     """Extract and validate session from cookies"""
     token = request.cookies.get('session_token')
     if not token:
+        logger.warning("Dashboard access attempted without session token")
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     session = session_manager.validate_session(token)
     if not session:
+        logger.warning(f"Invalid or expired session token: {token[:20]}...")
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
+    logger.debug(f"Valid session found: user_id={session['user_id']}, workspace_id={session['workspace_id']}")
     return session
 
 
@@ -31,6 +34,7 @@ def get_session_from_cookie(request: Request):
 async def dashboard_page(request: Request, session: dict = Depends(get_session_from_cookie)):
     """Main dashboard page"""
     try:
+        logger.info(f"Dashboard accessed by user {session['user_id']} in workspace {session['workspace_id']}")
         async with AsyncSessionLocal() as db:
             workspace_id = session['workspace_id']
 

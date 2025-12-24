@@ -1,7 +1,7 @@
 """API endpoints for web admin panel"""
 import logging
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Body
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -23,7 +23,7 @@ async def get_db():
 async def get_user_from_token(
     authorization: str = Header(None),
     db: AsyncSession = Depends(get_db)
-) -> tuple[User, dict]:
+) -> User:
     """Extract and verify user from Bearer token"""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
@@ -39,13 +39,13 @@ async def get_user_from_token(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
-    return user, session
+    return user
 
 
 # ============ User Endpoints ============
 
 @router.get("/user/info")
-async def get_user_info(user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0])) -> dict:
+async def get_user_info(user: User = Depends(get_user_from_token)) -> dict:
     """Get current user info"""
     return {
         "id": user.id,
@@ -59,7 +59,7 @@ async def get_user_info(user: User = Depends(lambda auth, db: get_user_from_toke
 
 @router.get("/users")
 async def get_all_users(
-    user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0]),
+    user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> list:
     """Get all users in workspace"""
@@ -88,7 +88,7 @@ async def get_all_users(
 
 @router.get("/teams")
 async def get_teams(
-    user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0]),
+    user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> list:
     """Get all teams in workspace"""
@@ -124,7 +124,7 @@ async def get_teams(
 @router.get("/teams/{team_id}/members")
 async def get_team_members(
     team_id: int,
-    user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0]),
+    user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> list:
     """Get all members of a team"""
@@ -167,7 +167,7 @@ async def get_team_members(
 async def get_month_schedule(
     year: int,
     month: int,
-    user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0]),
+    user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Get schedule for a month"""
@@ -274,7 +274,7 @@ async def get_month_schedule(
 @router.get("/schedule/day/{date}")
 async def get_daily_schedule(
     date: str,
-    user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0]),
+    user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Get schedule for a specific day"""
@@ -357,23 +357,21 @@ async def get_daily_schedule(
 
 @router.post("/schedule/assign")
 async def assign_duty(
-    data: dict,
-    user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0]),
+    user_id: int = Body(..., embed=True),
+    duty_date: str = Body(..., embed=True),
+    team_id: int = Body(..., embed=True),
+    current_user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Assign duty to a user for a specific date"""
     try:
         from datetime import datetime as dt
 
-        user_id = data.get('user_id')
-        duty_date = data.get('duty_date')
-        team_id = data.get('team_id')
-
         # Verify team belongs to user's workspace
         team_stmt = select(Team).where(
             and_(
                 Team.id == team_id,
-                Team.workspace_id == user.workspace_id
+                Team.workspace_id == current_user.workspace_id
             )
         )
         team = (await db.execute(team_stmt)).scalars().first()
@@ -432,7 +430,7 @@ async def assign_duty(
 @router.delete("/schedule/{schedule_id}")
 async def remove_duty(
     schedule_id: int,
-    user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0]),
+    user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Remove duty assignment"""
@@ -464,7 +462,7 @@ async def remove_duty(
 
 @router.get("/admins")
 async def get_admins(
-    user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0]),
+    user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Get list of all admins in workspace"""
@@ -502,7 +500,7 @@ async def get_admins(
 @router.post("/users/{user_id}/promote")
 async def promote_user(
     user_id: int,
-    current_user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0]),
+    current_user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Promote user to admin (admin only)"""
@@ -544,7 +542,7 @@ async def promote_user(
 @router.post("/users/{user_id}/demote")
 async def demote_user(
     user_id: int,
-    current_user: User = Depends(lambda auth, db: get_user_from_token(auth, db)[0]),
+    current_user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Remove admin rights from user (admin only)"""

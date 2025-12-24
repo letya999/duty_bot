@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
-from pydantic import ConfigDict
+from pydantic import ConfigDict, field_validator
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Any
 
 
 class Settings(BaseSettings):
@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     # Telegram
     telegram_token: Optional[str] = None
     telegram_chat_id: Optional[int] = None
+
+    @field_validator("telegram_chat_id", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, v: Any) -> Any:
+        if v == "":
+            return None
+        return v
 
     # Slack
     slack_bot_token: Optional[str] = None

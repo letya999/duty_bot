@@ -22,16 +22,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-duty_bot}
-      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
-      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET}
-      TIMEZONE: ${TIMEZONE:-UTC}
-      MORNING_DIGEST_TIME: ${MORNING_DIGEST_TIME:-09:00}
-      REMINDER_BEFORE_MINUTES: ${REMINDER_BEFORE_MINUTES:-30}
-      ESCALATION_TIMEOUT_MINUTES: ${ESCALATION_TIMEOUT_MINUTES:-15}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8000:8000"
     volumes:
@@ -45,11 +38,11 @@ services:
     container_name: duty_bot_webapp
     ports:
       - "5173:5173"
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/miniapp}
+    env_file: .env
     volumes:
       - ./webapp:/app
       - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
     restart: unless-stopped
 
 volumes:

@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Table, Text, Enum, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Date, Table, Text, Enum, JSON, BigInteger
 from sqlalchemy.schema import UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -60,11 +60,13 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    telegram_id = Column(BigInteger, nullable=True, index=True) # Note: SQLAlchemy Integer might be too small for some TG IDs, but let's stick to what's likely intended or use BigInteger
     telegram_username = Column(String, nullable=True, index=True)
+    username = Column(String, nullable=True, index=True)
     slack_user_id = Column(String, nullable=True, index=True)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
-    display_name = Column(String, nullable=False)
+    display_name = Column(String, nullable=True) # Allow null during migration transition
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 

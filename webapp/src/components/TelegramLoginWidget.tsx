@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 interface TelegramLoginWidgetProps {
   botUsername: string;
@@ -10,29 +10,9 @@ interface TelegramLoginWidgetProps {
 }
 
 declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'telegram-login': TelegramLoginWidgetElement;
-    }
-  }
   interface Window {
-    Telegram?: {
-      Login?: {
-        embedButton?: (buttonId: string, options: any) => void;
-      };
-    };
+    onTelegramAuth: (user: any) => void;
   }
-}
-
-interface TelegramLoginWidgetElement extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> {
-  ['telegram-login']?: string;
-  ['data-auth-url']?: string;
-  ['data-size']?: string;
-  ['data-onauth']?: string;
-  ['data-use-pic']?: boolean;
-  ['data-request-access']?: string;
-  ['data-userpic']?: boolean;
-  ['data-radius']?: number;
 }
 
 export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
@@ -42,59 +22,43 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
   cornerRadius = 15,
   requestAccess = 'notify',
   usePic = true,
-}) => {
-  useEffect(() => {
-    // Store the callback in window so Telegram can call it
-    (window as any).onTelegramAuth = onAuth;
+}: TelegramLoginWidgetProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
 
-    // Check if Telegram widget is loaded and ready
-    const checkTelegramReady = () => {
-      if ((window as any).Telegram?.Login?.embedButton) {
-        // If using embedButton method (for custom button)
-        const widgetElement = document.getElementById('telegram-login-widget');
-        if (widgetElement) {
-          (window as any).Telegram.Login.embedButton('telegram-login-widget', {
-            bot_id: botUsername, // This would be bot ID, not username
-            size: buttonSize,
-            radius: cornerRadius,
-            auth_url: '/web/auth/telegram-widget-callback',
-            request_access: requestAccess,
-            userpic: usePic,
-          });
-        }
-      }
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // Store the callback in window so Telegram can call it
+    window.onTelegramAuth = (user: any) => {
+      onAuth(user);
     };
 
-    // Wait for Telegram script to load
-    if ((window as any).Telegram) {
-      checkTelegramReady();
-    } else {
-      // Retry after a short delay
-      const timer = setTimeout(checkTelegramReady, 1000);
-      return () => clearTimeout(timer);
-    }
+    // Create script element
+    const script = document.createElement('script');
+    script.src = `https://telegram.org/js/telegram-widget.js?22`;
+    script.async = true;
+    script.setAttribute('data-telegram-login', botUsername);
+    script.setAttribute('data-size', buttonSize);
+    script.setAttribute('data-radius', cornerRadius.toString());
+    script.setAttribute('data-request-access', requestAccess === 'notify' ? 'write' : 'write');
+    script.setAttribute('data-userpic', usePic.toString());
+    script.setAttribute('data-onauth', 'onTelegramAuth'); // name only, not call
+
+    // Clear container and append script
+    containerRef.current.innerHTML = '';
+    containerRef.current.appendChild(script);
+
+    return () => {
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
+      // @ts-ignore
+      delete window.onTelegramAuth;
+    };
   }, [botUsername, buttonSize, cornerRadius, requestAccess, usePic, onAuth]);
 
-  const sizeMap = {
-    small: '20px',
-    medium: '28px',
-    large: '40px',
-  };
-
   return (
-    <div className="flex justify-center">
-      <script
-        async
-        src={`https://telegram.org/js/telegram-widget.js?15`}
-        data-telegram-login={botUsername}
-        data-size={buttonSize}
-        data-onauth="onTelegramAuth"
-        data-request-access="notify"
-        data-userpic="true"
-        data-radius={cornerRadius}
-      />
-      <div id="telegram-login-widget" />
-    </div>
+    <div className="flex justify-center min-h-[40px]" ref={containerRef} />
   );
 };
 

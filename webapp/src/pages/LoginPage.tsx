@@ -13,7 +13,8 @@ const LoginPage: React.FC = () => {
 
   // Get bot username from environment or config
   useEffect(() => {
-    const username = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'duty_bot';
+    const username = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'test_duty_999_bot';
+    console.log('Current Bot Username (from env):', username);
     setBotUsername(username);
   }, []);
 

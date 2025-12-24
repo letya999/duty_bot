@@ -86,39 +86,64 @@ class TelegramOAuth(OAuthProvider):
     async def validate_widget_data(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Validate Telegram Login Widget data"""
         try:
+            logger.info(f"🔵 [Validate] Starting widget data validation")
+            logger.info(f"🔵 [Validate] Received data keys: {list(data.keys())}")
+            logger.info(f"🔵 [Validate] Data: {data}")
+
             # Get hash from data
             data_hash = data.get('hash')
+            logger.info(f"🔵 [Validate] Hash from data: {data_hash[:10]}..." if data_hash else "🔵 [Validate] Hash: MISSING")
+
             if not data_hash:
-                logger.warning("No hash in widget data")
+                logger.warning("❌ [Validate] No hash in widget data")
                 return None
 
             # Create data check string - must be sorted alphabetically and exclude hash
             data_check_list = []
+            logger.info(f"🔵 [Validate] Creating data check string from keys (excluding hash):")
             for key in sorted(data.keys()):
                 if key != 'hash':
                     data_check_list.append(f"{key}={data[key]}")
+                    logger.info(f"  - {key}={data[key]}")
 
             data_check_string = '\n'.join(data_check_list)
+            logger.info(f"🔵 [Validate] Data check string:\n{data_check_string}")
 
             # Validate signature using bot token
             secret = hashlib.sha256(settings.telegram_token.encode()).digest()
+            logger.info(f"🔵 [Validate] Secret (SHA256 of token) generated")
+
             expected_hash = hmac.new(
                 secret,
                 data_check_string.encode(),
                 hashlib.sha256
             ).hexdigest()
+            logger.info(f"🔵 [Validate] Expected hash: {expected_hash[:10]}...")
+            logger.info(f"🔵 [Validate] Received hash: {data_hash[:10]}...")
 
             if data_hash != expected_hash:
-                logger.warning(f"Invalid widget signature: {data_hash} != {expected_hash}")
+                logger.error(f"❌ [Validate] Hash mismatch!")
+                logger.error(f"  Expected: {expected_hash}")
+                logger.error(f"  Received: {data_hash}")
                 return None
+
+            logger.info(f"✅ [Validate] Hash validation PASSED")
 
             # Check if data is not too old (max 1 day)
             auth_date = int(data.get('auth_date', 0))
-            if datetime.now().timestamp() - auth_date > 86400:
-                logger.warning("Widget auth data too old")
+            current_timestamp = datetime.now().timestamp()
+            age = current_timestamp - auth_date
+            logger.info(f"🔵 [Validate] Auth date: {auth_date}")
+            logger.info(f"🔵 [Validate] Current timestamp: {current_timestamp}")
+            logger.info(f"🔵 [Validate] Data age: {age} seconds")
+
+            if age > 86400:
+                logger.warning(f"❌ [Validate] Widget auth data too old (age: {age}s, max: 86400s)")
                 return None
 
-            return {
+            logger.info(f"✅ [Validate] Data age check PASSED")
+
+            result = {
                 'platform': 'telegram',
                 'user_id': data.get('id'),
                 'username': data.get('username'),
@@ -126,8 +151,11 @@ class TelegramOAuth(OAuthProvider):
                 'last_name': data.get('last_name'),
                 'language_code': data.get('language_code'),
             }
+            logger.info(f"✅ [Validate] Validation SUCCESS, returning user_id: {result.get('user_id')}")
+            return result
+
         except Exception as e:
-            logger.error(f"Error validating widget data: {e}")
+            logger.error(f"❌ [Validate] Error validating widget data: {e}", exc_info=True)
             return None
 
 

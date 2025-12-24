@@ -4,6 +4,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from telegram import Bot
@@ -113,6 +114,41 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(title="Duty Bot", lifespan=lifespan)
+
+# Add CORS middleware for web panel API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+)
+
+
+# Add request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests and responses"""
+    logger.info(
+        f"🔵 [{request.method}] {request.url.path} | "
+        f"Origin: {request.headers.get('origin', 'N/A')} | "
+        f"Content-Type: {request.headers.get('content-type', 'N/A')}"
+    )
+
+    try:
+        response = await call_next(request)
+        logger.info(
+            f"✅ [{request.method}] {request.url.path} | "
+            f"Status: {response.status_code}"
+        )
+        return response
+    except Exception as e:
+        logger.error(
+            f"❌ [{request.method}] {request.url.path} | "
+            f"Error: {str(e)}"
+        )
+        raise
+
 
 # Register mini app router
 app.include_router(miniapp_router)

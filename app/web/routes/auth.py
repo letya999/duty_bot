@@ -313,19 +313,28 @@ async def telegram_callback(request: Request):
 async def telegram_widget_callback(request: Request):
     """Handle Telegram Login Widget callback (for web admin panel)"""
     try:
+        logger.info("🔵 [Backend] POST /telegram-widget-callback received")
+        logger.info(f"🔵 [Backend] Request headers: {dict(request.headers)}")
+
         data = await request.json()
+        logger.info(f"🔵 [Backend] JSON body parsed successfully")
+        logger.info(f"🔵 [Backend] Data keys: {list(data.keys())}")
+        logger.info(f"🔵 [Backend] Data: {data}")
 
         if not data.get('id'):
-            logger.error("No user ID provided in widget callback")
+            logger.error("❌ [Backend] No user ID provided in widget callback")
             raise HTTPException(status_code=400, detail="No user ID provided")
 
+        logger.info(f"🔵 [Backend] User ID present: {data.get('id')}")
+
         # Validate the widget data
+        logger.info(f"🔵 [Backend] Validating widget data...")
         user_info = await telegram_oauth.validate_widget_data(data)
         if not user_info:
-            logger.error(f"Failed to validate widget data: {data}")
+            logger.error(f"❌ [Backend] Failed to validate widget data")
             raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
 
-        logger.info(f"Validated Telegram widget user: {user_info}")
+        logger.info(f"✅ [Backend] Validation SUCCESS: {user_info}")
 
         # Get or create user and workspace
         async with AsyncSessionLocal() as db:
@@ -399,9 +408,9 @@ async def telegram_widget_callback(request: Request):
             workspace.id,
             'telegram'
         )
-        logger.info(f"Created session token for user {user.id}")
+        logger.info(f"✅ [Backend] Created session token for user {user.id}")
 
-        return {
+        response_data = {
             "success": True,
             "session_token": session_token,
             "user": {
@@ -412,11 +421,13 @@ async def telegram_widget_callback(request: Request):
                 "is_admin": user.is_admin,
             }
         }
+        logger.info(f"✅ [Backend] Returning success response: {response_data}")
+        return response_data
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in Telegram widget callback: {e}", exc_info=True)
+        logger.error(f"❌ [Backend] Error in Telegram widget callback: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 

@@ -15,7 +15,7 @@ from app.services.admin_service import AdminService
 from app.services.stats_service import StatsService
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+router = APIRouter(prefix="/api/admin")
 
 
 async def get_db():
@@ -48,9 +48,14 @@ async def get_user_from_token(
 
 # ============ User Endpoints ============
 
-@router.get("/user/info")
+@router.get(
+    "/user/info",
+    tags=["Users"],
+    summary="Get current user information",
+    description="Получить информацию о текущем авторизованном пользователе. Требует валидный Bearer token."
+)
 async def get_user_info(user: User = Depends(get_user_from_token)) -> dict:
-    """Get current user info"""
+    """Get current user info - returns authenticated user details"""
     return {
         "id": user.id,
         "username": user.username,
@@ -61,7 +66,12 @@ async def get_user_info(user: User = Depends(get_user_from_token)) -> dict:
     }
 
 
-@router.get("/users")
+@router.get(
+    "/users",
+    tags=["Users"],
+    summary="List all users",
+    description="Получить список всех пользователей в workspace."
+)
 async def get_all_users(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
@@ -89,7 +99,12 @@ async def get_all_users(
 
 # ============ Team Endpoints ============
 
-@router.get("/teams")
+@router.get(
+    "/teams",
+    tags=["Teams"],
+    summary="List all teams",
+    description="Получить список всех команд в workspace с информацией о членах."
+)
 async def get_teams(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
@@ -155,7 +170,12 @@ async def get_team_members(
 
 # ============ Schedule Endpoints ============
 
-@router.get("/schedule/month")
+@router.get(
+    "/schedule/month",
+    tags=["Schedules"],
+    summary="Get month schedule",
+    description="Получить дежурства на месяц с указанным годом и месяцем."
+)
 async def get_month_schedule(
     year: int,
     month: int,
@@ -233,7 +253,12 @@ async def get_month_schedule(
         raise HTTPException(status_code=500, detail="Failed to get schedule")
 
 
-@router.get("/schedule/day/{date}")
+@router.get(
+    "/schedule/day/{date}",
+    tags=["Schedules"],
+    summary="Get daily schedule",
+    description="Получить дежурства на конкретный день."
+)
 async def get_daily_schedule(
     date: str,
     user: User = Depends(get_user_from_token),
@@ -282,7 +307,12 @@ async def get_daily_schedule(
         raise HTTPException(status_code=500, detail="Failed to get schedule")
 
 
-@router.post("/schedule/assign")
+@router.post(
+    "/schedule/assign",
+    tags=["Schedules"],
+    summary="Create or update duty assignment",
+    description="Назначить пользователя на дежурство на конкретный день."
+)
 async def assign_duty(
     user_id: int = Body(..., embed=True),
     duty_date: str = Body(..., embed=True),
@@ -325,7 +355,12 @@ async def assign_duty(
         raise HTTPException(status_code=500, detail="Failed to assign duty")
 
 
-@router.delete("/schedule/{schedule_id}")
+@router.delete(
+    "/schedule/{schedule_id}",
+    tags=["Schedules"],
+    summary="Delete duty assignment",
+    description="Удалить дежурство по его ID."
+)
 async def remove_duty(
     schedule_id: int,
     user: User = Depends(get_user_from_token),
@@ -360,7 +395,12 @@ async def remove_duty(
 
 # ============ Admin Management ============
 
-@router.get("/admins")
+@router.get(
+    "/admins",
+    tags=["Admin"],
+    summary="List all admins",
+    description="Получить список всех администраторов в workspace."
+)
 async def get_admins(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
@@ -387,7 +427,12 @@ async def get_admins(
         raise HTTPException(status_code=500, detail="Failed to get admins")
 
 
-@router.post("/users/{user_id}/promote")
+@router.post(
+    "/users/{user_id}/promote",
+    tags=["Admin"],
+    summary="Promote user to admin",
+    description="Повысить прав пользователя до администратора."
+)
 async def promote_user(
     user_id: int,
     current_user: User = Depends(get_user_from_token),
@@ -432,7 +477,12 @@ async def promote_user(
         raise HTTPException(status_code=500, detail="Failed to promote user")
 
 
-@router.post("/users/{user_id}/demote")
+@router.post(
+    "/users/{user_id}/demote",
+    tags=["Admin"],
+    summary="Demote user from admin",
+    description="Удалить права администратора у пользователя."
+)
 async def demote_user(
     user_id: int,
     current_user: User = Depends(get_user_from_token),
@@ -482,7 +532,12 @@ async def demote_user(
 
 # ============ Admin Logs & Reports ============
 
-@router.get("/admin-logs")
+@router.get(
+    "/admin-logs",
+    tags=["Admin"],
+    summary="Get admin action logs",
+    description="Получить логи всех действий администраторов."
+)
 async def get_admin_logs(
     limit: int = 50,
     user: User = Depends(get_user_from_token),
@@ -573,7 +628,12 @@ async def get_schedules_by_date_range(
         raise HTTPException(status_code=500, detail="Failed to get schedules")
 
 
-@router.get("/stats/schedules")
+@router.get(
+    "/stats/schedules",
+    tags=["Statistics"],
+    summary="Get schedule statistics",
+    description="Получить статистику по дежурствам за период (по умолчанию последние 30 дней)."
+)
 async def get_schedule_statistics(
     start_date: str = None,
     end_date: str = None,
@@ -637,7 +697,12 @@ async def get_schedule_statistics(
 
 # ============ Enhanced Schedule Endpoints ============
 
-@router.put("/schedule/{schedule_id}")
+@router.put(
+    "/schedule/{schedule_id}",
+    tags=["Schedules"],
+    summary="Update duty assignment",
+    description="Обновить существующее дежурство (пользователя, дату или команду)."
+)
 async def update_duty(
     schedule_id: int,
     user_id: int = Body(..., embed=False),
@@ -671,7 +736,12 @@ async def update_duty(
         raise HTTPException(status_code=500, detail="Failed to update duty")
 
 
-@router.post("/schedule/assign-bulk")
+@router.post(
+    "/schedule/assign-bulk",
+    tags=["Schedules"],
+    summary="Bulk assign duties",
+    description="Массово назначить нескольких пользователей на диапазон дат."
+)
 async def assign_bulk_duties(
     user_ids: list[int] = Body(..., embed=False),
     start_date: str = Body(..., embed=False),
@@ -710,7 +780,12 @@ async def assign_bulk_duties(
         raise HTTPException(status_code=500, detail="Failed to assign bulk duties")
 
 
-@router.patch("/schedule/{schedule_id}/move")
+@router.patch(
+    "/schedule/{schedule_id}/move",
+    tags=["Schedules"],
+    summary="Move duty to another date",
+    description="Перенести дежурство на другую дату."
+)
 async def move_duty(
     schedule_id: int,
     new_date: str = Body(..., embed=False),
@@ -746,7 +821,12 @@ async def move_duty(
         raise HTTPException(status_code=500, detail="Failed to move duty")
 
 
-@router.patch("/schedule/{schedule_id}/replace")
+@router.patch(
+    "/schedule/{schedule_id}/replace",
+    tags=["Schedules"],
+    summary="Replace duty person",
+    description="Заменить человека на дежурстве на другого пользователя."
+)
 async def replace_duty_user(
     schedule_id: int,
     user_id: int = Body(..., embed=False),
@@ -781,7 +861,12 @@ async def replace_duty_user(
 
 # ============ Teams Management Endpoints ============
 
-@router.post("/teams")
+@router.post(
+    "/teams",
+    tags=["Teams"],
+    summary="Create new team",
+    description="Создать новую команду в workspace."
+)
 async def create_team(
     name: str = Body(..., embed=False),
     display_name: str = Body(..., embed=False),
@@ -815,7 +900,12 @@ async def create_team(
         raise HTTPException(status_code=500, detail="Failed to create team")
 
 
-@router.put("/teams/{team_id}")
+@router.put(
+    "/teams/{team_id}",
+    tags=["Teams"],
+    summary="Update team",
+    description="Обновить информацию о команде (название, описание, настройки)."
+)
 async def update_team(
     team_id: int,
     name: str | None = Body(None, embed=False),
@@ -860,7 +950,12 @@ async def update_team(
         raise HTTPException(status_code=500, detail="Failed to update team")
 
 
-@router.delete("/teams/{team_id}")
+@router.delete(
+    "/teams/{team_id}",
+    tags=["Teams"],
+    summary="Delete team",
+    description="Удалить команду из workspace."
+)
 async def delete_team(
     team_id: int,
     user: User = Depends(get_user_from_token),
@@ -886,7 +981,12 @@ async def delete_team(
         raise HTTPException(status_code=500, detail="Failed to delete team")
 
 
-@router.post("/teams/{team_id}/members")
+@router.post(
+    "/teams/{team_id}/members",
+    tags=["Teams"],
+    summary="Add team member",
+    description="Добавить пользователя в команду."
+)
 async def add_team_member(
     team_id: int,
     user_id: int = Body(..., embed=False),
@@ -917,7 +1017,12 @@ async def add_team_member(
         raise HTTPException(status_code=500, detail="Failed to add team member")
 
 
-@router.delete("/teams/{team_id}/members/{member_id}")
+@router.delete(
+    "/teams/{team_id}/members/{member_id}",
+    tags=["Teams"],
+    summary="Remove team member",
+    description="Удалить пользователя из команды."
+)
 async def remove_team_member(
     team_id: int,
     member_id: int,
@@ -950,7 +1055,12 @@ async def remove_team_member(
 
 # ============ Escalations Management Endpoints ============
 
-@router.get("/escalations")
+@router.get(
+    "/escalations",
+    tags=["Escalations"],
+    summary="List escalations",
+    description="Получить список эскалаций (назначений CTO) для всех команд или конкретной команды."
+)
 async def get_escalations(
     team_id: int | None = None,
     user: User = Depends(get_user_from_token),
@@ -988,7 +1098,12 @@ async def get_escalations(
         raise HTTPException(status_code=500, detail="Failed to get escalations")
 
 
-@router.post("/escalations")
+@router.post(
+    "/escalations",
+    tags=["Escalations"],
+    summary="Create escalation",
+    description="Создать новую эскалацию (назначить CTO команде или установить глобального CTO)."
+)
 async def create_escalation(
     team_id: int | None = Body(None, embed=False),
     cto_id: int = Body(..., embed=False),
@@ -1019,7 +1134,12 @@ async def create_escalation(
         raise HTTPException(status_code=500, detail="Failed to create escalation")
 
 
-@router.delete("/escalations/{escalation_id}")
+@router.delete(
+    "/escalations/{escalation_id}",
+    tags=["Escalations"],
+    summary="Delete escalation",
+    description="Удалить эскалацию (отменить назначение CTO)."
+)
 async def delete_escalation(
     escalation_id: int,
     user: User = Depends(get_user_from_token),

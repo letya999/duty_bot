@@ -113,8 +113,18 @@ async def lifespan(app: FastAPI):
         logger.exception(f"Error during shutdown: {e}")
 
 
-# Create FastAPI app
-app = FastAPI(title="Duty Bot", lifespan=lifespan)
+# Create FastAPI app with custom OpenAPI configuration
+from app.web.openapi_config import get_openapi_schema
+
+app = FastAPI(
+    title="Duty Bot",
+    description="API для управления дежурствами",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json",
+    redoc_url="/api/redoc"
+)
 
 # Add CORS middleware for web panel API
 app.add_middleware(
@@ -161,6 +171,18 @@ app.include_router(schedules_router)
 app.include_router(settings_router)
 app.include_router(reports_router)
 app.include_router(web_api_router)
+
+# Register authentication API router
+from app.web.auth_api import router as auth_api_router
+app.include_router(auth_api_router)
+
+
+# Custom OpenAPI schema
+@app.get("/api/openapi.json", include_in_schema=False)
+async def custom_openapi():
+    """Serve custom OpenAPI schema"""
+    return get_openapi_schema()
+
 
 # Serve React static files in production
 # Check if React build exists (production deployment)

@@ -20,15 +20,17 @@ const ReportsPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [startDate, endDate]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      // Load all schedules for the dashboard
       const allUsers = await apiService.getAllUsers();
       setUsers(allUsers);
-      setSchedules([]); // In a real app, would load schedules from the API
+
+      // Load schedules for the default date range
+      const schedulesData = await apiService.getSchedulesByDateRange(startDate, endDate);
+      setSchedules(schedulesData);
     } catch (err) {
       console.error('Failed to load reports', err);
     } finally {

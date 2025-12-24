@@ -2,12 +2,12 @@
 import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Header, Body
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.database import AsyncSessionLocal
-from app.models import User, Team, Schedule, Shift, Workspace, team_members
+from app.models import User, Team, Schedule, Shift, Workspace, team_members, AdminLog
 from app.web.auth import session_manager
 
 logger = logging.getLogger(__name__)
@@ -589,3 +589,183 @@ async def demote_user(
     except Exception as e:
         logger.error(f"Error demoting user: {e}")
         raise HTTPException(status_code=500, detail="Failed to demote user")
+
+
+# ============ Admin Logs & Reports ============
+
+@router.get("/admin-logs")
+async def get_admin_logs(
+    limit: int = 50,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get recent admin action logs"""
+    try:
+        stmt = select(AdminLog).where(
+            AdminLog.workspace_id == user.workspace_id
+        ).order_by(
+            AdminLog.timestamp.desc()
+        ).limit(limit).options(
+            joinedload(AdminLog.admin_user),
+            joinedload(AdminLog.target_user)
+        )
+
+        result = await db.execute(stmt)
+        logs = result.unique().scalars().all()
+
+        return {
+            "logs": [
+                {
+                    "id": log.id,
+                    "admin_user_id": log.admin_user_id,
+                    "action": log.action,
+                    "target_user_id": log.target_user_id,
+                    "timestamp": log.timestamp.isoformat(),
+                    "details": log.details,
+                    "admin_user": {
+                        "id": log.admin_user.id,
+                        "username": log.admin_user.username,
+                        "first_name": log.admin_user.first_name,
+                    } if log.admin_user else None,
+                    "target_user": {
+                        "id": log.target_user.id,
+                        "username": log.target_user.username,
+                        "first_name": log.target_user.first_name,
+                    } if log.target_user else None,
+                }
+                for log in logs
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error getting admin logs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get admin logs")
+
+
+@router.get("/schedules/range")
+async def get_schedules_by_date_range(
+    start_date: str,
+    end_date: str,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get all schedules within a date range"""
+    try:
+        from datetime import datetime as dt
+
+        start = dt.fromisoformat(start_date).date()
+        end = dt.fromisoformat(end_date).date()
+
+        # Get schedules for the date range
+        schedules_stmt = select(Schedule).where(
+            and_(
+                Schedule.date >= start,
+                Schedule.date <= end,
+                Schedule.team.has(Team.workspace_id == user.workspace_id)
+            )
+        ).options(
+            joinedload(Schedule.user),
+            joinedload(Schedule.team)
+        )
+
+        result = await db.execute(schedules_stmt)
+        schedules = result.unique().scalars().all()
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "total_count": len(schedules),
+            "schedules": [
+                {
+                    "id": s.id,
+                    "user_id": s.user_id,
+                    "team_id": s.team_id,
+                    "duty_date": s.date.isoformat(),
+                    "user": {
+                        "id": s.user.id,
+                        "username": s.user.username,
+                        "first_name": s.user.first_name,
+                        "last_name": s.user.last_name or "",
+                    },
+                    "team": {
+                        "id": s.team.id if s.team else None,
+                        "name": s.team.display_name or s.team.name if s.team else None,
+                    } if s.team else None,
+                    "notes": s.notes,
+                }
+                for s in schedules
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error getting schedules by date range: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get schedules")
+
+
+@router.get("/stats/schedules")
+async def get_schedule_statistics(
+    start_date: str = None,
+    end_date: str = None,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get schedule statistics"""
+    try:
+        from datetime import datetime as dt
+
+        # Default to last 30 days if not specified
+        if not end_date:
+            end_date = dt.now().date().isoformat()
+        if not start_date:
+            start = dt.fromisoformat(end_date).date() - timedelta(days=30)
+            start_date = start.isoformat()
+
+        start = dt.fromisoformat(start_date).date()
+        end = dt.fromisoformat(end_date).date()
+
+        # Get all schedules in range
+        schedules_stmt = select(Schedule).where(
+            and_(
+                Schedule.date >= start,
+                Schedule.date <= end,
+                Schedule.team.has(Team.workspace_id == user.workspace_id)
+            )
+        ).options(
+            joinedload(Schedule.user)
+        )
+
+        result = await db.execute(schedules_stmt)
+        schedules = result.unique().scalars().all()
+
+        # Calculate statistics
+        total_duties = len(schedules)
+
+        # Duties by user
+        user_stats = {}
+        for schedule in schedules:
+            user_id = schedule.user_id
+            if user_id not in user_stats:
+                user_stats[user_id] = {
+                    "user_id": user_id,
+                    "username": schedule.user.username,
+                    "first_name": schedule.user.first_name,
+                    "last_name": schedule.user.last_name or "",
+                    "count": 0,
+                }
+            user_stats[user_id]["count"] += 1
+
+        # Sort by count descending
+        top_users = sorted(user_stats.values(), key=lambda x: x["count"], reverse=True)
+
+        # Get unique users with duties
+        unique_users = len(set(s.user_id for s in schedules))
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "total_duties": total_duties,
+            "total_users_with_duties": unique_users,
+            "average_duties_per_user": round(total_duties / unique_users, 2) if unique_users > 0 else 0,
+            "top_users": top_users[:10],
+        }
+    except Exception as e:
+        logger.error(f"Error getting schedule statistics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get statistics")

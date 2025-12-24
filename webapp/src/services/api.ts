@@ -109,6 +109,22 @@ export const apiService = {
     const response = await api.get('/admin-logs', {
       params: { limit },
     });
+    return response.data.logs || [];
+  },
+
+  // Get schedules by date range
+  getSchedulesByDateRange: async (startDate: string, endDate: string): Promise<Schedule[]> => {
+    const response = await api.get('/schedules/range', {
+      params: { start_date: startDate, end_date: endDate },
+    });
+    return response.data.schedules || [];
+  },
+
+  // Get schedule statistics
+  getScheduleStats: async (startDate?: string, endDate?: string): Promise<any> => {
+    const response = await api.get('/stats/schedules', {
+      params: { start_date: startDate, end_date: endDate },
+    });
     return response.data;
   },
 };

@@ -7,7 +7,7 @@ class UserService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_or_create_by_telegram(self, workspace_id: int, telegram_username: str, display_name: str) -> User:
+    async def get_or_create_by_telegram(self, workspace_id: int, telegram_username: str, display_name: str, first_name: str = None, last_name: str = None) -> User:
         """Get or create user by Telegram username in workspace"""
         stmt = select(User).where(
             (User.workspace_id == workspace_id) &
@@ -21,6 +21,8 @@ class UserService:
                 workspace_id=workspace_id,
                 telegram_username=telegram_username,
                 display_name=display_name,
+                first_name=first_name,
+                last_name=last_name,
             )
             self.db.add(user)
             await self.db.commit()
@@ -28,7 +30,7 @@ class UserService:
 
         return user
 
-    async def get_or_create_by_slack(self, workspace_id: int, slack_user_id: str, display_name: str) -> User:
+    async def get_or_create_by_slack(self, workspace_id: int, slack_user_id: str, display_name: str, first_name: str = None, last_name: str = None) -> User:
         """Get or create user by Slack user ID in workspace"""
         stmt = select(User).where(
             (User.workspace_id == workspace_id) &
@@ -42,6 +44,8 @@ class UserService:
                 workspace_id=workspace_id,
                 slack_user_id=slack_user_id,
                 display_name=display_name,
+                first_name=first_name,
+                last_name=last_name,
             )
             self.db.add(user)
             await self.db.commit()

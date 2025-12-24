@@ -32,7 +32,7 @@ class CommandHandler:
 • `/duty <team>` - Mention team's duty person/shift
 
 *👥 Team Management*
-• `/team list` - List all teams
+• `/team` - List all teams
 • `/team <name>` - Show team info
 • `/team add <name> "<display_name>"` - Create team
 • `/team add <name> "<display_name>" --shifts` - Create with shifts
@@ -147,9 +147,17 @@ class CommandHandler:
         if not teams:
             return "No teams configured."
 
+        def get_full_name(user):
+            parts = []
+            if user.first_name:
+                parts.append(user.first_name)
+            if user.last_name:
+                parts.append(user.last_name)
+            return " ".join(parts) if parts else user.display_name
+
         result = []
         for team in teams:
-            lead_name = team.team_lead_user.display_name if team.team_lead_user else "None"
+            lead_name = get_full_name(team.team_lead_user) if team.team_lead_user else "None"
             mode = " (shifts)" if team.has_shifts else ""
             result.append(f"• {team.display_name} (id: {team.name}){mode} - Lead: {lead_name}")
 
@@ -161,9 +169,17 @@ class CommandHandler:
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        lead = team.team_lead_user.display_name if team.team_lead_user else "None"
+        def get_full_name(user):
+            parts = []
+            if user.first_name:
+                parts.append(user.first_name)
+            if user.last_name:
+                parts.append(user.last_name)
+            return " ".join(parts) if parts else user.display_name
+
+        lead = get_full_name(team.team_lead_user) if team.team_lead_user else "None"
         mode = "shifts" if team.has_shifts else "duty"
-        members_str = ", ".join([m.display_name for m in team.members]) if team.members else "No members"
+        members_str = ", ".join([get_full_name(m) for m in team.members]) if team.members else "No members"
 
         return f"""**{team.display_name}**
 Mode: {mode}

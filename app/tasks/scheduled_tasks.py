@@ -80,7 +80,7 @@ class ScheduledTasks:
                             try:
                                 await self.telegram_bot.send_message(
                                     chat_id=int(workspace.external_id),
-                                    text=f"📅 *Today's Duties*\n\n{message}",
+                                    text=f"📅 *Good morning! Today's duties:*\n\n{message}",
                                     parse_mode='Markdown'
                                 )
                                 logger.info(f"Morning digest sent to Telegram workspace {workspace.id}")
@@ -92,7 +92,7 @@ class ScheduledTasks:
                             try:
                                 await self.slack_client.chat_postMessage(
                                     channel=self.slack_channel_id,
-                                    text=f"📅 Today's Duties\n\n{message}"
+                                    text=f"📅 Good morning! Today's duties:\n\n{message}"
                                 )
                                 logger.info(f"Morning digest sent to Slack workspace {workspace.id}")
                             except Exception as e:

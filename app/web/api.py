@@ -1,14 +1,18 @@
-"""API endpoints for web admin panel"""
+"""API endpoints for web admin panel with unified service layer"""
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as date_type
 from fastapi import APIRouter, Depends, HTTPException, Header, Body
-from sqlalchemy import select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 
 from app.database import AsyncSessionLocal
-from app.models import User, Team, Schedule, Shift, Workspace, team_members, AdminLog
+from app.models import User
 from app.web.auth import session_manager
+from app.services.user_service import UserService
+from app.services.team_service import TeamService
+from app.services.schedule_service import ScheduleService
+from app.services.shift_service import ShiftService
+from app.services.admin_service import AdminService
+from app.services.stats_service import StatsService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -62,11 +66,10 @@ async def get_all_users(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> list:
-    """Get all users in workspace"""
+    """Get all users in workspace - uses UserService"""
     try:
-        stmt = select(User).where(User.workspace_id == user.workspace_id)
-        result = await db.execute(stmt)
-        users = result.scalars().all()
+        user_service = UserService(db)
+        users = await user_service.get_all_users(user.workspace_id)
 
         return [
             {
@@ -91,11 +94,10 @@ async def get_teams(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> list:
-    """Get all teams in workspace"""
+    """Get all teams in workspace - uses TeamService"""
     try:
-        stmt = select(Team).where(Team.workspace_id == user.workspace_id)
-        result = await db.execute(stmt)
-        teams = result.scalars().all()
+        team_service = TeamService(db)
+        teams = await team_service.get_all_teams(user.workspace_id)
 
         result_list = []
         for team in teams:
@@ -127,22 +129,13 @@ async def get_team_members(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> list:
-    """Get all members of a team"""
+    """Get all members of a team - uses TeamService"""
     try:
-        # Verify team belongs to user's workspace
-        team_stmt = select(Team).where(
-            and_(
-                Team.id == team_id,
-                Team.workspace_id == user.workspace_id
-            )
-        )
-        team = (await db.execute(team_stmt)).scalars().first()
+        team_service = TeamService(db)
+        team = await team_service.get_team(team_id, user.workspace_id)
 
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
-
-        # Get team members
-        await db.refresh(team, ['members'])
 
         result = []
         for member in (team.members or []):
@@ -170,63 +163,31 @@ async def get_month_schedule(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Get schedule for a month"""
+    """Get schedule for a month - uses ScheduleService"""
     try:
-        # Get all schedules for the month in this workspace
-        start_date = datetime(year, month, 1).date()
+        from datetime import datetime as dt
+
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
+
+        # Get all schedules for the month
+        start_date = dt(year, month, 1).date()
         if month == 12:
-            end_date = datetime(year + 1, 1, 1).date()
+            end_date = dt(year + 1, 1, 1).date()
         else:
-            end_date = datetime(year, month + 1, 1).date()
+            end_date = dt(year, month + 1, 1).date()
 
-        schedules_stmt = select(Schedule).where(
-            and_(
-                Schedule.date >= start_date,
-                Schedule.date < end_date,
-                Schedule.team.has(Team.workspace_id == user.workspace_id)
-            )
-        ).options(joinedload(Schedule.user), joinedload(Schedule.team))
+        teams = await team_service.get_workspace_teams(user.workspace_id)
 
-        result = await db.execute(schedules_stmt)
-        schedules = result.unique().scalars().all()
-
-        # Group schedules by date
         schedule_by_date = {}
-        for schedule in schedules:
-            date_key = schedule.date.isoformat()
-            if date_key not in schedule_by_date:
-                schedule_by_date[date_key] = []
-            schedule_by_date[date_key].append(schedule)
-
-        # Also get shifts for the month
-        shifts_stmt = select(Shift).where(
-            and_(
-                Shift.date >= start_date,
-                Shift.date < end_date,
-                Shift.team.has(Team.workspace_id == user.workspace_id)
-            )
-        ).options(joinedload(Shift.users), joinedload(Shift.team))
-
-        result = await db.execute(shifts_stmt)
-        shifts = result.unique().scalars().all()
-
-        # Add shift users to schedule_by_date
-        for shift in shifts:
-            date_key = shift.date.isoformat()
-            if date_key not in schedule_by_date:
-                schedule_by_date[date_key] = []
-
-            # Shift users are already loaded
-            for shift_user in (shift.users or []):
-                schedule_obj = Schedule(
-                    team_id=shift.team_id,
-                    user_id=shift_user.id,
-                    date=shift.date,
-                    notes="Shift"
-                )
-                schedule_obj.user = shift_user
-                schedule_obj.team = shift.team
-                schedule_by_date[date_key].append(schedule_obj)
+        for team in teams:
+            duties = await schedule_service.get_duties_by_date_range(team, start_date, end_date - timedelta(days=1))
+            for duty in duties:
+                date_key = duty.date.isoformat()
+                if date_key not in schedule_by_date:
+                    schedule_by_date[date_key] = []
+                if duty not in schedule_by_date[date_key]:
+                    schedule_by_date[date_key].append(duty)
 
         # Build response days array
         days = []
@@ -242,7 +203,7 @@ async def get_month_schedule(
                         duties.append({
                             "id": schedule.id or 0,
                             "user_id": schedule.user_id,
-                            "duty_date": schedule.date.isoformat() if schedule.date else date_key,
+                            "duty_date": schedule.date.isoformat(),
                             "user": {
                                 "id": schedule.user.id,
                                 "username": schedule.user.username,
@@ -279,78 +240,39 @@ async def get_daily_schedule(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Get schedule for a specific day"""
+    """Get schedule for a specific day - uses ScheduleService"""
     try:
         from datetime import datetime as dt
+
         date_obj = dt.fromisoformat(date).date()
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
 
-        # Get schedules for this date
-        schedules_stmt = select(Schedule).where(
-            and_(
-                Schedule.date == date_obj,
-                Schedule.team.has(Team.workspace_id == user.workspace_id)
-            )
-        ).options(joinedload(Schedule.user), joinedload(Schedule.team))
-
-        result = await db.execute(schedules_stmt)
-        schedules = result.unique().scalars().all()
-
-        # Get shifts for this date
-        shifts_stmt = select(Shift).where(
-            and_(
-                Shift.date == date_obj,
-                Shift.team.has(Team.workspace_id == user.workspace_id)
-            )
-        ).options(joinedload(Shift.users), joinedload(Shift.team))
-
-        result = await db.execute(shifts_stmt)
-        shifts = result.unique().scalars().all()
+        teams = await team_service.get_workspace_teams(user.workspace_id)
 
         duties = []
         seen_users = set()
 
-        # Add users from schedules
-        for schedule in schedules:
-            if schedule.user_id not in seen_users:
+        for team in teams:
+            duty = await schedule_service.get_duty(team, date_obj)
+            if duty and duty.user_id not in seen_users:
                 duties.append({
-                    "id": schedule.id,
-                    "user_id": schedule.user_id,
-                    "duty_date": schedule.date.isoformat() if schedule.date else date,
+                    "id": duty.id,
+                    "user_id": duty.user_id,
+                    "duty_date": duty.date.isoformat(),
                     "user": {
-                        "id": schedule.user.id,
-                        "username": schedule.user.username,
-                        "first_name": schedule.user.first_name,
-                        "last_name": schedule.user.last_name or "",
+                        "id": duty.user.id,
+                        "username": duty.user.username,
+                        "first_name": duty.user.first_name,
+                        "last_name": duty.user.last_name or "",
                     },
                     "team": {
-                        "id": schedule.team.id if schedule.team else None,
-                        "name": schedule.team.display_name or schedule.team.name if schedule.team else None,
-                    } if schedule.team else None,
-                    "notes": schedule.notes,
+                        "id": duty.team.id if duty.team else None,
+                        "name": duty.team.display_name or duty.team.name if duty.team else None,
+                    } if duty.team else None,
+                    "notes": duty.notes,
                 })
-                seen_users.add(schedule.user_id)
-
-        # Add users from shifts
-        for shift in shifts:
-            for shift_user in (shift.users or []):
-                if shift_user.id not in seen_users:
-                    duties.append({
-                        "id": 0,
-                        "user_id": shift_user.id,
-                        "duty_date": shift.date.isoformat() if shift.date else date,
-                        "user": {
-                            "id": shift_user.id,
-                            "username": shift_user.username,
-                            "first_name": shift_user.first_name,
-                            "last_name": shift_user.last_name or "",
-                        },
-                        "team": {
-                            "id": shift.team.id if shift.team else None,
-                            "name": shift.team.display_name or shift.team.name if shift.team else None,
-                        } if shift.team else None,
-                        "notes": "Shift",
-                    })
-                    seen_users.add(shift_user.id)
+                seen_users.add(duty.user_id)
 
         return {
             "date": date,
@@ -369,56 +291,28 @@ async def assign_duty(
     current_user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Assign duty to a user for a specific date"""
+    """Assign duty to a user - uses ScheduleService"""
     try:
         from datetime import datetime as dt
 
-        # Verify team belongs to user's workspace
-        team_stmt = select(Team).where(
-            and_(
-                Team.id == team_id,
-                Team.workspace_id == current_user.workspace_id
-            )
-        )
-        team = (await db.execute(team_stmt)).scalars().first()
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
+        user_service = UserService(db)
 
+        # Verify team belongs to user's workspace
+        team = await team_service.get_team(team_id, current_user.workspace_id)
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
 
-        # Verify user belongs to the team
-        user_in_team = select(team_members).where(
-            and_(
-                team_members.c.team_id == team_id,
-                team_members.c.user_id == user_id
-            )
-        )
-        result = await db.execute(user_in_team)
-        if not result.scalars().first():
-            raise HTTPException(status_code=400, detail="User not in team")
+        # Get target user
+        target_user = await db.get(User, user_id)
+        if not target_user or target_user.workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=400, detail="User not found in workspace")
 
         date_obj = dt.fromisoformat(duty_date).date()
 
-        # Check if schedule already exists
-        existing_stmt = select(Schedule).where(
-            and_(
-                Schedule.team_id == team_id,
-                Schedule.user_id == user_id,
-                Schedule.date == date_obj
-            )
-        )
-        existing = (await db.execute(existing_stmt)).scalars().first()
-
-        if existing:
-            return {"status": "already_assigned", "schedule_id": existing.id}
-
-        # Create new schedule
-        schedule = Schedule(
-            team_id=team_id,
-            user_id=user_id,
-            date=date_obj
-        )
-        db.add(schedule)
-        await db.commit()
+        # Use ScheduleService to set duty
+        schedule = await schedule_service.set_duty(team, target_user, date_obj)
 
         return {
             "status": "assigned",
@@ -429,7 +323,6 @@ async def assign_duty(
         raise
     except Exception as e:
         logger.error(f"Error assigning duty: {e}")
-        await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to assign duty")
 
 
@@ -439,50 +332,44 @@ async def remove_duty(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Remove duty assignment"""
+    """Remove duty assignment - uses ScheduleService"""
     try:
-        schedule_stmt = select(Schedule).where(Schedule.id == schedule_id)
-        schedule = (await db.execute(schedule_stmt)).scalars().first()
+        from app.models import Schedule
 
-        if not schedule:
+        schedule_obj = await db.get(Schedule, schedule_id)
+        if not schedule_obj:
             raise HTTPException(status_code=404, detail="Schedule not found")
 
         # Verify schedule belongs to user's workspace
-        team_stmt = select(Team).where(Team.id == schedule.team_id)
-        team = (await db.execute(team_stmt)).scalars().first()
-
-        if not team or team.workspace_id != user.workspace_id:
+        if schedule_obj.team.workspace_id != user.workspace_id:
             raise HTTPException(status_code=403, detail="Not authorized")
 
-        await db.delete(schedule)
-        await db.commit()
+        # Use ScheduleService to clear duty
+        schedule_service = ScheduleService(db)
+        success = await schedule_service.clear_duty(schedule_obj.team, schedule_obj.date)
+
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to clear duty")
 
         return {"status": "removed", "schedule_id": schedule_id}
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error removing duty: {e}")
-        await db.rollback()
         raise HTTPException(status_code=500, detail="Failed to remove duty")
 
+
+# ============ Admin Management ============
 
 @router.get("/admins")
 async def get_admins(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Get list of all admins in workspace"""
+    """Get list of all admins in workspace - uses UserService"""
     try:
-        if not user.workspace_id:
-            raise HTTPException(status_code=400, detail="User not assigned to workspace")
-
-        # Get all admin users
-        stmt = select(User).where(
-            (User.workspace_id == user.workspace_id) &
-            (User.is_admin == True)
-        )
-        result = await db.execute(stmt)
-        admins = result.scalars().all()
+        user_service = UserService(db)
+        admins = await user_service.get_all_admins(user.workspace_id)
 
         return {
             "admins": [
@@ -496,8 +383,6 @@ async def get_admins(
                 for admin in admins
             ]
         }
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error getting admins: {e}")
         raise HTTPException(status_code=500, detail="Failed to get admins")
@@ -509,24 +394,27 @@ async def promote_user(
     current_user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Promote user to admin (admin only)"""
+    """Promote user to admin - uses AdminService for logging"""
     try:
-        # Check if current user is admin
         if not current_user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can promote users")
 
-        # Get target user
         target_user = await db.get(User, user_id)
-        if not target_user:
+        if not target_user or target_user.workspace_id != current_user.workspace_id:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Check same workspace
-        if target_user.workspace_id != current_user.workspace_id:
-            raise HTTPException(status_code=403, detail="Cannot manage users from other workspaces")
-
-        # Promote user
         target_user.is_admin = True
         await db.commit()
+
+        # Log action using AdminService
+        admin_service = AdminService(db)
+        await admin_service.log_action(
+            workspace_id=current_user.workspace_id,
+            admin_id=current_user.id,
+            action="promote_admin",
+            target_user_id=user_id,
+            details={"promoted": True}
+        )
 
         return {
             "success": True,
@@ -551,28 +439,30 @@ async def demote_user(
     current_user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Remove admin rights from user (admin only)"""
+    """Remove admin rights from user - uses AdminService for logging"""
     try:
-        # Check if current user is admin
         if not current_user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can demote users")
 
-        # Get target user
         target_user = await db.get(User, user_id)
-        if not target_user:
+        if not target_user or target_user.workspace_id != current_user.workspace_id:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Check same workspace
-        if target_user.workspace_id != current_user.workspace_id:
-            raise HTTPException(status_code=403, detail="Cannot manage users from other workspaces")
-
-        # Prevent demoting yourself
         if target_user.id == current_user.id:
             raise HTTPException(status_code=400, detail="Cannot demote yourself")
 
-        # Demote user
         target_user.is_admin = False
         await db.commit()
+
+        # Log action using AdminService
+        admin_service = AdminService(db)
+        await admin_service.log_action(
+            workspace_id=current_user.workspace_id,
+            admin_id=current_user.id,
+            action="demote_admin",
+            target_user_id=user_id,
+            details={"demoted": True}
+        )
 
         return {
             "success": True,
@@ -599,19 +489,10 @@ async def get_admin_logs(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Get recent admin action logs"""
+    """Get recent admin action logs - uses AdminService"""
     try:
-        stmt = select(AdminLog).where(
-            AdminLog.workspace_id == user.workspace_id
-        ).order_by(
-            AdminLog.timestamp.desc()
-        ).limit(limit).options(
-            joinedload(AdminLog.admin_user),
-            joinedload(AdminLog.target_user)
-        )
-
-        result = await db.execute(stmt)
-        logs = result.unique().scalars().all()
+        admin_service = AdminService(db)
+        logs = await admin_service.get_action_history(user.workspace_id, limit)
 
         return {
             "logs": [
@@ -648,52 +529,45 @@ async def get_schedules_by_date_range(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Get all schedules within a date range"""
+    """Get all schedules within a date range - uses ScheduleService"""
     try:
         from datetime import datetime as dt
 
         start = dt.fromisoformat(start_date).date()
         end = dt.fromisoformat(end_date).date()
 
-        # Get schedules for the date range
-        schedules_stmt = select(Schedule).where(
-            and_(
-                Schedule.date >= start,
-                Schedule.date <= end,
-                Schedule.team.has(Team.workspace_id == user.workspace_id)
-            )
-        ).options(
-            joinedload(Schedule.user),
-            joinedload(Schedule.team)
-        )
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
 
-        result = await db.execute(schedules_stmt)
-        schedules = result.unique().scalars().all()
+        teams = await team_service.get_workspace_teams(user.workspace_id)
+
+        schedules = []
+        for team in teams:
+            team_duties = await schedule_service.get_duties_by_date_range(team, start, end)
+            for duty in team_duties:
+                schedules.append({
+                    "id": duty.id,
+                    "user_id": duty.user_id,
+                    "team_id": duty.team_id,
+                    "duty_date": duty.date.isoformat(),
+                    "user": {
+                        "id": duty.user.id,
+                        "username": duty.user.username,
+                        "first_name": duty.user.first_name,
+                        "last_name": duty.user.last_name or "",
+                    },
+                    "team": {
+                        "id": duty.team.id if duty.team else None,
+                        "name": duty.team.display_name or duty.team.name if duty.team else None,
+                    } if duty.team else None,
+                    "notes": duty.notes,
+                })
 
         return {
             "start_date": start_date,
             "end_date": end_date,
             "total_count": len(schedules),
-            "schedules": [
-                {
-                    "id": s.id,
-                    "user_id": s.user_id,
-                    "team_id": s.team_id,
-                    "duty_date": s.date.isoformat(),
-                    "user": {
-                        "id": s.user.id,
-                        "username": s.user.username,
-                        "first_name": s.user.first_name,
-                        "last_name": s.user.last_name or "",
-                    },
-                    "team": {
-                        "id": s.team.id if s.team else None,
-                        "name": s.team.display_name or s.team.name if s.team else None,
-                    } if s.team else None,
-                    "notes": s.notes,
-                }
-                for s in schedules
-            ]
+            "schedules": schedules
         }
     except Exception as e:
         logger.error(f"Error getting schedules by date range: {e}")
@@ -707,9 +581,11 @@ async def get_schedule_statistics(
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Get schedule statistics"""
+    """Get schedule statistics - uses StatsService"""
     try:
         from datetime import datetime as dt
+
+        stats_service = StatsService(db)
 
         # Default to last 30 days if not specified
         if not end_date:
@@ -721,50 +597,39 @@ async def get_schedule_statistics(
         start = dt.fromisoformat(start_date).date()
         end = dt.fromisoformat(end_date).date()
 
-        # Get all schedules in range
-        schedules_stmt = select(Schedule).where(
-            and_(
-                Schedule.date >= start,
-                Schedule.date <= end,
-                Schedule.team.has(Team.workspace_id == user.workspace_id)
-            )
-        ).options(
-            joinedload(Schedule.user)
-        )
+        year, month = end.year, end.month
 
-        result = await db.execute(schedules_stmt)
-        schedules = result.unique().scalars().all()
+        # Use StatsService for consistent statistics calculation
+        top_users_data = await stats_service.get_top_users_by_duties(user.workspace_id, year, month)
 
-        # Calculate statistics
-        total_duties = len(schedules)
+        # Get total duties for the period
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
 
-        # Duties by user
-        user_stats = {}
-        for schedule in schedules:
-            user_id = schedule.user_id
-            if user_id not in user_stats:
-                user_stats[user_id] = {
-                    "user_id": user_id,
-                    "username": schedule.user.username,
-                    "first_name": schedule.user.first_name,
-                    "last_name": schedule.user.last_name or "",
-                    "count": 0,
-                }
-            user_stats[user_id]["count"] += 1
+        teams = await team_service.get_workspace_teams(user.workspace_id)
+        total_duties = 0
+        unique_users = set()
 
-        # Sort by count descending
-        top_users = sorted(user_stats.values(), key=lambda x: x["count"], reverse=True)
-
-        # Get unique users with duties
-        unique_users = len(set(s.user_id for s in schedules))
+        for team in teams:
+            duties = await schedule_service.get_duties_by_date_range(team, start, end)
+            total_duties += len(duties)
+            for duty in duties:
+                unique_users.add(duty.user_id)
 
         return {
             "start_date": start_date,
             "end_date": end_date,
             "total_duties": total_duties,
-            "total_users_with_duties": unique_users,
-            "average_duties_per_user": round(total_duties / unique_users, 2) if unique_users > 0 else 0,
-            "top_users": top_users[:10],
+            "total_users_with_duties": len(unique_users),
+            "average_duties_per_user": round(total_duties / len(unique_users), 2) if unique_users else 0,
+            "top_users": [
+                {
+                    "user_id": u["user_id"],
+                    "username": u.get("display_name", "Unknown"),
+                    "count": u.get("total_duties", 0)
+                }
+                for u in top_users_data[:10]
+            ],
         }
     except Exception as e:
         logger.error(f"Error getting schedule statistics: {e}")

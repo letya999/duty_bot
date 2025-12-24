@@ -6,6 +6,7 @@ from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
 from app.services.shift_service import ShiftService
 from app.services.escalation_service import EscalationService
+from app.services.admin_service import AdminService
 from app.models import Team, User
 from app.config import get_settings
 
@@ -21,6 +22,7 @@ class CommandHandler:
         self.schedule_service = ScheduleService(db)
         self.shift_service = ShiftService(db)
         self.escalation_service = EscalationService(db)
+        self.admin_service = AdminService(db)
         self.settings = get_settings()
 
     async def help(self) -> str:
@@ -334,7 +336,8 @@ Members: {members_str}"""
         team_name: str,
         date_range_str: str,
         user: User,
-        today: date = None
+        today: date = None,
+        force: bool = False
     ) -> str:
         """Set duty for date range"""
         if today is None:
@@ -353,6 +356,42 @@ Members: {members_str}"""
 
         date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
 
+        # Check for conflicts
+        conflicts = []
+        current = date_range.start
+        while current <= date_range.end:
+            conflict = await self.schedule_service.check_user_schedule_conflict(user, current)
+            if conflict:
+                conflicts.append(conflict)
+            current += timedelta(days=1)
+
+        # Handle conflicts
+        if conflicts and not force:
+            conflict_info = "\n".join([
+                f"  • {c['date']} - already scheduled in {c['team_display_name']}"
+                for c in conflicts
+            ])
+            raise CommandError(
+                f"⚠️ Scheduling conflicts detected:\n{conflict_info}\n"
+                f"Use --force flag to override"
+            )
+
+        # Log conflict attempts
+        if conflicts:
+            await self.admin_service.log_action(
+                workspace_id=self.workspace_id,
+                admin_id=user.id,
+                action="schedule_conflict_override",
+                target_user_id=user.id,
+                details={
+                    "team_name": team.name,
+                    "team_id": team.id,
+                    "date_range": f"{date_range.start} to {date_range.end}",
+                    "conflicts_count": len(conflicts),
+                    "conflicts": conflicts
+                }
+            )
+
         current = date_range.start
         count = 0
         while current <= date_range.end:
@@ -360,7 +399,11 @@ Members: {members_str}"""
             count += 1
             current += timedelta(days=1)
 
-        return f"Duty set for {user.display_name} for {count} day(s)"
+        result = f"Duty set for {user.display_name} for {count} day(s)"
+        if conflicts:
+            result += f"\n⚠️ Conflicts overridden for {len(conflicts)} date(s)"
+
+        return result
 
     async def schedule_clear(
         self,
@@ -436,7 +479,8 @@ Members: {members_str}"""
         team_name: str,
         date_range_str: str,
         users: list[User],
-        today: date = None
+        today: date = None,
+        force: bool = False
     ) -> str:
         """Set shift for date range"""
         if today is None:
@@ -455,6 +499,45 @@ Members: {members_str}"""
 
         date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
 
+        # Check for conflicts
+        conflicts = []
+        current = date_range.start
+        while current <= date_range.end:
+            for user in users:
+                conflict = await self.shift_service.check_user_shift_conflict(user, current)
+                if conflict:
+                    conflicts.append(conflict)
+            current += timedelta(days=1)
+
+        # Handle conflicts
+        if conflicts and not force:
+            conflict_info = "\n".join([
+                f"  • {c['date']} - {[u.display_name for u in users if u.id == c['user_id']][0]} already assigned"
+                for c in conflicts[:5]  # Show first 5 conflicts
+            ])
+            if len(conflicts) > 5:
+                conflict_info += f"\n  ...and {len(conflicts) - 5} more"
+            raise CommandError(
+                f"⚠️ Shift conflicts detected:\n{conflict_info}\n"
+                f"Use --force flag to override"
+            )
+
+        # Log conflict attempts
+        if conflicts:
+            await self.admin_service.log_action(
+                workspace_id=self.workspace_id,
+                admin_id=users[0].id if users else 1,
+                action="shift_conflict_override",
+                details={
+                    "team_name": team.name,
+                    "team_id": team.id,
+                    "date_range": f"{date_range.start} to {date_range.end}",
+                    "users_count": len(users),
+                    "conflicts_count": len(conflicts),
+                    "conflicts": conflicts[:10]  # Store first 10 conflicts
+                }
+            )
+
         current = date_range.start
         count = 0
         while current <= date_range.end:
@@ -463,14 +546,19 @@ Members: {members_str}"""
             current += timedelta(days=1)
 
         names = ", ".join([u.display_name for u in users])
-        return f"Shift set for {names} for {count} day(s)"
+        result = f"Shift set for {names} for {count} day(s)"
+        if conflicts:
+            result += f"\n⚠️ Conflicts overridden for {len(conflicts)} assignment(s)"
+
+        return result
 
     async def shift_add_user(
         self,
         team_name: str,
         shift_date_str: str,
         user: User,
-        today: date = None
+        today: date = None,
+        force: bool = False
     ) -> str:
         """Add user to shift"""
         if today is None:
@@ -485,9 +573,39 @@ Members: {members_str}"""
             raise CommandError(f"Team not found: {team_name}")
 
         shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
+
+        # Check for conflicts
+        conflict = await self.shift_service.check_user_shift_conflict(user, shift_date)
+
+        # Handle conflicts
+        if conflict and not force:
+            raise CommandError(
+                f"⚠️ {user.display_name} is already assigned on {conflict['date']}\n"
+                f"Use --force flag to override"
+            )
+
+        # Log conflict attempt
+        if conflict:
+            await self.admin_service.log_action(
+                workspace_id=self.workspace_id,
+                admin_id=user.id,
+                action="shift_add_conflict_override",
+                target_user_id=user.id,
+                details={
+                    "team_name": team.name,
+                    "team_id": team.id,
+                    "date": str(shift_date),
+                    "conflict": conflict
+                }
+            )
+
         await self.shift_service.add_user_to_shift(team, shift_date, user)
 
-        return f"{user.display_name} added to shift on {shift_date}"
+        result = f"{user.display_name} added to shift on {shift_date}"
+        if conflict:
+            result += "\n⚠️ Conflict overridden"
+
+        return result
 
     async def shift_remove_user(
         self,

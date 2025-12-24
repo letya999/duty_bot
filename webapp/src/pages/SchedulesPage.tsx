@@ -20,9 +20,11 @@ interface DutyFormData {
 
 interface EditingDuty {
   id: number;
-  userId: number;
+  userId?: number;
+  userIds?: number[];
   date: string;
   teamId?: number;
+  isShift?: boolean;
 }
 
 const SchedulesPage: React.FC = () => {
@@ -100,6 +102,10 @@ const SchedulesPage: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const getSelectedTeam = () => {
+    return teams.find(t => t.id.toString() === formData.teamId);
+  };
+
   const handleOpenEditModal = (duty: Schedule) => {
     setEditingDuty({
       id: duty.id,
@@ -120,8 +126,11 @@ const SchedulesPage: React.FC = () => {
 
   const handleSaveDuty = async () => {
     try {
+      const selectedTeam = getSelectedTeam();
+      const isShiftTeam = selectedTeam?.has_shifts || false;
+
       if (editingDuty) {
-        // Edit existing
+        // Edit existing - only single duty edit for now
         await apiService.editDuty(
           editingDuty.id,
           parseInt(formData.userIds[0]),
@@ -129,20 +138,42 @@ const SchedulesPage: React.FC = () => {
           formData.teamId ? parseInt(formData.teamId) : undefined
         );
       } else if (formData.isBulk && formData.userIds.length > 0) {
-        // Bulk create
-        await apiService.assignBulkDuties(
-          formData.userIds.map(id => parseInt(id)),
-          formData.startDate,
-          formData.endDate,
-          formData.teamId ? parseInt(formData.teamId) : undefined
-        );
+        // Bulk assign - works for both shift and regular teams
+        const userIds = formData.userIds.map(id => parseInt(id));
+        if (isShiftTeam && formData.teamId) {
+          // For shift teams, assign all users to each date in range
+          await apiService.assignShiftsBulk(
+            userIds,
+            formData.startDate,
+            formData.endDate,
+            parseInt(formData.teamId)
+          );
+        } else {
+          // For regular teams, use schedule endpoint
+          await apiService.assignBulkDuties(
+            userIds,
+            formData.startDate,
+            formData.endDate,
+            formData.teamId ? parseInt(formData.teamId) : undefined
+          );
+        }
       } else if (formData.userIds.length > 0) {
         // Single create
-        await apiService.assignDuty(
-          parseInt(formData.userIds[0]),
-          selectedDate,
-          formData.teamId ? parseInt(formData.teamId) : undefined
-        );
+        if (isShiftTeam && formData.teamId) {
+          // For shift teams, add user to shift
+          await apiService.assignShift(
+            parseInt(formData.userIds[0]),
+            selectedDate,
+            parseInt(formData.teamId)
+          );
+        } else {
+          // For regular teams, use schedule endpoint
+          await apiService.assignDuty(
+            parseInt(formData.userIds[0]),
+            selectedDate,
+            formData.teamId ? parseInt(formData.teamId) : undefined
+          );
+        }
       }
       setIsModalOpen(false);
       loadData();
@@ -482,30 +513,81 @@ const SchedulesPage: React.FC = () => {
             </div>
           )}
 
-          {formData.isBulk ? (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Team (Optional)
+            </label>
+            <select
+              value={formData.teamId}
+              onChange={(e) => setFormData({ ...formData, teamId: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select a team</option>
+              {teams.map(team => (
+                <option key={team.id} value={team.id}>
+                  {team.name} {team.has_shifts ? '(Shifts)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {getSelectedTeam()?.has_shifts && !editingDuty ? (
             <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Start Date *
-                </label>
-                <input
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+                <p className="text-sm text-blue-700">
+                  This team has shifts enabled. You can assign multiple people to the same day.
+                </p>
               </div>
 
+              {!formData.isBulk ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Start Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.startDate}
+                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      End Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.endDate}
+                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  End Date *
+                <label className="flex items-center gap-2 mb-3">
+                  <input
+                    type="checkbox"
+                    checked={formData.isBulk}
+                    onChange={(e) => setFormData({ ...formData, isBulk: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Date range (bulk)</span>
                 </label>
-                <input
-                  type="date"
-                  value={formData.endDate}
-                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
               </div>
 
               <div>
@@ -541,55 +623,112 @@ const SchedulesPage: React.FC = () => {
             </>
           ) : (
             <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date *
-                </label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              {formData.isBulk && !getSelectedTeam()?.has_shifts ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Start Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.startDate}
+                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  User *
-                </label>
-                <select
-                  value={formData.userIds[0] || ''}
-                  onChange={(e) => setFormData({ ...formData, userIds: [e.target.value] })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select a user</option>
-                  {users.map(user => (
-                    <option key={user.id} value={user.id}>
-                      {user.first_name} {user.last_name || ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      End Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.endDate}
+                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Users *
+                    </label>
+                    <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                      {users.map(user => (
+                        <label key={user.id} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={formData.userIds.includes(user.id.toString())}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFormData({
+                                  ...formData,
+                                  userIds: [...formData.userIds, user.id.toString()]
+                                });
+                              } else {
+                                setFormData({
+                                  ...formData,
+                                  userIds: formData.userIds.filter(id => id !== user.id.toString())
+                                });
+                              }
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-gray-700">{user.first_name} {user.last_name || ''}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      User *
+                    </label>
+                    <select
+                      value={formData.userIds[0] || ''}
+                      onChange={(e) => setFormData({ ...formData, userIds: [e.target.value] })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select a user</option>
+                      {users.map(user => (
+                        <option key={user.id} value={user.id}>
+                          {user.first_name} {user.last_name || ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
             </>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Team (Optional)
-            </label>
-            <select
-              value={formData.teamId}
-              onChange={(e) => setFormData({ ...formData, teamId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Select a team</option>
-              {teams.map(team => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!editingDuty && !getSelectedTeam()?.has_shifts && (
+            <div>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={formData.isBulk}
+                  onChange={(e) => setFormData({ ...formData, isBulk: e.target.checked })}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm font-medium text-gray-700">Bulk assign for date range</span>
+              </label>
+            </div>
+          )}
 
           <div className="flex gap-3 justify-end">
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>

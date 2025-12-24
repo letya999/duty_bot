@@ -81,6 +81,14 @@ curl -X GET "http://localhost:8000/api/admin/users" \
 - `PATCH /api/admin/schedule/{schedule_id}/replace` - Заменить человека
 - `DELETE /api/admin/schedule/{schedule_id}` - Удалить дежурство
 
+### 4b. Shifts (Смены) - Управление сменами для команд с has_shifts=true
+- `POST /api/admin/shifts/assign` - Добавить пользователя на смену
+- `POST /api/admin/shifts/assign-bulk` - Массовое добавление в смены на диапазон дат
+- `GET /api/admin/shifts/date/{date}?team_id={id}` - Получить смены на дату
+- `GET /api/admin/shifts/range?start_date=2024-12-01&end_date=2024-12-31` - Получить смены за период
+- `DELETE /api/admin/shifts/{shift_id}` - Удалить смену целиком
+- `DELETE /api/admin/shifts/{shift_id}/members/{user_id}` - Удалить пользователя из смены
+
 ### 5. Escalations (Эскалации) - CTO управление
 - `GET /api/admin/escalations` - Список всех эскалаций
 - `POST /api/admin/escalations` - Создать эскалацию
@@ -157,6 +165,44 @@ curl -X POST "http://localhost:8000/api/admin/schedule/assign-bulk" \
   }'
 ```
 
+### Пример 3b: Работа со сменами (для команд с has_shifts=true)
+
+```bash
+# Добавить одного человека на смену
+curl -X POST "http://localhost:8000/api/admin/shifts/assign" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": 5,
+    "shift_date": "2024-12-25",
+    "team_id": 1
+  }'
+
+# Добавить нескольких человек на смены (диапазон дат)
+# Все указанные пользователи будут добавлены на каждый день в диапазоне
+curl -X POST "http://localhost:8000/api/admin/shifts/assign-bulk" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_ids": [5, 7, 8],
+    "start_date": "2024-12-25",
+    "end_date": "2024-12-31",
+    "team_id": 1
+  }'
+
+# Получить все смены на конкретную дату
+curl -X GET "http://localhost:8000/api/admin/shifts/date/2024-12-25?team_id=1" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Удалить пользователя из смены
+curl -X DELETE "http://localhost:8000/api/admin/shifts/1/members/5" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Удалить смену целиком
+curl -X DELETE "http://localhost:8000/api/admin/shifts/1" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
 ### Пример 4: Обновить дежурство (перенести или заменить)
 
 ```bash
@@ -229,7 +275,7 @@ curl -X GET "http://localhost:8000/api/admin/escalations" \
 }
 ```
 
-### Schedule
+### Schedule (для команд без смен, has_shifts=false)
 ```json
 {
   "id": 1,
@@ -238,6 +284,21 @@ curl -X GET "http://localhost:8000/api/admin/escalations" \
   "team_id": 1,
   "user": {"id": 5, "first_name": "Ivan"},
   "team": {"id": 1, "name": "backend-team"}
+}
+```
+
+### Shift (для команд со сменами, has_shifts=true)
+```json
+{
+  "id": 1,
+  "date": "2024-12-25",
+  "team_id": 1,
+  "team": {"id": 1, "name": "backend-team"},
+  "users": [
+    {"id": 5, "first_name": "Ivan"},
+    {"id": 7, "first_name": "Maria"},
+    {"id": 8, "first_name": "Alexey"}
+  ]
 }
 ```
 

@@ -85,7 +85,7 @@ curl -X POST "http://localhost:8000/api/admin/auth/token" \\
 }
 ```
 
-### Schedule
+### Schedule (for teams without shifts)
 ```json
 {
   "id": 1,
@@ -94,6 +94,20 @@ curl -X POST "http://localhost:8000/api/admin/auth/token" \\
   "team_id": 1,
   "user": { "id": 5, "first_name": "Ivan" },
   "team": { "id": 1, "name": "backend-team" }
+}
+```
+
+### Shift (for teams with has_shifts=true)
+```json
+{
+  "id": 1,
+  "date": "2024-12-25",
+  "team_id": 1,
+  "team": { "id": 1, "name": "backend-team" },
+  "users": [
+    { "id": 5, "first_name": "Ivan" },
+    { "id": 7, "first_name": "Maria" }
+  ]
 }
 ```
 
@@ -170,6 +184,20 @@ curl -X POST "http://localhost:8000/api/admin/auth/token" \\
                         "team": {"$ref": "#/components/schemas/Team", "nullable": True}
                     },
                     "required": ["id", "user_id", "duty_date"]
+                },
+                "Shift": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "integer"},
+                        "date": {"type": "string", "format": "date"},
+                        "team_id": {"type": "integer"},
+                        "team": {"$ref": "#/components/schemas/Team"},
+                        "users": {
+                            "type": "array",
+                            "items": {"$ref": "#/components/schemas/User"}
+                        }
+                    },
+                    "description": "Shift assignment for teams with has_shifts=true. Multiple users can be assigned to the same shift."
                 },
                 "Escalation": {
                     "type": "object",

@@ -393,6 +393,394 @@ async def remove_duty(
         raise HTTPException(status_code=500, detail="Failed to remove duty")
 
 
+# ============ Shift Endpoints (for teams with has_shifts=True) ============
+
+@router.post(
+    "/shifts/assign",
+    tags=["Schedules"],
+    summary="Assign user to shift",
+    description="Добавить пользователя на смену. Используется для команд с включенными сменами (has_shifts=true)."
+)
+async def assign_shift(
+    user_id: int = Body(..., embed=True),
+    shift_date: str = Body(..., embed=True),
+    team_id: int = Body(..., embed=True),
+    current_user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Assign user to shift - for teams with shifts enabled"""
+    try:
+        from datetime import datetime as dt
+        from app.models import Team
+
+        shift_service = ShiftService(db)
+        team_service = TeamService(db)
+        user_service = UserService(db)
+
+        # Verify team belongs to user's workspace and has shifts enabled
+        team = await team_service.get_team(team_id, current_user.workspace_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        if not team.has_shifts:
+            raise HTTPException(status_code=400, detail="This team does not have shifts enabled")
+
+        # Get target user
+        target_user = await db.get(User, user_id)
+        if not target_user or target_user.workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=400, detail="User not found in workspace")
+
+        date_obj = dt.fromisoformat(shift_date).date()
+
+        # Check for user conflicts
+        conflict = await shift_service.check_user_shift_conflict(target_user, date_obj)
+        if conflict:
+            raise HTTPException(status_code=409, detail=f"User already assigned to {conflict['team_name']} on this date")
+
+        # Add user to shift
+        shift = await shift_service.add_user_to_shift(team, date_obj, target_user)
+
+        return {
+            "status": "assigned",
+            "shift_id": shift.id,
+            "date": shift_date,
+            "user_count": len(shift.users)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error assigning shift: {e}")
+        raise HTTPException(status_code=500, detail="Failed to assign shift")
+
+
+@router.post(
+    "/shifts/assign-bulk",
+    tags=["Schedules"],
+    summary="Bulk assign users to shifts",
+    description="Добавить нескольких пользователей на смены в диапазон дат. Используется для команд с включенными сменами."
+)
+async def assign_shifts_bulk(
+    user_ids: list[int] = Body(..., embed=True),
+    start_date: str = Body(..., embed=True),
+    end_date: str = Body(..., embed=True),
+    team_id: int = Body(..., embed=True),
+    current_user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Bulk assign users to shifts for date range"""
+    try:
+        from datetime import datetime as dt
+
+        shift_service = ShiftService(db)
+        team_service = TeamService(db)
+
+        # Verify team belongs to user's workspace and has shifts enabled
+        team = await team_service.get_team(team_id, current_user.workspace_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        if not team.has_shifts:
+            raise HTTPException(status_code=400, detail="This team does not have shifts enabled")
+
+        start_date_obj = dt.fromisoformat(start_date).date()
+        end_date_obj = dt.fromisoformat(end_date).date()
+
+        # Get all target users
+        users = []
+        for uid in user_ids:
+            user_obj = await db.get(User, uid)
+            if not user_obj or user_obj.workspace_id != current_user.workspace_id:
+                raise HTTPException(status_code=400, detail=f"User {uid} not found in workspace")
+            users.append(user_obj)
+
+        # Assign users to each date in range
+        current_date = start_date_obj
+        assignments = []
+        while current_date <= end_date_obj:
+            shift = await shift_service.create_shift(team, current_date, users)
+            assignments.append({
+                "date": current_date.isoformat(),
+                "shift_id": shift.id,
+                "user_count": len(shift.users)
+            })
+            current_date += timedelta(days=1)
+
+        return {
+            "status": "bulk_assigned",
+            "total_dates": len(assignments),
+            "assignments": assignments
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error bulk assigning shifts: {e}")
+        raise HTTPException(status_code=500, detail="Failed to bulk assign shifts")
+
+
+@router.get(
+    "/shifts/date/{shift_date}",
+    tags=["Schedules"],
+    summary="Get shifts for a date",
+    description="Получить все смены на конкретную дату."
+)
+async def get_shifts_for_date(
+    shift_date: str,
+    team_id: int = None,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get shifts for a specific date, optionally filtered by team"""
+    try:
+        from datetime import datetime as dt
+        from app.models import Shift
+
+        date_obj = dt.fromisoformat(shift_date).date()
+        shift_service = ShiftService(db)
+        team_service = TeamService(db)
+
+        shifts = []
+
+        if team_id:
+            # Get shifts for specific team
+            team = await team_service.get_team(team_id, user.workspace_id)
+            if not team:
+                raise HTTPException(status_code=404, detail="Team not found")
+
+            shift = await shift_service.get_shift(team, date_obj)
+            if shift:
+                shifts.append({
+                    "id": shift.id,
+                    "date": shift.date.isoformat(),
+                    "team": {
+                        "id": shift.team.id,
+                        "name": shift.team.display_name or shift.team.name,
+                    },
+                    "users": [
+                        {
+                            "id": u.id,
+                            "username": u.username,
+                            "first_name": u.first_name,
+                            "last_name": u.last_name or "",
+                        }
+                        for u in shift.users
+                    ]
+                })
+        else:
+            # Get all shifts for this date across all teams with shifts
+            teams = await team_service.get_all_teams(user.workspace_id)
+            for team in teams:
+                if team.has_shifts:
+                    shift = await shift_service.get_shift(team, date_obj)
+                    if shift:
+                        shifts.append({
+                            "id": shift.id,
+                            "date": shift.date.isoformat(),
+                            "team": {
+                                "id": shift.team.id,
+                                "name": shift.team.display_name or shift.team.name,
+                            },
+                            "users": [
+                                {
+                                    "id": u.id,
+                                    "username": u.username,
+                                    "first_name": u.first_name,
+                                    "last_name": u.last_name or "",
+                                }
+                                for u in shift.users
+                            ]
+                        })
+
+        return {
+            "date": shift_date,
+            "shifts": shifts
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting shifts for date: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get shifts")
+
+
+@router.get(
+    "/shifts/range",
+    tags=["Schedules"],
+    summary="Get shifts for date range",
+    description="Получить все смены за период дат."
+)
+async def get_shifts_range(
+    start_date: str,
+    end_date: str,
+    team_id: int = None,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get shifts for a date range, optionally filtered by team"""
+    try:
+        from datetime import datetime as dt
+
+        start_date_obj = dt.fromisoformat(start_date).date()
+        end_date_obj = dt.fromisoformat(end_date).date()
+        shift_service = ShiftService(db)
+        team_service = TeamService(db)
+
+        shifts_by_date = {}
+
+        if team_id:
+            # Get shifts for specific team
+            team = await team_service.get_team(team_id, user.workspace_id)
+            if not team:
+                raise HTTPException(status_code=404, detail="Team not found")
+
+            shifts = await shift_service.get_shifts_by_date_range(team, start_date_obj, end_date_obj)
+            for shift in shifts:
+                date_key = shift.date.isoformat()
+                shifts_by_date[date_key] = {
+                    "id": shift.id,
+                    "date": shift.date.isoformat(),
+                    "team": {
+                        "id": shift.team.id,
+                        "name": shift.team.display_name or shift.team.name,
+                    },
+                    "users": [
+                        {
+                            "id": u.id,
+                            "username": u.username,
+                            "first_name": u.first_name,
+                            "last_name": u.last_name or "",
+                        }
+                        for u in shift.users
+                    ]
+                }
+        else:
+            # Get shifts for all teams with shifts enabled
+            teams = await team_service.get_all_teams(user.workspace_id)
+            for team in teams:
+                if team.has_shifts:
+                    shifts = await shift_service.get_shifts_by_date_range(team, start_date_obj, end_date_obj)
+                    for shift in shifts:
+                        date_key = shift.date.isoformat()
+                        if date_key not in shifts_by_date:
+                            shifts_by_date[date_key] = []
+
+                        shifts_by_date[date_key].append({
+                            "id": shift.id,
+                            "date": shift.date.isoformat(),
+                            "team": {
+                                "id": shift.team.id,
+                                "name": shift.team.display_name or shift.team.name,
+                            },
+                            "users": [
+                                {
+                                    "id": u.id,
+                                    "username": u.username,
+                                    "first_name": u.first_name,
+                                    "last_name": u.last_name or "",
+                                }
+                                for u in shift.users
+                            ]
+                        })
+
+        # Build sorted response
+        dates = sorted(shifts_by_date.keys())
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "shifts_by_date": {date: shifts_by_date[date] for date in dates}
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting shifts range: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get shifts")
+
+
+@router.delete(
+    "/shifts/{shift_id}/members/{user_id}",
+    tags=["Schedules"],
+    summary="Remove user from shift",
+    description="Удалить пользователя из смены."
+)
+async def remove_shift_member(
+    shift_id: int,
+    user_id: int,
+    current_user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Remove user from shift"""
+    try:
+        from app.models import Shift, Team
+
+        shift = await db.get(Shift, shift_id)
+        if not shift:
+            raise HTTPException(status_code=404, detail="Shift not found")
+
+        # Verify shift belongs to user's workspace
+        if shift.team.workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+
+        # Get the user to remove
+        target_user = await db.get(User, user_id)
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Use ShiftService to remove user
+        shift_service = ShiftService(db)
+        team = await db.get(Team, shift.team_id)
+        result = await shift_service.remove_user_from_shift(team, shift.date, target_user)
+
+        if not result:
+            raise HTTPException(status_code=400, detail="Failed to remove user from shift")
+
+        return {
+            "status": "removed",
+            "shift_id": shift_id,
+            "user_id": user_id,
+            "remaining_users": len(result.users)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing shift member: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove shift member")
+
+
+@router.delete(
+    "/shifts/{shift_id}",
+    tags=["Schedules"],
+    summary="Delete entire shift",
+    description="Удалить смену полностью (все люди)."
+)
+async def delete_shift(
+    shift_id: int,
+    current_user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Delete entire shift"""
+    try:
+        from app.models import Shift, Team
+
+        shift = await db.get(Shift, shift_id)
+        if not shift:
+            raise HTTPException(status_code=404, detail="Shift not found")
+
+        # Verify shift belongs to user's workspace
+        if shift.team.workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+
+        # Use ShiftService to clear shift
+        shift_service = ShiftService(db)
+        team = await db.get(Team, shift.team_id)
+        success = await shift_service.clear_shift(team, shift.date)
+
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to delete shift")
+
+        return {"status": "deleted", "shift_id": shift_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting shift: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete shift")
+
+
 # ============ Admin Management ============
 
 @router.get(

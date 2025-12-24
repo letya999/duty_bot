@@ -55,9 +55,8 @@ async def schedules_page(request: Request, session: dict = Depends(get_session_f
                 end_date = datetime(year, month + 1, 1).date() - timedelta(days=1)
 
             stmt = select(Schedule).where(
-                (Schedule.workspace_id == workspace_id) &
-                (Schedule.duty_date >= start_date) &
-                (Schedule.duty_date <= end_date)
+                (Schedule.date >= start_date) &
+                (Schedule.date <= end_date)
             ).options(joinedload(Schedule.user), joinedload(Schedule.team))
             result = await db.execute(stmt)
             schedules = result.unique().scalars().all()

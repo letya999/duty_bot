@@ -37,9 +37,8 @@ async def dashboard_page(request: Request, session: dict = Depends(get_session_f
             # Get current duties (today)
             today = datetime.now().date()
             stmt = select(Schedule).where(
-                (Schedule.workspace_id == workspace_id) &
-                (Schedule.duty_date == today)
-            ).options(joinedload(Schedule.user))
+                (Schedule.date == today)
+            ).options(joinedload(Schedule.team)).options(joinedload(Schedule.user))
             result = await db.execute(stmt)
             today_schedules = result.unique().scalars().all()
 
@@ -47,10 +46,9 @@ async def dashboard_page(request: Request, session: dict = Depends(get_session_f
             start_date = today
             end_date = today + timedelta(days=7)
             stmt = select(Shift).where(
-                (Shift.workspace_id == workspace_id) &
-                (Shift.start_date >= start_date) &
-                (Shift.start_date <= end_date)
-            ).options(joinedload(Shift.members))
+                (Shift.date >= start_date) &
+                (Shift.date <= end_date)
+            ).options(joinedload(Shift.team)).options(joinedload(Shift.users))
             result = await db.execute(stmt)
             upcoming_shifts = result.unique().scalars().all()
 

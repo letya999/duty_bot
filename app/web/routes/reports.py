@@ -365,9 +365,8 @@ async def generate_report(
 
             # Get schedules for date range
             stmt = select(Schedule).where(
-                (Schedule.workspace_id == workspace_id) &
-                (Schedule.duty_date >= start) &
-                (Schedule.duty_date <= end)
+                (Schedule.date >= start) &
+                (Schedule.date <= end)
             ).options(joinedload(Schedule.user), joinedload(Schedule.team))
             result = await db.execute(stmt)
             schedules = result.unique().scalars().all()
@@ -380,7 +379,7 @@ async def generate_report(
 
                 for schedule in schedules:
                     writer.writerow([
-                        schedule.duty_date,
+                        schedule.date,
                         schedule.user.first_name or schedule.user.username,
                         schedule.team.name if schedule.team else '',
                         ''

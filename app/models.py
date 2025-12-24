@@ -227,3 +227,29 @@ class AdminLog(Base):
     workspace = relationship('Workspace')
     admin_user = relationship('User', back_populates='admin_logs_by_admin', foreign_keys=[admin_user_id])
     target_user = relationship('User', back_populates='admin_logs_by_target', foreign_keys=[target_user_id])
+
+
+class DutyStats(Base):
+    """Monthly duty statistics per user and team"""
+    __tablename__ = 'duty_stats'
+
+    id = Column(Integer, primary_key=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    team_id = Column(Integer, ForeignKey('team.id'), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('user.id'), nullable=False, index=True)
+    year = Column(Integer, nullable=False)  # Year (e.g., 2024)
+    month = Column(Integer, nullable=False)  # Month (1-12)
+    duty_days = Column(Integer, default=0)  # Number of days assigned to duties
+    shift_days = Column(Integer, default=0)  # Number of days assigned to shifts
+    hours_worked = Column(Integer, nullable=True)  # Optional hours worked
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    workspace = relationship('Workspace')
+    team = relationship('Team')
+    user = relationship('User')
+
+    __table_args__ = (
+        UniqueConstraint('workspace_id', 'team_id', 'user_id', 'year', 'month', name='duty_stats_workspace_team_user_year_month_unique'),
+    )

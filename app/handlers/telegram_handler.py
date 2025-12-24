@@ -21,7 +21,7 @@ async def format_telegram_text(text: str) -> str:
     return text
 
 
-async def get_or_create_telegram_workspace(db: AsyncSession, chat_id: int) -> int:
+async def get_or_create_telegram_workspace(db: AsyncSession, chat_id: int, chat_title: str = None) -> int:
     """Get or create Telegram workspace by chat ID"""
     external_id = str(chat_id)
     stmt = select(Workspace).where(
@@ -32,15 +32,17 @@ async def get_or_create_telegram_workspace(db: AsyncSession, chat_id: int) -> in
     workspace = result.scalars().first()
 
     if not workspace:
+        # Use chat title if available, otherwise fallback to chat ID
+        workspace_name = chat_title or f"Telegram Chat {chat_id}"
         workspace = Workspace(
-            name=f"Telegram Chat {chat_id}",
+            name=workspace_name,
             workspace_type='telegram',
             external_id=external_id
         )
         db.add(workspace)
         await db.commit()
         await db.refresh(workspace)
-        logger.info(f"Created new Telegram workspace: {chat_id} (id={workspace.id})")
+        logger.info(f"Created new Telegram workspace: {workspace_name} (id={workspace.id})")
     else:
         logger.debug(f"Using existing Telegram workspace: {chat_id} (id={workspace.id})")
 
@@ -115,7 +117,7 @@ class TelegramHandler:
         """Handle /duty command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 user_service = UserService(db)
 
                 # Create or update user if they don't exist
@@ -151,7 +153,7 @@ class TelegramHandler:
         """Handle /team command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
@@ -277,7 +279,7 @@ class TelegramHandler:
         """Handle /schedule command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
@@ -333,7 +335,7 @@ class TelegramHandler:
         """Handle /shift command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
@@ -420,7 +422,7 @@ class TelegramHandler:
         """Handle /escalation command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
@@ -462,7 +464,7 @@ class TelegramHandler:
         """Handle /escalate command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
@@ -501,7 +503,7 @@ class TelegramHandler:
         """Handle /help and /start command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 user_service = UserService(db)
 
                 # Create or update user if they don't exist

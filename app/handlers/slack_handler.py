@@ -244,7 +244,35 @@ class SlackHandler:
                 parts = text.split()
                 team_name = parts[0].strip()
 
-                if "set" in text and len(parts) >= 3:
+                if "rotate" in text:
+                    # Rotation command
+                    if "enable" in text and len(parts) >= 3:
+                        mentions = CommandParser.extract_mentions(text)
+                        if not mentions:
+                            raise CommandError("Usage: /schedule <team> rotate enable @user1 @user2 ...")
+
+                        users = []
+                        for mention in mentions:
+                            user = await user_service.get_user_by_slack(workspace_id, mention)
+                            if not user:
+                                raise CommandError(f"User not found: <@{mention}>")
+                            users.append(user)
+
+                        result = await handler.schedule_rotate_enable(team_name, users)
+
+                    elif "assign" in text and len(parts) >= 3:
+                        date_idx = text.find("assign") + 6
+                        date_part = text[date_idx:].split()[0]
+                        result = await handler.schedule_rotate_assign(team_name, date_part)
+
+                    elif "disable" in text:
+                        result = await handler.schedule_rotate_disable(team_name)
+
+                    else:
+                        # Show rotation status
+                        result = await handler.schedule_rotate_status(team_name)
+
+                elif "set" in text and len(parts) >= 3:
                     date_idx = text.find("set") + 3
                     date_part = text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(text)

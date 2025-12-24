@@ -31,16 +31,10 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
     callbackRef.current = onAuth;
   }, [onAuth]);
 
+  // Set up the global callback handler once at component level (persists across re-renders)
   useEffect(() => {
-    if (!containerRef.current) return;
+    console.log('📍 [TelegramWidget] Setting up global onTelegramAuth handler');
 
-    console.log('📍 [TelegramWidget] Creating Telegram widget script');
-    console.log('📍 [TelegramWidget] Bot username:', botUsername);
-    console.log('📍 [TelegramWidget] Button size:', buttonSize);
-    console.log('📍 [TelegramWidget] Container ref:', containerRef.current);
-
-    // Store the callback in window so Telegram can call it
-    // Use ref to avoid recreating the widget when callback changes
     window.onTelegramAuth = (user: any) => {
       console.log('✅ [TelegramWidget] onTelegramAuth callback CALLED');
       console.log('✅ [TelegramWidget] User data received:', user);
@@ -51,50 +45,53 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
       callbackRef.current(user);
     };
 
-    // Create script element
+    // Only clean up if component is unmounting, not on re-renders
+    return () => {
+      console.log('📍 [TelegramWidget] Component unmounting, keeping global handler intact');
+    };
+  }, []); // Empty deps - setup only once
+
+  // Render the widget when props change, but don't reload telegram script
+  useEffect(() => {
+    if (!containerRef.current || !botUsername) return;
+
+    console.log('📍 [TelegramWidget] Creating widget container with attributes');
+    console.log('  - Bot username:', botUsername);
+    console.log('  - Button size:', buttonSize);
+    console.log('  - Corner radius:', cornerRadius);
+
+    // Create a script element but don't load the telegram.org/js/telegram-widget.js script
+    // (it's already loaded globally at app level)
+    // Instead, create an element that the telegram script will process
     const script = document.createElement('script');
-    script.src = `https://telegram.org/js/telegram-widget.js?22`;
-    script.async = true;
     script.setAttribute('data-telegram-login', botUsername);
     script.setAttribute('data-size', buttonSize);
     script.setAttribute('data-radius', cornerRadius.toString());
     script.setAttribute('data-request-access', requestAccess === 'notify' ? 'write' : 'write');
     script.setAttribute('data-userpic', usePic.toString());
-    script.setAttribute('data-onauth', 'onTelegramAuth'); // name only, not call
+    script.setAttribute('data-onauth', 'onTelegramAuth');
 
-    console.log('📍 [TelegramWidget] Script element created with attributes:');
-    console.log('  - data-telegram-login:', botUsername);
-    console.log('  - data-size:', buttonSize);
-    console.log('  - data-onauth: onTelegramAuth');
-
-    // Add script load handlers
-    script.onload = () => {
-      console.log('✅ [TelegramWidget] Script loaded successfully');
-    };
-
-    script.onerror = (error: any) => {
-      console.error('❌ [TelegramWidget] Script failed to load:', error);
-      console.error('❌ [TelegramWidget] Script error details:', {
-        message: error?.message,
-        type: error?.type,
-        filename: error?.filename,
-        lineno: error?.lineno,
-        colno: error?.colno,
-      });
-    };
-
-    // Clear container and append script
+    // Clear and add the script element
     containerRef.current.innerHTML = '';
     containerRef.current.appendChild(script);
-    console.log('📍 [TelegramWidget] Script appended to container');
+
+    // Trigger Telegram widget rendering on the newly added element
+    // @ts-ignore
+    if (window.Telegram && window.Telegram.Login && window.Telegram.Login.render) {
+      setTimeout(() => {
+        // @ts-ignore
+        window.Telegram.Login.render(script);
+        console.log('✅ [TelegramWidget] Widget rendered via Telegram.Login.render()');
+      }, 0);
+    } else {
+      console.log('⚠️ [TelegramWidget] Telegram.Login.render not available yet');
+    }
 
     return () => {
-      console.log('📍 [TelegramWidget] Cleaning up widget (component unmounted)');
+      console.log('📍 [TelegramWidget] Widget prop changed, cleaning up old widget');
       if (containerRef.current) {
         containerRef.current.innerHTML = '';
       }
-      // @ts-ignore
-      delete window.onTelegramAuth;
     };
   }, [botUsername, buttonSize, cornerRadius, requestAccess, usePic]);
 

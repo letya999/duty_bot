@@ -84,3 +84,26 @@ class UserService:
         stmt = select(User).where(User.workspace_id == workspace_id)
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def set_admin(self, user_id: int, is_admin: bool) -> User:
+        """Set or unset admin status for a user"""
+        user = await self.get_user(user_id)
+        if user:
+            user.is_admin = is_admin
+            await self.db.commit()
+            await self.db.refresh(user)
+        return user
+
+    async def get_all_admins(self, workspace_id: int) -> list[User]:
+        """Get all admin users in workspace"""
+        stmt = select(User).where(
+            (User.workspace_id == workspace_id) &
+            (User.is_admin == True)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def is_admin(self, user_id: int) -> bool:
+        """Check if user is admin"""
+        user = await self.get_user(user_id)
+        return user.is_admin if user else False

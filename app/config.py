@@ -26,9 +26,21 @@ class Settings(BaseSettings):
     escalation_timeout_minutes: int = 15
     log_level: str = "INFO"
 
+    # Admin configuration
+    admin_telegram_ids: str = ""  # Comma-separated IDs
+    admin_slack_ids: str = ""     # Comma-separated IDs
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
+
+    def get_admin_ids(self, platform: str) -> list[str]:
+        """Parse admin IDs from config"""
+        if platform == 'telegram':
+            return [id.strip() for id in self.admin_telegram_ids.split(',') if id.strip()]
+        elif platform == 'slack':
+            return [id.strip() for id in self.admin_slack_ids.split(',') if id.strip()]
+        return []
 
 
 @lru_cache()

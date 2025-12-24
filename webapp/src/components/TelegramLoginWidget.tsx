@@ -78,8 +78,13 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
     containerRef.current.appendChild(script);
 
     // Trigger Telegram widget rendering on the newly added element
-    // Wait for Telegram script to be available
+    // Wait for Telegram script to be available with timeout
+    let attempts = 0;
+    const maxAttempts = 50; // ~5 seconds timeout (50 * 100ms)
+
     const waitForTelegram = () => {
+      attempts++;
+
       // @ts-ignore
       if (window.Telegram && window.Telegram.Login && window.Telegram.Login.render) {
         try {
@@ -89,10 +94,12 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
         } catch (error) {
           console.error('❌ [TelegramWidget] Error rendering widget:', error);
         }
-      } else {
+      } else if (attempts < maxAttempts) {
         // Telegram not ready yet, wait a bit and try again
-        console.log('⚠️ [TelegramWidget] Telegram.Login not available yet, retrying...');
+        console.log(`⚠️ [TelegramWidget] Telegram.Login not available yet (attempt ${attempts}/${maxAttempts}), retrying...`);
         setTimeout(waitForTelegram, 100);
+      } else {
+        console.error('❌ [TelegramWidget] Telegram.Login initialization timeout - script may have failed to load');
       }
     };
 

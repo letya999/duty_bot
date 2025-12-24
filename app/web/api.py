@@ -241,6 +241,8 @@ async def get_month_schedule(
                     if schedule.user_id not in seen_users:
                         duties.append({
                             "id": schedule.id or 0,
+                            "user_id": schedule.user_id,
+                            "duty_date": schedule.date.isoformat() if schedule.date else date_key,
                             "user": {
                                 "id": schedule.user.id,
                                 "username": schedule.user.username,
@@ -312,6 +314,8 @@ async def get_daily_schedule(
             if schedule.user_id not in seen_users:
                 duties.append({
                     "id": schedule.id,
+                    "user_id": schedule.user_id,
+                    "duty_date": schedule.date.isoformat() if schedule.date else date,
                     "user": {
                         "id": schedule.user.id,
                         "username": schedule.user.username,
@@ -332,6 +336,8 @@ async def get_daily_schedule(
                 if shift_user.id not in seen_users:
                     duties.append({
                         "id": 0,
+                        "user_id": shift_user.id,
+                        "duty_date": shift.date.isoformat() if shift.date else date,
                         "user": {
                             "id": shift_user.id,
                             "username": shift_user.username,

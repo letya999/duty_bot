@@ -7,6 +7,8 @@ import './index.css';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import SchedulesPage from './pages/SchedulesPage';
+import TeamsPage from './pages/TeamsPage';
+import EscalationsPage from './pages/EscalationsPage';
 import SettingsPage from './pages/SettingsPage';
 import ReportsPage from './pages/ReportsPage';
 
@@ -65,6 +67,8 @@ function App() {
                   <Routes>
                     <Route path="/" element={<DashboardPage />} />
                     <Route path="/schedules" element={<SchedulesPage />} />
+                    <Route path="/teams" element={<TeamsPage />} />
+                    <Route path="/escalations" element={<EscalationsPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />

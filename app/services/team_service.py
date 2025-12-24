@@ -13,7 +13,8 @@ class TeamService:
         workspace_id: int,
         name: str,
         display_name: str,
-        has_shifts: bool = False
+        has_shifts: bool = False,
+        team_lead_id: int | None = None
     ) -> Team:
         """Create a new team in workspace"""
         team = Team(
@@ -21,6 +22,7 @@ class TeamService:
             name=name,
             display_name=display_name,
             has_shifts=has_shifts,
+            team_lead_id=team_lead_id,
         )
         self.db.add(team)
         await self.db.commit()

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Calendar, Home, LogOut, Menu, Settings, X } from 'lucide-react';
+import { BarChart3, Calendar, Home, LogOut, Menu, Settings, X, Users, AlertCircle } from 'lucide-react';
 import { User } from '../types';
 
 const Navigation: React.FC = () => {
@@ -18,6 +18,10 @@ const Navigation: React.FC = () => {
   const navItems = [
     { path: '/', label: 'Dashboard', icon: <Home size={20} /> },
     { path: '/schedules', label: 'Schedules', icon: <Calendar size={20} /> },
+    ...(user?.is_admin ? [
+      { path: '/teams', label: 'Teams', icon: <Users size={20} /> },
+      { path: '/escalations', label: 'Escalations', icon: <AlertCircle size={20} /> },
+    ] : []),
     { path: '/reports', label: 'Reports', icon: <BarChart3 size={20} /> },
     ...(user?.is_admin ? [{ path: '/settings', label: 'Settings', icon: <Settings size={20} /> }] : []),
   ];

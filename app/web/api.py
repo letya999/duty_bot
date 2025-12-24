@@ -633,3 +633,419 @@ async def get_schedule_statistics(
     except Exception as e:
         logger.error(f"Error getting schedule statistics: {e}")
         raise HTTPException(status_code=500, detail="Failed to get statistics")
+
+
+# ============ Enhanced Schedule Endpoints ============
+
+@router.put("/schedule/{schedule_id}")
+async def update_duty(
+    schedule_id: int,
+    user_id: int = Body(..., embed=False),
+    duty_date: str = Body(..., embed=False),
+    team_id: int | None = Body(None, embed=False),
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Update existing duty assignment"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can update duties")
+
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
+
+        # Get team
+        team = await team_service.get_team(team_id) if team_id else None
+
+        # Update duty
+        schedule = await schedule_service.update_duty(schedule_id, user_id, duty_date, team)
+
+        return {
+            "id": schedule.id,
+            "user_id": schedule.user_id,
+            "duty_date": schedule.date.isoformat() if hasattr(schedule.date, 'isoformat') else str(schedule.date),
+            "team_id": schedule.team_id,
+        }
+    except Exception as e:
+        logger.error(f"Error updating duty: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update duty")
+
+
+@router.post("/schedule/assign-bulk")
+async def assign_bulk_duties(
+    user_ids: list[int] = Body(..., embed=False),
+    start_date: str = Body(..., embed=False),
+    end_date: str = Body(..., embed=False),
+    team_id: int | None = Body(None, embed=False),
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Assign multiple users to dates in range"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can assign duties")
+
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
+
+        start = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end = datetime.strptime(end_date, '%Y-%m-%d').date()
+
+        team = await team_service.get_team(team_id) if team_id else None
+
+        created_count = 0
+        current_date = start
+        while current_date <= end:
+            for user_id in user_ids:
+                try:
+                    await schedule_service.set_duty(team, user_id, current_date)
+                    created_count += 1
+                except Exception:
+                    pass  # Skip if already exists
+            current_date += timedelta(days=1)
+
+        return {"created": created_count, "total_expected": len(user_ids) * ((end - start).days + 1)}
+    except Exception as e:
+        logger.error(f"Error assigning bulk duties: {e}")
+        raise HTTPException(status_code=500, detail="Failed to assign bulk duties")
+
+
+@router.patch("/schedule/{schedule_id}/move")
+async def move_duty(
+    schedule_id: int,
+    new_date: str = Body(..., embed=False),
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Move duty to different date"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can modify duties")
+
+        schedule_service = ScheduleService(db)
+        new_date_obj = datetime.strptime(new_date, '%Y-%m-%d').date()
+
+        # Get schedule
+        from sqlalchemy import select
+        stmt = select(schedule_service.schedule_model).where(schedule_service.schedule_model.id == schedule_id)
+        result = await db.execute(stmt)
+        schedule = result.scalar_one_or_none()
+
+        if not schedule:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+
+        # Move to new date
+        schedule.date = new_date_obj
+        await db.commit()
+
+        return {"status": "moved", "new_date": new_date}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error moving duty: {e}")
+        raise HTTPException(status_code=500, detail="Failed to move duty")
+
+
+@router.patch("/schedule/{schedule_id}/replace")
+async def replace_duty_user(
+    schedule_id: int,
+    user_id: int = Body(..., embed=False),
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Replace person in duty with different user"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can modify duties")
+
+        from sqlalchemy import select
+        from app.models import Schedule as ScheduleModel
+
+        stmt = select(ScheduleModel).where(ScheduleModel.id == schedule_id)
+        result = await db.execute(stmt)
+        schedule = result.scalar_one_or_none()
+
+        if not schedule:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+
+        schedule.user_id = user_id
+        await db.commit()
+
+        return {"status": "replaced", "user_id": user_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error replacing duty user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to replace duty user")
+
+
+# ============ Teams Management Endpoints ============
+
+@router.post("/teams")
+async def create_team(
+    name: str = Body(..., embed=False),
+    display_name: str = Body(..., embed=False),
+    has_shifts: bool = Body(False, embed=False),
+    team_lead_id: int | None = Body(None, embed=False),
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Create new team"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can create teams")
+
+        team_service = TeamService(db)
+        team = await team_service.create_team(
+            workspace_id=user.workspace_id,
+            name=name,
+            display_name=display_name,
+            has_shifts=has_shifts,
+            team_lead_id=team_lead_id
+        )
+
+        return {
+            "id": team.id,
+            "name": team.name,
+            "display_name": team.display_name,
+            "has_shifts": team.has_shifts
+        }
+    except Exception as e:
+        logger.error(f"Error creating team: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create team")
+
+
+@router.put("/teams/{team_id}")
+async def update_team(
+    team_id: int,
+    name: str | None = Body(None, embed=False),
+    display_name: str | None = Body(None, embed=False),
+    has_shifts: bool | None = Body(None, embed=False),
+    team_lead_id: int | None = Body(None, embed=False),
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Update team"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can update teams")
+
+        team_service = TeamService(db)
+        team = await team_service.get_team(team_id, user.workspace_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+        team = await team_service.update_team(
+            team=team,
+            name=name,
+            display_name=display_name,
+            has_shifts=has_shifts
+        )
+
+        if team_lead_id is not None:
+            team_lead = await db.get(User, team_lead_id)
+            if team_lead:
+                team = await team_service.set_team_lead(team, team_lead)
+
+        return {
+            "id": team.id,
+            "name": team.name,
+            "display_name": team.display_name,
+            "has_shifts": team.has_shifts
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating team: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update team")
+
+
+@router.delete("/teams/{team_id}")
+async def delete_team(
+    team_id: int,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Delete team"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can delete teams")
+
+        team_service = TeamService(db)
+        team = await team_service.get_team(team_id, user.workspace_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+        await team_service.delete_team(team)
+
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting team: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete team")
+
+
+@router.post("/teams/{team_id}/members")
+async def add_team_member(
+    team_id: int,
+    user_id: int = Body(..., embed=False),
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Add member to team"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can manage team members")
+
+        team_service = TeamService(db)
+        team = await team_service.get_team(team_id, user.workspace_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+        member = await db.get(User, user_id)
+        if not member:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        await team_service.add_member(team, member)
+
+        return {"status": "added"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding team member: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add team member")
+
+
+@router.delete("/teams/{team_id}/members/{member_id}")
+async def remove_team_member(
+    team_id: int,
+    member_id: int,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Remove member from team"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can manage team members")
+
+        team_service = TeamService(db)
+        team = await team_service.get_team(team_id, user.workspace_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+        member = await db.get(User, member_id)
+        if not member:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        await team_service.remove_member(team, member)
+
+        return {"status": "removed"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing team member: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove team member")
+
+
+# ============ Escalations Management Endpoints ============
+
+@router.get("/escalations")
+async def get_escalations(
+    team_id: int | None = None,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> list:
+    """Get escalations"""
+    try:
+        from sqlalchemy import select
+        from app.models import Escalation
+
+        if team_id:
+            stmt = select(Escalation).where(Escalation.team_id == team_id)
+        else:
+            stmt = select(Escalation)
+
+        result = await db.execute(stmt)
+        escalations = result.scalars().all()
+
+        return [
+            {
+                "id": e.id,
+                "team_id": e.team_id,
+                "cto_id": e.cto_id,
+                "team": {"id": e.team.id, "name": e.team.name} if e.team else None,
+                "cto_user": {
+                    "id": e.cto_user.id,
+                    "first_name": e.cto_user.first_name,
+                    "last_name": e.cto_user.last_name
+                } if e.cto_user else None
+            }
+            for e in escalations
+        ]
+    except Exception as e:
+        logger.error(f"Error getting escalations: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get escalations")
+
+
+@router.post("/escalations")
+async def create_escalation(
+    team_id: int | None = Body(None, embed=False),
+    cto_id: int = Body(..., embed=False),
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Create escalation"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can manage escalations")
+
+        from app.models import Escalation
+
+        escalation = Escalation(
+            team_id=team_id,
+            cto_id=cto_id
+        )
+        db.add(escalation)
+        await db.commit()
+
+        return {
+            "id": escalation.id,
+            "team_id": escalation.team_id,
+            "cto_id": escalation.cto_id
+        }
+    except Exception as e:
+        logger.error(f"Error creating escalation: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create escalation")
+
+
+@router.delete("/escalations/{escalation_id}")
+async def delete_escalation(
+    escalation_id: int,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Delete escalation"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can manage escalations")
+
+        from sqlalchemy import select
+        from app.models import Escalation
+
+        stmt = select(Escalation).where(Escalation.id == escalation_id)
+        result = await db.execute(stmt)
+        escalation = result.scalar_one_or_none()
+
+        if not escalation:
+            raise HTTPException(status_code=404, detail="Escalation not found")
+
+        await db.delete(escalation)
+        await db.commit()
+
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting escalation: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete escalation")

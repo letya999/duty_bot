@@ -109,3 +109,27 @@ class ScheduleService:
                 "team_display_name": existing.team.display_name
             }
         return None
+
+    async def update_duty(
+        self,
+        schedule_id: int,
+        user_id: int,
+        duty_date: date,
+        team: Team | None = None
+    ) -> Schedule:
+        """Update existing duty assignment"""
+        stmt = select(Schedule).where(Schedule.id == schedule_id)
+        result = await self.db.execute(stmt)
+        schedule = result.scalars().first()
+
+        if not schedule:
+            raise ValueError(f"Schedule with id {schedule_id} not found")
+
+        schedule.user_id = user_id
+        schedule.date = duty_date
+        if team:
+            schedule.team_id = team.id
+
+        await self.db.commit()
+        await self.db.refresh(schedule)
+        return schedule

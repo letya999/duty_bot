@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Loader } from 'lucide-react';
 import { Button } from '../components/ui/Button';
@@ -18,7 +18,7 @@ const LoginPage: React.FC = () => {
     setBotUsername(username);
   }, []);
 
-  const handleTelegramAuth = async (data: any) => {
+  const handleTelegramAuth = useCallback(async (data: any) => {
     try {
       console.log('🔵 [LoginPage] handleTelegramAuth called');
       console.log('🔵 [LoginPage] Data received from widget:', data);
@@ -82,7 +82,7 @@ const LoginPage: React.FC = () => {
       setError(errorMessage);
       setLoading(false);
     }
-  };
+  }, [navigate]);
 
   const handleSlackLogin = () => {
     setLoading(true);

@@ -24,6 +24,12 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
   usePic = true,
 }: TelegramLoginWidgetProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const callbackRef = React.useRef(onAuth);
+
+  // Update callback ref without causing widget recreation
+  React.useEffect(() => {
+    callbackRef.current = onAuth;
+  }, [onAuth]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -34,6 +40,7 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
     console.log('📍 [TelegramWidget] Container ref:', containerRef.current);
 
     // Store the callback in window so Telegram can call it
+    // Use ref to avoid recreating the widget when callback changes
     window.onTelegramAuth = (user: any) => {
       console.log('✅ [TelegramWidget] onTelegramAuth callback CALLED');
       console.log('✅ [TelegramWidget] User data received:', user);
@@ -41,7 +48,7 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
       console.log('✅ [TelegramWidget] User hash:', user?.hash);
       console.log('✅ [TelegramWidget] Auth date:', user?.auth_date);
       console.log('✅ [TelegramWidget] All keys in user object:', Object.keys(user || {}));
-      onAuth(user);
+      callbackRef.current(user);
     };
 
     // Create script element
@@ -89,7 +96,7 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
       // @ts-ignore
       delete window.onTelegramAuth;
     };
-  }, [botUsername, buttonSize, cornerRadius, requestAccess, usePic, onAuth]);
+  }, [botUsername, buttonSize, cornerRadius, requestAccess, usePic]);
 
   return (
     <div className="flex justify-center min-h-[40px]" ref={containerRef} />

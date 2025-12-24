@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { MonthSchedule, DailySchedule, Team, User, Schedule, AdminAction } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/miniapp';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/admin';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -108,6 +108,22 @@ export const apiService = {
   getAdminLogs: async (limit: number = 50): Promise<AdminAction[]> => {
     const response = await api.get('/admin-logs', {
       params: { limit },
+    });
+    return response.data.logs || [];
+  },
+
+  // Get schedules by date range
+  getSchedulesByDateRange: async (startDate: string, endDate: string): Promise<Schedule[]> => {
+    const response = await api.get('/schedules/range', {
+      params: { start_date: startDate, end_date: endDate },
+    });
+    return response.data.schedules || [];
+  },
+
+  // Get schedule statistics
+  getScheduleStats: async (startDate?: string, endDate?: string): Promise<any> => {
+    const response = await api.get('/stats/schedules', {
+      params: { start_date: startDate, end_date: endDate },
     });
     return response.data;
   },

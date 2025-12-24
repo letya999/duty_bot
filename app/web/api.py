@@ -1,0 +1,636 @@
+"""API endpoints for web admin panel with unified service layer"""
+import logging
+from datetime import datetime, timedelta, date as date_type
+from fastapi import APIRouter, Depends, HTTPException, Header, Body
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import AsyncSessionLocal
+from app.models import User
+from app.web.auth import session_manager
+from app.services.user_service import UserService
+from app.services.team_service import TeamService
+from app.services.schedule_service import ScheduleService
+from app.services.shift_service import ShiftService
+from app.services.admin_service import AdminService
+from app.services.stats_service import StatsService
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+async def get_db():
+    """Get database session"""
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
+async def get_user_from_token(
+    authorization: str = Header(None),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """Extract and verify user from Bearer token"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+
+    token = authorization.split(" ", 1)[1]
+    session = session_manager.validate_session(token)
+
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # Get user from database
+    user = await db.get(User, session['user_id'])
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return user
+
+
+# ============ User Endpoints ============
+
+@router.get("/user/info")
+async def get_user_info(user: User = Depends(get_user_from_token)) -> dict:
+    """Get current user info"""
+    return {
+        "id": user.id,
+        "username": user.username,
+        "first_name": user.first_name,
+        "last_name": user.last_name or "",
+        "is_admin": user.is_admin,
+        "workspace_id": user.workspace_id,
+    }
+
+
+@router.get("/users")
+async def get_all_users(
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> list:
+    """Get all users in workspace - uses UserService"""
+    try:
+        user_service = UserService(db)
+        users = await user_service.get_all_users(user.workspace_id)
+
+        return [
+            {
+                "id": u.id,
+                "username": u.username,
+                "first_name": u.first_name,
+                "last_name": u.last_name or "",
+                "is_admin": u.is_admin,
+                "telegram_username": u.telegram_username,
+            }
+            for u in users
+        ]
+    except Exception as e:
+        logger.error(f"Error getting all users: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get users")
+
+
+# ============ Team Endpoints ============
+
+@router.get("/teams")
+async def get_teams(
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> list:
+    """Get all teams in workspace - uses TeamService"""
+    try:
+        team_service = TeamService(db)
+        teams = await team_service.get_all_teams(user.workspace_id)
+
+        result_list = []
+        for team in teams:
+            result_list.append({
+                "id": team.id,
+                "name": team.display_name or team.name,
+                "description": team.description or "",
+                "team_lead_id": team.team_lead_id,
+                "members": [
+                    {
+                        "id": m.id,
+                        "username": m.username,
+                        "first_name": m.first_name,
+                        "last_name": m.last_name or "",
+                    }
+                    for m in (team.members or [])
+                ]
+            })
+
+        return result_list
+    except Exception as e:
+        logger.error(f"Error getting teams: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get teams")
+
+
+@router.get("/teams/{team_id}/members")
+async def get_team_members(
+    team_id: int,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> list:
+    """Get all members of a team - uses TeamService"""
+    try:
+        team_service = TeamService(db)
+        team = await team_service.get_team(team_id, user.workspace_id)
+
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+        result = []
+        for member in (team.members or []):
+            result.append({
+                "id": member.id,
+                "username": member.username,
+                "first_name": member.first_name,
+                "last_name": member.last_name or "",
+            })
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting team members: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get team members")
+
+
+# ============ Schedule Endpoints ============
+
+@router.get("/schedule/month")
+async def get_month_schedule(
+    year: int,
+    month: int,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get schedule for a month - uses ScheduleService"""
+    try:
+        from datetime import datetime as dt
+
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
+
+        # Get all schedules for the month
+        start_date = dt(year, month, 1).date()
+        if month == 12:
+            end_date = dt(year + 1, 1, 1).date()
+        else:
+            end_date = dt(year, month + 1, 1).date()
+
+        teams = await team_service.get_workspace_teams(user.workspace_id)
+
+        schedule_by_date = {}
+        for team in teams:
+            duties = await schedule_service.get_duties_by_date_range(team, start_date, end_date - timedelta(days=1))
+            for duty in duties:
+                date_key = duty.date.isoformat()
+                if date_key not in schedule_by_date:
+                    schedule_by_date[date_key] = []
+                if duty not in schedule_by_date[date_key]:
+                    schedule_by_date[date_key].append(duty)
+
+        # Build response days array
+        days = []
+        current_date = start_date
+        while current_date < end_date:
+            date_key = current_date.isoformat()
+            duties = []
+
+            if date_key in schedule_by_date:
+                seen_users = set()
+                for schedule in schedule_by_date[date_key]:
+                    if schedule.user_id not in seen_users:
+                        duties.append({
+                            "id": schedule.id or 0,
+                            "user_id": schedule.user_id,
+                            "duty_date": schedule.date.isoformat(),
+                            "user": {
+                                "id": schedule.user.id,
+                                "username": schedule.user.username,
+                                "first_name": schedule.user.first_name,
+                                "last_name": schedule.user.last_name or "",
+                            },
+                            "team": {
+                                "id": schedule.team.id if schedule.team else None,
+                                "name": schedule.team.display_name or schedule.team.name if schedule.team else None,
+                            } if schedule.team else None,
+                            "notes": schedule.notes,
+                        })
+                        seen_users.add(schedule.user_id)
+
+            days.append({
+                "date": date_key,
+                "duties": duties,
+            })
+            current_date += timedelta(days=1)
+
+        return {
+            "year": year,
+            "month": month,
+            "days": days
+        }
+    except Exception as e:
+        logger.error(f"Error getting month schedule: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get schedule")
+
+
+@router.get("/schedule/day/{date}")
+async def get_daily_schedule(
+    date: str,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get schedule for a specific day - uses ScheduleService"""
+    try:
+        from datetime import datetime as dt
+
+        date_obj = dt.fromisoformat(date).date()
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
+
+        teams = await team_service.get_workspace_teams(user.workspace_id)
+
+        duties = []
+        seen_users = set()
+
+        for team in teams:
+            duty = await schedule_service.get_duty(team, date_obj)
+            if duty and duty.user_id not in seen_users:
+                duties.append({
+                    "id": duty.id,
+                    "user_id": duty.user_id,
+                    "duty_date": duty.date.isoformat(),
+                    "user": {
+                        "id": duty.user.id,
+                        "username": duty.user.username,
+                        "first_name": duty.user.first_name,
+                        "last_name": duty.user.last_name or "",
+                    },
+                    "team": {
+                        "id": duty.team.id if duty.team else None,
+                        "name": duty.team.display_name or duty.team.name if duty.team else None,
+                    } if duty.team else None,
+                    "notes": duty.notes,
+                })
+                seen_users.add(duty.user_id)
+
+        return {
+            "date": date,
+            "duties": duties,
+        }
+    except Exception as e:
+        logger.error(f"Error getting daily schedule: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get schedule")
+
+
+@router.post("/schedule/assign")
+async def assign_duty(
+    user_id: int = Body(..., embed=True),
+    duty_date: str = Body(..., embed=True),
+    team_id: int = Body(..., embed=True),
+    current_user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Assign duty to a user - uses ScheduleService"""
+    try:
+        from datetime import datetime as dt
+
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
+        user_service = UserService(db)
+
+        # Verify team belongs to user's workspace
+        team = await team_service.get_team(team_id, current_user.workspace_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+        # Get target user
+        target_user = await db.get(User, user_id)
+        if not target_user or target_user.workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=400, detail="User not found in workspace")
+
+        date_obj = dt.fromisoformat(duty_date).date()
+
+        # Use ScheduleService to set duty
+        schedule = await schedule_service.set_duty(team, target_user, date_obj)
+
+        return {
+            "status": "assigned",
+            "schedule_id": schedule.id,
+            "date": duty_date
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error assigning duty: {e}")
+        raise HTTPException(status_code=500, detail="Failed to assign duty")
+
+
+@router.delete("/schedule/{schedule_id}")
+async def remove_duty(
+    schedule_id: int,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Remove duty assignment - uses ScheduleService"""
+    try:
+        from app.models import Schedule
+
+        schedule_obj = await db.get(Schedule, schedule_id)
+        if not schedule_obj:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+
+        # Verify schedule belongs to user's workspace
+        if schedule_obj.team.workspace_id != user.workspace_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+
+        # Use ScheduleService to clear duty
+        schedule_service = ScheduleService(db)
+        success = await schedule_service.clear_duty(schedule_obj.team, schedule_obj.date)
+
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to clear duty")
+
+        return {"status": "removed", "schedule_id": schedule_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing duty: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove duty")
+
+
+# ============ Admin Management ============
+
+@router.get("/admins")
+async def get_admins(
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get list of all admins in workspace - uses UserService"""
+    try:
+        user_service = UserService(db)
+        admins = await user_service.get_all_admins(user.workspace_id)
+
+        return {
+            "admins": [
+                {
+                    "id": admin.id,
+                    "username": admin.username,
+                    "first_name": admin.first_name,
+                    "last_name": admin.last_name or "",
+                    "is_admin": admin.is_admin
+                }
+                for admin in admins
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error getting admins: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get admins")
+
+
+@router.post("/users/{user_id}/promote")
+async def promote_user(
+    user_id: int,
+    current_user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Promote user to admin - uses AdminService for logging"""
+    try:
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can promote users")
+
+        target_user = await db.get(User, user_id)
+        if not target_user or target_user.workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        target_user.is_admin = True
+        await db.commit()
+
+        # Log action using AdminService
+        admin_service = AdminService(db)
+        await admin_service.log_action(
+            workspace_id=current_user.workspace_id,
+            admin_id=current_user.id,
+            action="promote_admin",
+            target_user_id=user_id,
+            details={"promoted": True}
+        )
+
+        return {
+            "success": True,
+            "message": f"User {target_user.username} promoted to admin",
+            "user": {
+                "id": target_user.id,
+                "username": target_user.username,
+                "first_name": target_user.first_name,
+                "is_admin": target_user.is_admin
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error promoting user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to promote user")
+
+
+@router.post("/users/{user_id}/demote")
+async def demote_user(
+    user_id: int,
+    current_user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Remove admin rights from user - uses AdminService for logging"""
+    try:
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can demote users")
+
+        target_user = await db.get(User, user_id)
+        if not target_user or target_user.workspace_id != current_user.workspace_id:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if target_user.id == current_user.id:
+            raise HTTPException(status_code=400, detail="Cannot demote yourself")
+
+        target_user.is_admin = False
+        await db.commit()
+
+        # Log action using AdminService
+        admin_service = AdminService(db)
+        await admin_service.log_action(
+            workspace_id=current_user.workspace_id,
+            admin_id=current_user.id,
+            action="demote_admin",
+            target_user_id=user_id,
+            details={"demoted": True}
+        )
+
+        return {
+            "success": True,
+            "message": f"Admin rights removed from {target_user.username}",
+            "user": {
+                "id": target_user.id,
+                "username": target_user.username,
+                "first_name": target_user.first_name,
+                "is_admin": target_user.is_admin
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error demoting user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to demote user")
+
+
+# ============ Admin Logs & Reports ============
+
+@router.get("/admin-logs")
+async def get_admin_logs(
+    limit: int = 50,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get recent admin action logs - uses AdminService"""
+    try:
+        admin_service = AdminService(db)
+        logs = await admin_service.get_action_history(user.workspace_id, limit)
+
+        return {
+            "logs": [
+                {
+                    "id": log.id,
+                    "admin_user_id": log.admin_user_id,
+                    "action": log.action,
+                    "target_user_id": log.target_user_id,
+                    "timestamp": log.timestamp.isoformat(),
+                    "details": log.details,
+                    "admin_user": {
+                        "id": log.admin_user.id,
+                        "username": log.admin_user.username,
+                        "first_name": log.admin_user.first_name,
+                    } if log.admin_user else None,
+                    "target_user": {
+                        "id": log.target_user.id,
+                        "username": log.target_user.username,
+                        "first_name": log.target_user.first_name,
+                    } if log.target_user else None,
+                }
+                for log in logs
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error getting admin logs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get admin logs")
+
+
+@router.get("/schedules/range")
+async def get_schedules_by_date_range(
+    start_date: str,
+    end_date: str,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get all schedules within a date range - uses ScheduleService"""
+    try:
+        from datetime import datetime as dt
+
+        start = dt.fromisoformat(start_date).date()
+        end = dt.fromisoformat(end_date).date()
+
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
+
+        teams = await team_service.get_workspace_teams(user.workspace_id)
+
+        schedules = []
+        for team in teams:
+            team_duties = await schedule_service.get_duties_by_date_range(team, start, end)
+            for duty in team_duties:
+                schedules.append({
+                    "id": duty.id,
+                    "user_id": duty.user_id,
+                    "team_id": duty.team_id,
+                    "duty_date": duty.date.isoformat(),
+                    "user": {
+                        "id": duty.user.id,
+                        "username": duty.user.username,
+                        "first_name": duty.user.first_name,
+                        "last_name": duty.user.last_name or "",
+                    },
+                    "team": {
+                        "id": duty.team.id if duty.team else None,
+                        "name": duty.team.display_name or duty.team.name if duty.team else None,
+                    } if duty.team else None,
+                    "notes": duty.notes,
+                })
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "total_count": len(schedules),
+            "schedules": schedules
+        }
+    except Exception as e:
+        logger.error(f"Error getting schedules by date range: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get schedules")
+
+
+@router.get("/stats/schedules")
+async def get_schedule_statistics(
+    start_date: str = None,
+    end_date: str = None,
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Get schedule statistics - uses StatsService"""
+    try:
+        from datetime import datetime as dt
+
+        stats_service = StatsService(db)
+
+        # Default to last 30 days if not specified
+        if not end_date:
+            end_date = dt.now().date().isoformat()
+        if not start_date:
+            start = dt.fromisoformat(end_date).date() - timedelta(days=30)
+            start_date = start.isoformat()
+
+        start = dt.fromisoformat(start_date).date()
+        end = dt.fromisoformat(end_date).date()
+
+        year, month = end.year, end.month
+
+        # Use StatsService for consistent statistics calculation
+        top_users_data = await stats_service.get_top_users_by_duties(user.workspace_id, year, month)
+
+        # Get total duties for the period
+        schedule_service = ScheduleService(db)
+        team_service = TeamService(db)
+
+        teams = await team_service.get_workspace_teams(user.workspace_id)
+        total_duties = 0
+        unique_users = set()
+
+        for team in teams:
+            duties = await schedule_service.get_duties_by_date_range(team, start, end)
+            total_duties += len(duties)
+            for duty in duties:
+                unique_users.add(duty.user_id)
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "total_duties": total_duties,
+            "total_users_with_duties": len(unique_users),
+            "average_duties_per_user": round(total_duties / len(unique_users), 2) if unique_users else 0,
+            "top_users": [
+                {
+                    "user_id": u["user_id"],
+                    "username": u.get("display_name", "Unknown"),
+                    "count": u.get("total_duties", 0)
+                }
+                for u in top_users_data[:10]
+            ],
+        }
+    except Exception as e:
+        logger.error(f"Error getting schedule statistics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get statistics")

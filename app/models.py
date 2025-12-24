@@ -20,6 +20,7 @@ class Workspace(Base):
     chat_channels = relationship('ChatChannel', back_populates='workspace', cascade='all, delete-orphan')
     users = relationship('User', back_populates='workspace', cascade='all, delete-orphan')
     teams = relationship('Team', back_populates='workspace', cascade='all, delete-orphan')
+    admin_logs = relationship('AdminLog', cascade='all, delete-orphan')
 
     __table_args__ = (
         UniqueConstraint('workspace_type', 'external_id', name='workspace_type_external_id_unique'),
@@ -64,6 +65,7 @@ class User(Base):
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     display_name = Column(String, nullable=False)
+    is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -73,6 +75,8 @@ class User(Base):
     schedules = relationship('Schedule', back_populates='user')
     shifts = relationship('Shift', secondary='shift_members', back_populates='users')
     escalation_as_cto = relationship('Escalation', back_populates='cto_user', foreign_keys='Escalation.cto_id')
+    admin_logs_by_admin = relationship('AdminLog', back_populates='admin_user', foreign_keys='AdminLog.admin_user_id')
+    admin_logs_by_target = relationship('AdminLog', back_populates='target_user', foreign_keys='AdminLog.target_user_id')
 
     __table_args__ = (
         UniqueConstraint('workspace_id', 'telegram_username', name='user_workspace_telegram_username_unique'),
@@ -183,3 +187,21 @@ class EscalationEvent(Base):
 
     # Relationships
     team = relationship('Team')
+
+
+class AdminLog(Base):
+    """Track admin actions for audit trail"""
+    __tablename__ = 'admin_log'
+
+    id = Column(Integer, primary_key=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    admin_user_id = Column(Integer, ForeignKey('user.id'), nullable=False, index=True)
+    action = Column(String, nullable=False)  # e.g., "added_admin", "removed_admin", "changed_schedule"
+    target_user_id = Column(Integer, ForeignKey('user.id'), nullable=True)  # Who was affected
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    details = Column(Text, nullable=True)  # JSON with change details
+
+    # Relationships
+    workspace = relationship('Workspace')
+    admin_user = relationship('User', back_populates='admin_logs_by_admin', foreign_keys=[admin_user_id])
+    target_user = relationship('User', back_populates='admin_logs_by_target', foreign_keys=[target_user_id])

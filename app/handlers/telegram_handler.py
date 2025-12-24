@@ -69,6 +69,7 @@ class TelegramHandler:
         self.app.add_handler(CommandHandler("shift", self.shift_command))
         self.app.add_handler(CommandHandler("escalation", self.escalation_command))
         self.app.add_handler(CommandHandler("escalate", self.escalate_command))
+        self.app.add_handler(CommandHandler("admin", self.admin_command))
         self.app.add_handler(CommandHandler("help", self.help_command))
         self.app.add_handler(CommandHandler("start", self.help_command))
 
@@ -82,6 +83,7 @@ class TelegramHandler:
             BotCommand("shift", "Manage team shifts"),
             BotCommand("escalation", "Escalation settings"),
             BotCommand("escalate", "Escalate an issue"),
+            BotCommand("admin", "Manage admins (admins only)"),
             BotCommand("help", "Show full command list"),
         ]
         await self.app.bot.set_my_commands(commands)
@@ -152,14 +154,17 @@ class TelegramHandler:
     async def team_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /team command"""
         try:
+            from app.services.admin_service import AdminService
+
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
+                admin_service = AdminService(db)
 
                 # Create or update user if they don't exist
                 user_info = update.effective_user
-                await user_service.get_or_create_by_telegram(
+                user = await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
                     user_info.first_name or "Unknown",
@@ -176,6 +181,10 @@ class TelegramHandler:
                     command = args[0].strip()
 
                     if command == "add" and len(args) >= 2:
+                        # Check admin permission
+                        has_permission = await admin_service.check_permission(user.id, workspace_id, "team_add")
+                        if not has_permission:
+                            raise CommandError("❌ You need admin permission to add teams")
                         name = args[1].strip()
                         display_name = CommandParser.extract_quote_content(" ".join(args))
                         if not display_name:
@@ -185,6 +194,11 @@ class TelegramHandler:
                         result = await handler.team_add(name, display_name, has_shifts)
 
                     elif command == "edit" and len(args) >= 2:
+                        # Check admin permission
+                        has_permission = await admin_service.check_permission(user.id, workspace_id, "team_edit")
+                        if not has_permission:
+                            raise CommandError("❌ You need admin permission to edit teams")
+
                         team_name = args[1].strip()
                         full_text = " ".join(args)
 
@@ -209,6 +223,10 @@ class TelegramHandler:
                             raise CommandError("Unknown team edit option")
 
                     elif command == "lead" and len(args) >= 3:
+                        # Check admin permission
+                        has_permission = await admin_service.check_permission(user.id, workspace_id, "team_lead")
+                        if not has_permission:
+                            raise CommandError("❌ You need admin permission to set team leads")
                         team_name = args[1].strip()
                         mentions = CommandParser.extract_mentions(" ".join(args[2:]))
                         if not mentions:
@@ -221,30 +239,45 @@ class TelegramHandler:
                         result = await handler.team_set_lead(team_name, user)
 
                     elif command == "add-member" and len(args) >= 2:
+                        # Check admin permission
+                        has_permission = await admin_service.check_permission(user.id, workspace_id, "team_member_add")
+                        if not has_permission:
+                            raise CommandError("❌ You need admin permission to add team members")
+
                         team_name = args[1].strip()
                         mentions = CommandParser.extract_mentions(" ".join(args[2:]))
                         if not mentions:
                             raise CommandError("Usage: /team add-member <team> @user")
 
-                        user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                        if not user:
+                        target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                        if not target_user:
                             raise CommandError(f"User not found: @{mentions[0]}")
 
-                        result = await handler.team_add_member(team_name, user)
+                        result = await handler.team_add_member(team_name, target_user)
 
                     elif command == "remove-member" and len(args) >= 2:
+                        # Check admin permission
+                        has_permission = await admin_service.check_permission(user.id, workspace_id, "team_member_remove")
+                        if not has_permission:
+                            raise CommandError("❌ You need admin permission to remove team members")
+
                         team_name = args[1].strip()
                         mentions = CommandParser.extract_mentions(" ".join(args[2:]))
                         if not mentions:
                             raise CommandError("Usage: /team remove-member <team> @user")
 
-                        user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                        if not user:
+                        target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                        if not target_user:
                             raise CommandError(f"User not found: @{mentions[0]}")
 
-                        result = await handler.team_remove_member(team_name, user)
+                        result = await handler.team_remove_member(team_name, target_user)
 
                     elif command == "move" and len(args) >= 4:
+                        # Check admin permission
+                        has_permission = await admin_service.check_permission(user.id, workspace_id, "team_member_move")
+                        if not has_permission:
+                            raise CommandError("❌ You need admin permission to move team members")
+
                         mentions = CommandParser.extract_mentions(" ".join(args[1:]))
                         from_team = args[2].strip()
                         to_team = args[3].strip()
@@ -252,13 +285,18 @@ class TelegramHandler:
                         if not mentions:
                             raise CommandError("Usage: /team move @user <from_team> <to_team>")
 
-                        user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                        if not user:
+                        target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                        if not target_user:
                             raise CommandError(f"User not found: @{mentions[0]}")
 
-                        result = await handler.team_move_member(user, from_team, to_team)
+                        result = await handler.team_move_member(target_user, from_team, to_team)
 
                     elif command == "delete" and len(args) >= 2:
+                        # Check admin permission
+                        has_permission = await admin_service.check_permission(user.id, workspace_id, "team_delete")
+                        if not has_permission:
+                            raise CommandError("❌ You need admin permission to delete teams")
+
                         team_name = args[1].strip()
                         result = await handler.team_delete(team_name)
 
@@ -278,14 +316,17 @@ class TelegramHandler:
     async def schedule_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /schedule command"""
         try:
+            from app.services.admin_service import AdminService
+
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
+                admin_service = AdminService(db)
 
                 # Create or update user if they don't exist
                 user_info = update.effective_user
-                await user_service.get_or_create_by_telegram(
+                user = await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
                     user_info.first_name or "Unknown",
@@ -301,6 +342,11 @@ class TelegramHandler:
                 full_text = " ".join(args)
 
                 if "set" in full_text and len(args) >= 3:
+                    # Check admin permission
+                    has_permission = await admin_service.check_permission(user.id, workspace_id, "schedule_set")
+                    if not has_permission:
+                        raise CommandError("❌ You need admin permission to set schedules")
+
                     date_idx = full_text.find("set") + 3
                     date_part = full_text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(full_text)
@@ -308,13 +354,18 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /schedule <team> set <date> @user")
 
-                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                    if not user:
+                    target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                    if not target_user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
-                    result = await handler.schedule_set(team_name, date_part, user)
+                    result = await handler.schedule_set(team_name, date_part, target_user)
 
                 elif "clear" in full_text and len(args) >= 3:
+                    # Check admin permission
+                    has_permission = await admin_service.check_permission(user.id, workspace_id, "schedule_clear")
+                    if not has_permission:
+                        raise CommandError("❌ You need admin permission to clear schedules")
+
                     date_idx = full_text.find("clear") + 5
                     date_part = full_text[date_idx:].split()[0]
                     result = await handler.schedule_clear(team_name, date_part)
@@ -334,14 +385,17 @@ class TelegramHandler:
     async def shift_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /shift command"""
         try:
+            from app.services.admin_service import AdminService
+
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
+                admin_service = AdminService(db)
 
                 # Create or update user if they don't exist
                 user_info = update.effective_user
-                await user_service.get_or_create_by_telegram(
+                user = await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
                     user_info.first_name or "Unknown",
@@ -357,6 +411,11 @@ class TelegramHandler:
                 full_text = " ".join(args)
 
                 if "set" in full_text and len(args) >= 3:
+                    # Check admin permission
+                    has_permission = await admin_service.check_permission(user.id, workspace_id, "shift_set")
+                    if not has_permission:
+                        raise CommandError("❌ You need admin permission to set shifts")
+
                     date_idx = full_text.find("set") + 3
                     date_part = full_text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(full_text)
@@ -366,14 +425,19 @@ class TelegramHandler:
 
                     users = []
                     for mention in mentions:
-                        user = await user_service.get_user_by_telegram(workspace_id, mention)
-                        if not user:
+                        target_user = await user_service.get_user_by_telegram(workspace_id, mention)
+                        if not target_user:
                             raise CommandError(f"User not found: @{mention}")
-                        users.append(user)
+                        users.append(target_user)
 
                     result = await handler.shift_set(team_name, date_part, users)
 
                 elif "add" in full_text and len(args) >= 3:
+                    # Check admin permission
+                    has_permission = await admin_service.check_permission(user.id, workspace_id, "shift_add")
+                    if not has_permission:
+                        raise CommandError("❌ You need admin permission to add shifts")
+
                     date_idx = full_text.find("add") + 3
                     date_part = full_text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(full_text)
@@ -381,13 +445,18 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /shift <team> add <date> @user")
 
-                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                    if not user:
+                    target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                    if not target_user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
-                    result = await handler.shift_add_user(team_name, date_part, user)
+                    result = await handler.shift_add_user(team_name, date_part, target_user)
 
                 elif "remove" in full_text and len(args) >= 3:
+                    # Check admin permission
+                    has_permission = await admin_service.check_permission(user.id, workspace_id, "shift_remove")
+                    if not has_permission:
+                        raise CommandError("❌ You need admin permission to remove shifts")
+
                     date_idx = full_text.find("remove") + 6
                     date_part = full_text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(full_text)
@@ -395,13 +464,18 @@ class TelegramHandler:
                     if not mentions:
                         raise CommandError("Usage: /shift <team> remove <date> @user")
 
-                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                    if not user:
+                    target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                    if not target_user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
-                    result = await handler.shift_remove_user(team_name, date_part, user)
+                    result = await handler.shift_remove_user(team_name, date_part, target_user)
 
                 elif "clear" in full_text and len(args) >= 3:
+                    # Check admin permission
+                    has_permission = await admin_service.check_permission(user.id, workspace_id, "shift_clear")
+                    if not has_permission:
+                        raise CommandError("❌ You need admin permission to clear shifts")
+
                     date_idx = full_text.find("clear") + 5
                     date_part = full_text[date_idx:].split()[0]
                     result = await handler.shift_clear(team_name, date_part)
@@ -421,14 +495,17 @@ class TelegramHandler:
     async def escalation_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /escalation command"""
         try:
+            from app.services.admin_service import AdminService
+
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
+                admin_service = AdminService(db)
 
                 # Create or update user if they don't exist
                 user_info = update.effective_user
-                await user_service.get_or_create_by_telegram(
+                user = await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
                     user_info.first_name or "Unknown",
@@ -440,15 +517,20 @@ class TelegramHandler:
                 full_text = " ".join(args) if args else ""
 
                 if "cto" in full_text:
+                    # Check admin permission
+                    has_permission = await admin_service.check_permission(user.id, workspace_id, "escalation_cto")
+                    if not has_permission:
+                        raise CommandError("❌ You need admin permission to set CTO")
+
                     mentions = CommandParser.extract_mentions(full_text)
                     if not mentions:
                         raise CommandError("Usage: /escalation cto @user")
 
-                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                    if not user:
+                    target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                    if not target_user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
-                    result = await handler.escalation_set_cto(user)
+                    result = await handler.escalation_set_cto(target_user)
                 else:
                     result = await handler.escalation_show()
 
@@ -521,4 +603,99 @@ class TelegramHandler:
                 await update.effective_message.reply_text(result, parse_mode='Markdown')
         except Exception as e:
             logger.exception(f"Error in help_command: {e}")
+            await update.effective_message.reply_text("❌ An error occurred")
+
+    async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /admin command"""
+        try:
+            from app.services.admin_service import AdminService
+
+            async with get_db_with_retry() as db:
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
+                user_service = UserService(db)
+                admin_service = AdminService(db)
+
+                # Create or update user if they don't exist
+                user_info = update.effective_user
+                user = await user_service.get_or_create_by_telegram(
+                    workspace_id,
+                    user_info.username or f"user_{user_info.id}",
+                    user_info.first_name or "Unknown",
+                    first_name=user_info.first_name,
+                    last_name=user_info.last_name
+                )
+
+                args = context.args
+                if not args:
+                    # Show list of admins
+                    admins = await user_service.get_all_admins(workspace_id)
+                    if not admins:
+                        result = "👮 No admins configured in this workspace"
+                    else:
+                        admin_list = "\n".join(f"• {admin.display_name}" for admin in admins)
+                        result = f"👮 Admins in this workspace:\n{admin_list}"
+
+                else:
+                    command = args[0].strip()
+
+                    # Check if user has admin permission
+                    has_permission = await admin_service.check_permission(user.id, workspace_id, "admin_management")
+                    if not has_permission:
+                        raise CommandError("❌ You need admin permission to run this command")
+
+                    if command == "list":
+                        admins = await user_service.get_all_admins(workspace_id)
+                        if not admins:
+                            result = "👮 No admins configured in this workspace"
+                        else:
+                            admin_list = "\n".join(f"• {admin.display_name}" for admin in admins)
+                            result = f"👮 Admins in this workspace:\n{admin_list}"
+
+                    elif command == "add" and len(args) >= 2:
+                        mentions = CommandParser.extract_mentions(" ".join(args[1:]))
+                        if not mentions:
+                            raise CommandError("Usage: /admin add @user")
+
+                        target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                        if not target_user:
+                            raise CommandError(f"User not found: @{mentions[0]}")
+
+                        await user_service.set_admin(target_user.id, True)
+                        await admin_service.log_action(
+                            workspace_id,
+                            user.id,
+                            "added_admin",
+                            target_user_id=target_user.id,
+                            details={"target_display_name": target_user.display_name}
+                        )
+                        result = f"✅ {target_user.display_name} is now an admin"
+
+                    elif command == "remove" and len(args) >= 2:
+                        mentions = CommandParser.extract_mentions(" ".join(args[1:]))
+                        if not mentions:
+                            raise CommandError("Usage: /admin remove @user")
+
+                        target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                        if not target_user:
+                            raise CommandError(f"User not found: @{mentions[0]}")
+
+                        await user_service.set_admin(target_user.id, False)
+                        await admin_service.log_action(
+                            workspace_id,
+                            user.id,
+                            "removed_admin",
+                            target_user_id=target_user.id,
+                            details={"target_display_name": target_user.display_name}
+                        )
+                        result = f"✅ {target_user.display_name} is no longer an admin"
+
+                    else:
+                        raise CommandError("Usage: /admin [list|add|remove] [@user]")
+
+                await update.effective_message.reply_text(result)
+
+        except CommandError as e:
+            await update.effective_message.reply_text(f"❌ {str(e)}")
+        except Exception as e:
+            logger.exception(f"Error in admin_command: {e}")
             await update.effective_message.reply_text("❌ An error occurred")

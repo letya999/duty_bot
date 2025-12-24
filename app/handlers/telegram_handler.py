@@ -21,7 +21,7 @@ async def format_telegram_text(text: str) -> str:
     return text
 
 
-async def get_or_create_telegram_workspace(db: AsyncSession, chat_id: int) -> int:
+async def get_or_create_telegram_workspace(db: AsyncSession, chat_id: int, chat_title: str = None) -> int:
     """Get or create Telegram workspace by chat ID"""
     external_id = str(chat_id)
     stmt = select(Workspace).where(
@@ -32,15 +32,17 @@ async def get_or_create_telegram_workspace(db: AsyncSession, chat_id: int) -> in
     workspace = result.scalars().first()
 
     if not workspace:
+        # Use chat title if available, otherwise fallback to chat ID
+        workspace_name = chat_title or f"Telegram Chat {chat_id}"
         workspace = Workspace(
-            name=f"Telegram Chat {chat_id}",
+            name=workspace_name,
             workspace_type='telegram',
             external_id=external_id
         )
         db.add(workspace)
         await db.commit()
         await db.refresh(workspace)
-        logger.info(f"Created new Telegram workspace: {chat_id} (id={workspace.id})")
+        logger.info(f"Created new Telegram workspace: {workspace_name} (id={workspace.id})")
     else:
         logger.debug(f"Using existing Telegram workspace: {chat_id} (id={workspace.id})")
 
@@ -75,7 +77,7 @@ class TelegramHandler:
         # Register commands menu
         commands = [
             BotCommand("duty", "Show on-duty people"),
-            BotCommand("team", "Manage teams & members"),
+            BotCommand("team", "List teams & manage members"),
             BotCommand("schedule", "Manage duty schedule"),
             BotCommand("shift", "Manage team shifts"),
             BotCommand("escalation", "Escalation settings"),
@@ -83,6 +85,22 @@ class TelegramHandler:
             BotCommand("help", "Show full command list"),
         ]
         await self.app.bot.set_my_commands(commands)
+
+        # Set bot description
+        await self.app.bot.set_my_short_description(
+            short_description="⏰ Duty Roster Bot - Manage on-duty schedules and shifts"
+        )
+        await self.app.bot.set_my_description(
+            description="📅 Duty Roster Bot helps you manage team duty schedules and shifts.\n\n"
+                       "Features:\n"
+                       "• Duty schedules (single person per day)\n"
+                       "• Team shifts (multiple people per day)\n"
+                       "• Escalation system\n"
+                       "• Team management\n"
+                       "• Morning digest notifications\n\n"
+                       "Type /help for a full list of commands."
+        )
+
         logger.info("Bot commands registered")
 
         await self.app.start()
@@ -99,7 +117,7 @@ class TelegramHandler:
         """Handle /duty command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 user_service = UserService(db)
 
                 # Create or update user if they don't exist
@@ -107,7 +125,9 @@ class TelegramHandler:
                 await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
-                    user_info.first_name or "Unknown"
+                    user_info.first_name or "Unknown",
+                    first_name=user_info.first_name,
+                    last_name=user_info.last_name
                 )
 
                 handler = BotCommandHandler(db, workspace_id)
@@ -133,7 +153,7 @@ class TelegramHandler:
         """Handle /team command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
@@ -142,109 +162,110 @@ class TelegramHandler:
                 await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
-                    user_info.first_name or "Unknown"
+                    user_info.first_name or "Unknown",
+                    first_name=user_info.first_name,
+                    last_name=user_info.last_name
                 )
 
                 args = context.args
                 if not args:
-                    raise CommandError("Usage: /team <command> [args]")
-
-                command = args[0].strip()
-
-                if command == "list":
+                    # Show list of teams
                     result = await handler.team_list()
 
-                elif command == "add" and len(args) >= 2:
-                    name = args[1].strip()
-                    display_name = CommandParser.extract_quote_content(" ".join(args))
-                    if not display_name:
-                        raise CommandError('Usage: /team add <name> "<display_name>" [--shifts]')
+                else:
+                    command = args[0].strip()
 
-                    has_shifts = CommandParser.extract_flag(" ".join(args), "shifts")
-                    result = await handler.team_add(name, display_name, has_shifts)
-
-                elif command == "edit" and len(args) >= 2:
-                    team_name = args[1].strip()
-                    full_text = " ".join(args)
-
-                    if "--name" in full_text:
-                        idx = full_text.find("--name")
-                        new_name = full_text[idx:].split()[1]
-                        result = await handler.team_edit_name(team_name, new_name)
-
-                    elif "--display" in full_text:
-                        display_name = CommandParser.extract_quote_content(full_text)
+                    if command == "add" and len(args) >= 2:
+                        name = args[1].strip()
+                        display_name = CommandParser.extract_quote_content(" ".join(args))
                         if not display_name:
-                            raise CommandError('Usage: /team edit <name> --display "<new_name>"')
-                        result = await handler.team_edit_display(team_name, display_name)
+                            raise CommandError('Usage: /team add <name> "<display_name>" [--shifts]')
 
-                    elif "--shifts" in full_text:
-                        result = await handler.team_edit_shifts(team_name, True)
+                        has_shifts = CommandParser.extract_flag(" ".join(args), "shifts")
+                        result = await handler.team_add(name, display_name, has_shifts)
 
-                    elif "--no-shifts" in full_text:
-                        result = await handler.team_edit_shifts(team_name, False)
+                    elif command == "edit" and len(args) >= 2:
+                        team_name = args[1].strip()
+                        full_text = " ".join(args)
+
+                        if "--name" in full_text:
+                            idx = full_text.find("--name")
+                            new_name = full_text[idx:].split()[1]
+                            result = await handler.team_edit_name(team_name, new_name)
+
+                        elif "--display" in full_text:
+                            display_name = CommandParser.extract_quote_content(full_text)
+                            if not display_name:
+                                raise CommandError('Usage: /team edit <name> --display "<new_name>"')
+                            result = await handler.team_edit_display(team_name, display_name)
+
+                        elif "--shifts" in full_text:
+                            result = await handler.team_edit_shifts(team_name, True)
+
+                        elif "--no-shifts" in full_text:
+                            result = await handler.team_edit_shifts(team_name, False)
+
+                        else:
+                            raise CommandError("Unknown team edit option")
+
+                    elif command == "lead" and len(args) >= 3:
+                        team_name = args[1].strip()
+                        mentions = CommandParser.extract_mentions(" ".join(args[2:]))
+                        if not mentions:
+                            raise CommandError("Usage: /team lead <team> @user")
+
+                        user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                        if not user:
+                            raise CommandError(f"User not found: @{mentions[0]}")
+
+                        result = await handler.team_set_lead(team_name, user)
+
+                    elif command == "add-member" and len(args) >= 2:
+                        team_name = args[1].strip()
+                        mentions = CommandParser.extract_mentions(" ".join(args[2:]))
+                        if not mentions:
+                            raise CommandError("Usage: /team add-member <team> @user")
+
+                        user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                        if not user:
+                            raise CommandError(f"User not found: @{mentions[0]}")
+
+                        result = await handler.team_add_member(team_name, user)
+
+                    elif command == "remove-member" and len(args) >= 2:
+                        team_name = args[1].strip()
+                        mentions = CommandParser.extract_mentions(" ".join(args[2:]))
+                        if not mentions:
+                            raise CommandError("Usage: /team remove-member <team> @user")
+
+                        user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                        if not user:
+                            raise CommandError(f"User not found: @{mentions[0]}")
+
+                        result = await handler.team_remove_member(team_name, user)
+
+                    elif command == "move" and len(args) >= 4:
+                        mentions = CommandParser.extract_mentions(" ".join(args[1:]))
+                        from_team = args[2].strip()
+                        to_team = args[3].strip()
+
+                        if not mentions:
+                            raise CommandError("Usage: /team move @user <from_team> <to_team>")
+
+                        user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                        if not user:
+                            raise CommandError(f"User not found: @{mentions[0]}")
+
+                        result = await handler.team_move_member(user, from_team, to_team)
+
+                    elif command == "delete" and len(args) >= 2:
+                        team_name = args[1].strip()
+                        result = await handler.team_delete(team_name)
 
                     else:
-                        raise CommandError("Unknown team edit option")
-
-                elif command == "lead" and len(args) >= 3:
-                    team_name = args[1].strip()
-                    mentions = CommandParser.extract_mentions(" ".join(args[2:]))
-                    if not mentions:
-                        raise CommandError("Usage: /team lead <team> @user")
-
-                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                    if not user:
-                        raise CommandError(f"User not found: @{mentions[0]}")
-
-                    result = await handler.team_set_lead(team_name, user)
-
-                elif command == "add-member" and len(args) >= 2:
-                    team_name = args[1].strip()
-                    mentions = CommandParser.extract_mentions(" ".join(args[2:]))
-                    if not mentions:
-                        raise CommandError("Usage: /team add-member <team> @user")
-
-                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                    if not user:
-                        raise CommandError(f"User not found: @{mentions[0]}")
-
-                    result = await handler.team_add_member(team_name, user)
-
-                elif command == "remove-member" and len(args) >= 2:
-                    team_name = args[1].strip()
-                    mentions = CommandParser.extract_mentions(" ".join(args[2:]))
-                    if not mentions:
-                        raise CommandError("Usage: /team remove-member <team> @user")
-
-                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                    if not user:
-                        raise CommandError(f"User not found: @{mentions[0]}")
-
-                    result = await handler.team_remove_member(team_name, user)
-
-                elif command == "move" and len(args) >= 4:
-                    mentions = CommandParser.extract_mentions(" ".join(args[1:]))
-                    from_team = args[2].strip()
-                    to_team = args[3].strip()
-
-                    if not mentions:
-                        raise CommandError("Usage: /team move @user <from_team> <to_team>")
-
-                    user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
-                    if not user:
-                        raise CommandError(f"User not found: @{mentions[0]}")
-
-                    result = await handler.team_move_member(user, from_team, to_team)
-
-                elif command == "delete" and len(args) >= 2:
-                    team_name = args[1].strip()
-                    result = await handler.team_delete(team_name)
-
-                else:
-                    # Show team info
-                    team_name = command.strip()
-                    result = await handler.team_info(team_name)
+                        # Show team info
+                        team_name = command.strip()
+                        result = await handler.team_info(team_name)
 
                 await update.effective_message.reply_text(result)
 
@@ -258,7 +279,7 @@ class TelegramHandler:
         """Handle /schedule command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
@@ -267,7 +288,9 @@ class TelegramHandler:
                 await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
-                    user_info.first_name or "Unknown"
+                    user_info.first_name or "Unknown",
+                    first_name=user_info.first_name,
+                    last_name=user_info.last_name
                 )
 
                 args = context.args
@@ -312,7 +335,7 @@ class TelegramHandler:
         """Handle /shift command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
@@ -321,7 +344,9 @@ class TelegramHandler:
                 await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
-                    user_info.first_name or "Unknown"
+                    user_info.first_name or "Unknown",
+                    first_name=user_info.first_name,
+                    last_name=user_info.last_name
                 )
 
                 args = context.args
@@ -397,7 +422,7 @@ class TelegramHandler:
         """Handle /escalation command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
@@ -406,7 +431,9 @@ class TelegramHandler:
                 await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
-                    user_info.first_name or "Unknown"
+                    user_info.first_name or "Unknown",
+                    first_name=user_info.first_name,
+                    last_name=user_info.last_name
                 )
 
                 args = context.args
@@ -437,7 +464,7 @@ class TelegramHandler:
         """Handle /escalate command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 handler = BotCommandHandler(db, workspace_id)
                 user_service = UserService(db)
 
@@ -446,7 +473,9 @@ class TelegramHandler:
                 await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
-                    user_info.first_name or "Unknown"
+                    user_info.first_name or "Unknown",
+                    first_name=user_info.first_name,
+                    last_name=user_info.last_name
                 )
 
                 args = context.args
@@ -474,7 +503,7 @@ class TelegramHandler:
         """Handle /help and /start command"""
         try:
             async with get_db_with_retry() as db:
-                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id)
+                workspace_id = await get_or_create_telegram_workspace(db, update.effective_chat.id, update.effective_chat.title)
                 user_service = UserService(db)
 
                 # Create or update user if they don't exist
@@ -482,7 +511,9 @@ class TelegramHandler:
                 await user_service.get_or_create_by_telegram(
                     workspace_id,
                     user_info.username or f"user_{user_info.id}",
-                    user_info.first_name or "Unknown"
+                    user_info.first_name or "Unknown",
+                    first_name=user_info.first_name,
+                    last_name=user_info.last_name
                 )
 
                 handler = BotCommandHandler(db, workspace_id)

@@ -61,6 +61,8 @@ class User(Base):
     workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
     telegram_username = Column(String, nullable=True, index=True)
     slack_user_id = Column(String, nullable=True, index=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
     display_name = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 

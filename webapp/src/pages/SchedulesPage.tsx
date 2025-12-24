@@ -18,6 +18,16 @@ interface DutyFormData {
   isBulk: boolean;
 }
 
+const getWeekDays = (date: Date) => {
+  const start = new Date(date);
+  start.setDate(start.getDate() - start.getDay());
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+};
+
 interface EditingDuty {
   id: number;
   userId?: number;
@@ -33,8 +43,11 @@ const SchedulesPage: React.FC = () => {
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('month');
 
   // Calendar state
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  // Derived state for API calls and Month View
+  const month = currentDate.getMonth() + 1;
+  const year = currentDate.getFullYear();
 
   // List view state
   const [listStartDate, setListStartDate] = useState(new Date().toISOString().split('T')[0]);
@@ -64,6 +77,12 @@ const SchedulesPage: React.FC = () => {
     loadData();
   }, [month, year, viewMode, listStartDate, listEndDate]);
 
+  // Reset selected date when switching modes
+  useEffect(() => {
+    // When switching modes, we might want to sync current date or keep it?
+    // For now, let's just ensure we are looking at something relevant.
+  }, [viewMode, calendarMode]);
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -76,6 +95,7 @@ const SchedulesPage: React.FC = () => {
       setUsers(usersData);
 
       if (viewMode === 'calendar') {
+        // For calendar, we fetch the whole month (or surrounding if needed)
         const monthData = await apiService.getMonthSchedule(year, month);
         setSchedules(monthData.days.flatMap(d => d.duties));
       } else {
@@ -103,7 +123,7 @@ const SchedulesPage: React.FC = () => {
   };
 
   const getSelectedTeam = () => {
-    return teams.find(t => t.id.toString() === formData.teamId);
+    return teams.find((t: Team) => t.id.toString() === formData.teamId);
   };
 
   const handleOpenEditModal = (duty: Schedule) => {
@@ -138,8 +158,12 @@ const SchedulesPage: React.FC = () => {
           formData.teamId ? parseInt(formData.teamId) : undefined
         );
       } else if (formData.isBulk && formData.userIds.length > 0) {
+        if (!formData.teamId) {
+          alert('Please select a team for bulk assignment');
+          return;
+        }
         // Bulk assign - works for both shift and regular teams
-        const userIds = formData.userIds.map(id => parseInt(id));
+        const userIds = formData.userIds.map((id: string) => parseInt(id));
         if (isShiftTeam && formData.teamId) {
           // For shift teams, assign all users to each date in range
           await apiService.assignShiftsBulk(
@@ -195,9 +219,9 @@ const SchedulesPage: React.FC = () => {
   const getFilteredSchedules = () => {
     let filtered = schedules;
     if (selectedTeamFilter) {
-      filtered = filtered.filter(s => s.team_id?.toString() === selectedTeamFilter);
+      filtered = filtered.filter((s: Schedule) => (s.team_id?.toString() === selectedTeamFilter) || (s.team?.id?.toString() === selectedTeamFilter));
     }
-    return filtered.sort((a, b) => new Date(a.duty_date).getTime() - new Date(b.duty_date).getTime());
+    return filtered.sort((a: Schedule, b: Schedule) => new Date(a.duty_date).getTime() - new Date(b.duty_date).getTime());
   };
 
   const getDaysInMonth = (m: number, y: number) => {
@@ -217,29 +241,157 @@ const SchedulesPage: React.FC = () => {
 
   const getSchedulesForDay = (day: number) => {
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const daySchedules = getFilteredSchedules().filter(s => s.duty_date === dateStr);
+    const daySchedules = getFilteredSchedules().filter((s: Schedule) => s.duty_date === dateStr);
     return daySchedules;
   };
 
-  const handlePrevMonth = () => {
-    if (month === 1) {
-      setMonth(12);
-      setYear(year - 1);
+  const handlePrev = () => {
+    const newDate = new Date(currentDate);
+    if (calendarMode === 'day') {
+      newDate.setDate(newDate.getDate() - 1);
+    } else if (calendarMode === 'week') {
+      newDate.setDate(newDate.getDate() - 7);
     } else {
-      setMonth(month - 1);
+      newDate.setMonth(newDate.getMonth() - 1);
     }
+    setCurrentDate(newDate);
   };
 
-  const handleNextMonth = () => {
-    if (month === 12) {
-      setMonth(1);
-      setYear(year + 1);
+  const handleNext = () => {
+    const newDate = new Date(currentDate);
+    if (calendarMode === 'day') {
+      newDate.setDate(newDate.getDate() + 1);
+    } else if (calendarMode === 'week') {
+      newDate.setDate(newDate.getDate() + 7);
     } else {
-      setMonth(month + 1);
+      newDate.setMonth(newDate.getMonth() + 1);
     }
+    setCurrentDate(newDate);
   };
 
-  const renderCalendar = () => {
+  const renderDayView = () => {
+    // Use currentDate as the view cursor
+    const viewDate = currentDate;
+    const dateStr = viewDate.toISOString().split('T')[0];
+    const duties = getFilteredSchedules().filter((s: Schedule) => s.duty_date === dateStr);
+
+    return (
+      <Card>
+        <CardHeader className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {viewDate.toLocaleDateString('default', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </h2>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={handlePrev}>
+              <ChevronLeft size={18} />
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleNext}>
+              <ChevronRight size={18} />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardBody>
+          <div className="p-4 border rounded-lg bg-white min-h-48">
+            {duties.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No duties assigned</p>
+            ) : (
+              <div className="space-y-2">
+                {duties.map((s: Schedule) => (
+                  <div key={s.id} className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 font-bold">
+                        {s.user.first_name[0]}
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">{s.user.first_name} {s.user.last_name}</p>
+                        <p className="text-xs text-gray-500">{s.team?.name}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleOpenEditModal(s)} className="p-2 text-blue-600 hover:bg-blue-100 rounded">
+                        <Edit2 size={16} />
+                      </button>
+                      <button onClick={() => handleDeleteDuty(s.id)} className="p-2 text-red-600 hover:bg-red-100 rounded">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 text-center">
+              <Button variant="secondary" onClick={() => handleOpenAddModal(viewDate.toISOString().split('T')[0])}>
+                <Plus size={16} /> Add Duty
+              </Button>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+    );
+  };
+
+  const renderWeekView = () => {
+    // Determine the week to show.
+    const weekDays = getWeekDays(currentDate);
+
+    // Header date range
+    const startStr = weekDays[0].toLocaleDateString('default', { month: 'short', day: 'numeric' });
+    const endStr = weekDays[6].toLocaleDateString('default', { month: 'short', day: 'numeric' });
+    const yearStr = weekDays[6].getFullYear();
+
+    return (
+      <Card>
+        <CardHeader className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {startStr} - {endStr}, {yearStr}
+          </h2>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={handlePrev}>
+              <ChevronLeft size={18} />
+            </Button>
+            <Button variant="secondary" size="sm" onClick={handleNext}>
+              <ChevronRight size={18} />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-7 gap-2">
+            {weekDays.map(date => {
+              const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+              const dateStr = date.toISOString().split('T')[0];
+              const daySchedules = getFilteredSchedules().filter((s: Schedule) => s.duty_date === dateStr);
+              // Show days even if not in current month, though we might not have data if not fetched.
+              const isCurrentMonth = date.getMonth() === month - 1;
+              const isToday = date.toDateString() === new Date().toDateString();
+
+              return (
+                <div key={date.toString()} className="flex flex-col gap-2">
+                  <div className={`text-center font-semibold ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>
+                    {dayNames[date.getDay()]} {date.getDate()}
+                  </div>
+                  <div
+                    className={`min-h-64 p-2 border rounded-lg ${isCurrentMonth ? 'bg-white' : 'bg-gray-50'}`}
+                    onClick={() => handleOpenAddModal(dateStr)}
+                  >
+                    {daySchedules.map(s => (
+                      <div key={s.id} className="text-xs bg-blue-50 text-blue-700 p-1 mb-1 rounded truncate flex justify-between group">
+                        <span>{s.user.first_name}</span>
+                        <div className="hidden group-hover:block cursor-pointer" onClick={(e) => { e.stopPropagation(); handleOpenEditModal(s); }}>
+                          <Edit2 size={10} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardBody>
+      </Card>
+    );
+  };
+
+  const renderMonthView = () => {
     const daysInMonth = getDaysInMonth(month, year);
     const firstDay = getFirstDayOfMonth(month, year);
     const days = Array.from({ length: 42 }, (_, i) => {
@@ -254,10 +406,10 @@ const SchedulesPage: React.FC = () => {
             {monthNames[month - 1]} {year}
           </h2>
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={handlePrevMonth}>
+            <Button variant="secondary" size="sm" onClick={handlePrev}>
               <ChevronLeft size={18} />
             </Button>
-            <Button variant="secondary" size="sm" onClick={handleNextMonth}>
+            <Button variant="secondary" size="sm" onClick={handleNext}>
               <ChevronRight size={18} />
             </Button>
           </div>
@@ -278,9 +430,8 @@ const SchedulesPage: React.FC = () => {
               return (
                 <div
                   key={idx}
-                  className={`min-h-24 p-2 border rounded-lg ${
-                    day ? 'bg-white border-gray-200 hover:border-blue-300 cursor-pointer' : 'bg-gray-50 border-gray-100'
-                  }`}
+                  className={`min-h-24 p-2 border rounded-lg ${day ? 'bg-white border-gray-200 hover:border-blue-300 cursor-pointer' : 'bg-gray-50 border-gray-100'
+                    }`}
                   onClick={() => {
                     if (day) {
                       const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -292,11 +443,11 @@ const SchedulesPage: React.FC = () => {
                     <>
                       <p className="font-semibold text-gray-700 mb-1">{day}</p>
                       <div className="space-y-1">
-                        {daySchedules.slice(0, 2).map(s => (
+                        {daySchedules.slice(0, 2).map((s: Schedule) => (
                           <div
                             key={s.id}
                             className="text-xs bg-blue-50 text-blue-700 p-1 rounded truncate group relative hover:bg-blue-100"
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e: React.MouseEvent) => e.stopPropagation()}
                           >
                             <div className="flex justify-between items-center">
                               <span>{s.user.first_name}</span>
@@ -304,7 +455,7 @@ const SchedulesPage: React.FC = () => {
                                 <Edit2
                                   size={12}
                                   className="cursor-pointer"
-                                  onClick={(e) => {
+                                  onClick={(e: React.MouseEvent) => {
                                     e.stopPropagation();
                                     handleOpenEditModal(s);
                                   }}
@@ -330,6 +481,14 @@ const SchedulesPage: React.FC = () => {
     );
   };
 
+  const renderCalendar = () => {
+    switch (calendarMode) {
+      case 'day': return renderDayView();
+      case 'week': return renderWeekView();
+      default: return renderMonthView();
+    }
+  };
+
   const renderListView = () => {
     const filteredSchedules = getFilteredSchedules();
 
@@ -351,7 +510,7 @@ const SchedulesPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredSchedules.map(duty => (
+                {filteredSchedules.map((duty: Schedule) => (
                   <tr key={duty.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-4 text-gray-900">{duty.duty_date}</td>
                     <td className="py-3 px-4 text-gray-900">{duty.user.first_name}</td>
@@ -413,22 +572,20 @@ const SchedulesPage: React.FC = () => {
         <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
           <button
             onClick={() => setViewMode('calendar')}
-            className={`px-4 py-2 rounded flex items-center gap-2 ${
-              viewMode === 'calendar'
-                ? 'bg-white text-blue-600 shadow'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
+            className={`px-4 py-2 rounded flex items-center gap-2 ${viewMode === 'calendar'
+              ? 'bg-white text-blue-600 shadow'
+              : 'text-gray-600 hover:text-gray-900'
+              }`}
           >
             <Calendar size={18} />
             Calendar
           </button>
           <button
             onClick={() => setViewMode('list')}
-            className={`px-4 py-2 rounded flex items-center gap-2 ${
-              viewMode === 'list'
-                ? 'bg-white text-blue-600 shadow'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
+            className={`px-4 py-2 rounded flex items-center gap-2 ${viewMode === 'list'
+              ? 'bg-white text-blue-600 shadow'
+              : 'text-gray-600 hover:text-gray-900'
+              }`}
           >
             <List size={18} />
             List
@@ -442,11 +599,10 @@ const SchedulesPage: React.FC = () => {
               <button
                 key={mode}
                 onClick={() => setCalendarMode(mode as CalendarMode)}
-                className={`px-3 py-2 rounded text-sm capitalize ${
-                  calendarMode === mode
-                    ? 'bg-white text-blue-600 shadow'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                className={`px-3 py-2 rounded text-sm capitalize ${calendarMode === mode
+                  ? 'bg-white text-blue-600 shadow'
+                  : 'text-gray-600 hover:text-gray-900'
+                  }`}
               >
                 {mode}
               </button>
@@ -457,11 +613,11 @@ const SchedulesPage: React.FC = () => {
         {/* Team Filter */}
         <select
           value={selectedTeamFilter}
-          onChange={(e) => setSelectedTeamFilter(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedTeamFilter(e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">All Teams</option>
-          {teams.map(team => (
+          {teams.map((team: Team) => (
             <option key={team.id} value={team.id}>
               {team.name}
             </option>
@@ -474,14 +630,14 @@ const SchedulesPage: React.FC = () => {
             <input
               type="date"
               value={listStartDate}
-              onChange={(e) => setListStartDate(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setListStartDate(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <span className="py-2 text-gray-500">to</span>
             <input
               type="date"
               value={listEndDate}
-              onChange={(e) => setListEndDate(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setListEndDate(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -505,7 +661,7 @@ const SchedulesPage: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={formData.isBulk}
-                  onChange={(e) => setFormData({ ...formData, isBulk: e.target.checked })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, isBulk: e.target.checked })}
                   className="w-4 h-4"
                 />
                 <span className="text-sm font-medium text-gray-700">Bulk assign for date range</span>
@@ -519,11 +675,11 @@ const SchedulesPage: React.FC = () => {
             </label>
             <select
               value={formData.teamId}
-              onChange={(e) => setFormData({ ...formData, teamId: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, teamId: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Select a team</option>
-              {teams.map(team => (
+              {teams.map((team: Team) => (
                 <option key={team.id} value={team.id}>
                   {team.name} {team.has_shifts ? '(Shifts)' : ''}
                 </option>
@@ -547,7 +703,7 @@ const SchedulesPage: React.FC = () => {
                   <input
                     type="date"
                     value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedDate(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -583,7 +739,7 @@ const SchedulesPage: React.FC = () => {
                   <input
                     type="checkbox"
                     checked={formData.isBulk}
-                    onChange={(e) => setFormData({ ...formData, isBulk: e.target.checked })}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, isBulk: e.target.checked })}
                     className="w-4 h-4"
                   />
                   <span className="text-sm font-medium text-gray-700">Date range (bulk)</span>
@@ -595,12 +751,12 @@ const SchedulesPage: React.FC = () => {
                   Users *
                 </label>
                 <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
-                  {users.map(user => (
+                  {users.map((user: User) => (
                     <label key={user.id} className="flex items-center gap-2">
                       <input
                         type="checkbox"
                         checked={formData.userIds.includes(user.id.toString())}
-                        onChange={(e) => {
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                           if (e.target.checked) {
                             setFormData({
                               ...formData,
@@ -632,7 +788,7 @@ const SchedulesPage: React.FC = () => {
                     <input
                       type="date"
                       value={formData.startDate}
-                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, startDate: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -644,7 +800,7 @@ const SchedulesPage: React.FC = () => {
                     <input
                       type="date"
                       value={formData.endDate}
-                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, endDate: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -654,12 +810,12 @@ const SchedulesPage: React.FC = () => {
                       Users *
                     </label>
                     <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
-                      {users.map(user => (
+                      {users.map((user: User) => (
                         <label key={user.id} className="flex items-center gap-2">
                           <input
                             type="checkbox"
                             checked={formData.userIds.includes(user.id.toString())}
-                            onChange={(e) => {
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                               if (e.target.checked) {
                                 setFormData({
                                   ...formData,
@@ -689,7 +845,7 @@ const SchedulesPage: React.FC = () => {
                     <input
                       type="date"
                       value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedDate(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -700,11 +856,11 @@ const SchedulesPage: React.FC = () => {
                     </label>
                     <select
                       value={formData.userIds[0] || ''}
-                      onChange={(e) => setFormData({ ...formData, userIds: [e.target.value] })}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, userIds: [e.target.value] })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Select a user</option>
-                      {users.map(user => (
+                      {users.map((user: User) => (
                         <option key={user.id} value={user.id}>
                           {user.first_name} {user.last_name || ''}
                         </option>
@@ -716,19 +872,7 @@ const SchedulesPage: React.FC = () => {
             </>
           )}
 
-          {!editingDuty && !getSelectedTeam()?.has_shifts && (
-            <div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formData.isBulk}
-                  onChange={(e) => setFormData({ ...formData, isBulk: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm font-medium text-gray-700">Bulk assign for date range</span>
-              </label>
-            </div>
-          )}
+          {/* Top checkbox already handles this */}
 
           <div className="flex gap-3 justify-end">
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>

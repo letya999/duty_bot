@@ -7,6 +7,21 @@ class UserService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def create_user(self, workspace_id: int, username: str, telegram_username: str = None, first_name: str = None, last_name: str = None, slack_user_id: str = None) -> User:
+        """Create a new user"""
+        user = User(
+            workspace_id=workspace_id,
+            username=username,
+            telegram_username=telegram_username,
+            first_name=first_name,
+            last_name=last_name,
+            slack_user_id=slack_user_id,
+            display_name=first_name or username
+        )
+        self.db.add(user)
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
     async def get_or_create_by_telegram(self, workspace_id: int, telegram_username: str, display_name: str, first_name: str = None, last_name: str = None, telegram_id: int = None) -> User:
         """Get or create user by Telegram username or ID in workspace"""
         # Try to find by telegram_id first if provided

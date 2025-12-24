@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timedelta, date as date_type
 from fastapi import APIRouter, Depends, HTTPException, Header, Body
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_, or_, func, case
 
 from app.database import AsyncSessionLocal
 from app.models import User
@@ -118,7 +119,9 @@ async def get_teams(
         for team in teams:
             result_list.append({
                 "id": team.id,
-                "name": team.display_name or team.name,
+                "name": team.name,
+                "display_name": team.display_name,
+                "has_shifts": team.has_shifts,
                 "team_lead_id": team.team_lead_id,
                 "members": [
                     {
@@ -1226,7 +1229,8 @@ async def replace_duty_user(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can modify duties")
 
-        from sqlalchemy import select
+        from sqlalchemy import select, and_, or_, func, case
+        from sqlalchemy.orm import selectinload, joinedload
         from app.models import Schedule as ScheduleModel
 
         stmt = select(ScheduleModel).where(ScheduleModel.id == schedule_id)
@@ -1439,6 +1443,206 @@ async def remove_team_member(
     except Exception as e:
         logger.error(f"Error removing team member: {e}")
         raise HTTPException(status_code=500, detail="Failed to remove team member")
+
+
+# ============ Members Management Endpoints ============
+
+@router.post(
+    "/teams/{team_id}/members/import",
+    tags=["Teams"],
+    summary="Import member by handle",
+    description="Добавить участника по Telegram/Slack нику или ссылке."
+)
+async def import_team_member(
+    team_id: int,
+    handle: str = Body(..., embed=True),
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Import member by handle"""
+    try:
+        from telegram import Bot
+        from telegram.error import TelegramError
+        from slack_sdk.web.async_client import AsyncWebClient
+        from slack_sdk.errors import SlackApiError
+        from app.config import get_settings
+        
+        settings = get_settings()
+
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can manage team members")
+
+        team_service = TeamService(db)
+        team = await team_service.get_team(team_id, user.workspace_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+        # Clean handle
+        clean_handle = handle.strip()
+        source = "unknown"
+        
+        imported_info = {
+            "first_name": clean_handle,
+            "last_name": None,
+            "username": clean_handle,
+            "telegram_id": None,
+            "slack_id": None
+        }
+
+        # Telegram detection
+        if clean_handle.startswith("https://t.me/") or clean_handle.startswith("@"):
+            source = "telegram"
+            if clean_handle.startswith("https://t.me/"):
+                clean_handle = clean_handle.replace("https://t.me/", "")
+            if clean_handle.startswith("@"):
+                clean_handle = clean_handle[1:]
+            
+            imported_info["username"] = clean_handle
+            
+            # Try to fetch from Telegram
+            if settings.telegram_token:
+                try:
+                    bot = Bot(token=settings.telegram_token)
+                    # get_chat works for @username
+                    chat = await bot.get_chat(f"@{clean_handle}")
+                    imported_info["first_name"] = chat.first_name or clean_handle
+                    imported_info["last_name"] = chat.last_name
+                    imported_info["username"] = chat.username or clean_handle
+                    imported_info["telegram_id"] = str(chat.id)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch Telegram info for {clean_handle}: {e}")
+
+        # Slack detection (URL or User ID)
+        elif "slack.com" in clean_handle or (clean_handle.startswith("U") and len(clean_handle) > 8):
+            source = "slack"
+            slack_user_id = clean_handle
+            
+            # Extract ID from URL if present
+            # Format: https://workspace.slack.com/team/U12345678
+            if "slack.com" in clean_handle and "/team/" in clean_handle:
+                parts = clean_handle.split("/team/")
+                if len(parts) > 1:
+                    slack_user_id = parts[1].split("/")[0].split("?")[0]
+            
+            imported_info["slack_id"] = slack_user_id
+            
+            # Try to fetch from Slack
+            if settings.slack_bot_token:
+                try:
+                    slack_client = AsyncWebClient(token=settings.slack_bot_token)
+                    resp = await slack_client.users_info(user=slack_user_id)
+                    if resp["ok"]:
+                        slack_user = resp["user"]
+                        profile = slack_user.get("profile", {})
+                        imported_info["first_name"] = profile.get("first_name") or slack_user.get("real_name") or "Slack User"
+                        imported_info["last_name"] = profile.get("last_name")
+                        imported_info["username"] = slack_user.get("name")
+                        imported_info["slack_id"] = slack_user.get("id")
+                except Exception as e:
+                     logger.warning(f"Failed to fetch Slack info for {slack_user_id}: {e}")
+
+        # Try to find existing user
+        user_service = UserService(db)
+        
+        # Check by telegram username or slack id or internal username
+        stmt = select(User).where(
+            (User.workspace_id == user.workspace_id) & 
+            (
+                (User.telegram_username == imported_info["username"]) | 
+                (User.username == imported_info["username"]) |
+                (User.slack_id == imported_info["slack_id"])
+            )
+        )
+        result = await db.execute(stmt)
+        target_user = result.scalars().first()
+
+        if not target_user:
+            # Create new user
+            target_user = await user_service.create_user(
+                workspace_id=user.workspace_id,
+                username=imported_info["username"],
+                telegram_username=imported_info["username"] if source == "telegram" else None,
+                first_name=imported_info["first_name"],
+                last_name=imported_info["last_name"],
+                slack_user_id=imported_info["slack_id"]
+            )
+            # Update explicit IDs provided by API if not set during creation (create_user might not accept all)
+            # Actually create_user signature in UserService might need check but we can update manually
+            if imported_info["telegram_id"] and not target_user.telegram_id:
+                try:
+                    target_user.telegram_id = int(imported_info["telegram_id"])
+                    await db.commit()
+                except ValueError:
+                    logger.warning(f"Invalid telegram_id format: {imported_info['telegram_id']}")
+
+        if not target_user:
+             raise HTTPException(status_code=500, detail="Failed to find or create user")
+
+        # Add to team
+        await team_service.add_member(team, target_user)
+
+        return {
+            "status": "added",
+            "user": {
+                "id": target_user.id,
+                "username": target_user.username,
+                "first_name": target_user.first_name,
+                "last_name": target_user.last_name,
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error importing team member: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to import team member: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error importing team member: {e}")
+        raise HTTPException(status_code=500, detail="Failed to import team member")
+
+
+@router.post(
+    "/teams/members/move",
+    tags=["Teams"],
+    summary="Move member to another team",
+    description="Переместить участника из одной команды в другую."
+)
+async def move_team_member(
+    user_id: int = Body(..., embed=True),
+    from_team_id: int = Body(..., embed=True),
+    to_team_id: int = Body(..., embed=True),
+    user: User = Depends(get_user_from_token),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """Move member between teams"""
+    try:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can manage team members")
+
+        team_service = TeamService(db)
+        
+        # Verify teams
+        from_team = await team_service.get_team(from_team_id, user.workspace_id)
+        to_team = await team_service.get_team(to_team_id, user.workspace_id)
+        
+        if not from_team or not to_team:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+        target_user = await db.get(User, user_id)
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Execute move
+        await team_service.remove_member(from_team, target_user)
+        await team_service.add_member(to_team, target_user)
+
+        return {"status": "moved"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error moving team member: {e}")
+        raise HTTPException(status_code=500, detail="Failed to move team member")
 
 
 # ============ Escalations Management Endpoints ============

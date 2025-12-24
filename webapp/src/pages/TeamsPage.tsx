@@ -35,6 +35,8 @@ const TeamsPage: React.FC = () => {
   const [selectedTeamForMembers, setSelectedTeamForMembers] = useState<Team | null>(null);
   const [memberModalOpen, setMemberModalOpen] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
+  const [importHandle, setImportHandle] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -61,9 +63,9 @@ const TeamsPage: React.FC = () => {
       setEditingTeam(team);
       setFormData({
         name: team.name,
-        displayName: team.description || team.name,
-        hasShifts: false,
-        teamLeadId: '',
+        displayName: team.display_name || team.name, // Use display_name if available
+        hasShifts: team.has_shifts || false,
+        teamLeadId: team.team_lead_id ? team.team_lead_id.toString() : '',
       });
     } else {
       setEditingTeam(null);
@@ -143,6 +145,56 @@ const TeamsPage: React.FC = () => {
       loadData();
     } catch (err) {
       console.error('Failed to save members', err);
+    }
+  };
+
+  const handleImportMember = async () => {
+    if (!selectedTeamForMembers || !importHandle) return;
+
+    try {
+      setIsImporting(true);
+      await apiService.importTeamMember(selectedTeamForMembers.id, importHandle);
+      setImportHandle('');
+      loadData();
+      // We don't close the modal, so user can see the new member
+
+      // Refresh the selected members list for the current modal? 
+      // Actually loadData updates 'teams', but we need to update 'selectedMembers' or 'users'.
+      // If we reload data, 'teams' and 'users' update.
+      // But 'selectedMembers' state is static ids.
+      // We should probably re-init selectedMembers if we want to reflect the change visually immediately? 
+      // Or just wait for re-render.
+      // Because we fetched new teams, selectedTeamForMembers (which is a reference to old team object) might be stale if we don't update it.
+      // But we can just find the team again.
+      const updatedTeams = await apiService.getTeams();
+      const updatedTeam = updatedTeams.find(t => t.id === selectedTeamForMembers.id);
+      if (updatedTeam) {
+        setSelectedTeamForMembers(updatedTeam);
+        setSelectedMembers(updatedTeam.members?.map(m => m.id) || []);
+      }
+
+    } catch (err) {
+      console.error('Failed to import member', err);
+      alert('Failed to import member');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleMoveMember = async (userId: number, toTeamId: number) => {
+    if (!selectedTeamForMembers || !toTeamId) return;
+
+    if (!window.confirm('Move member to another team?')) return;
+
+    try {
+      await apiService.moveTeamMember(userId, selectedTeamForMembers.id, toTeamId);
+      loadData();
+
+      // Update local state to remove user from this team
+      setSelectedMembers(prev => prev.filter(id => id !== userId));
+
+    } catch (err) {
+      console.error('Failed to move member', err);
     }
   };
 
@@ -326,23 +378,59 @@ const TeamsPage: React.FC = () => {
         size="md"
       >
         <div className="space-y-4">
+          <div className="flex gap-2 mb-4">
+            <input
+              type="text"
+              value={importHandle}
+              onChange={(e) => setImportHandle(e.target.value)}
+              placeholder="@username or t.me/link or Slack link"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleImportMember}
+              disabled={!importHandle || isImporting}
+            >
+              {isImporting ? 'Adding...' : 'Add Member'}
+            </Button>
+          </div>
+
           <div className="max-h-96 overflow-y-auto border border-gray-300 rounded-lg p-3 space-y-2">
             {users.map(user => (
-              <label key={user.id} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={selectedMembers.includes(user.id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedMembers([...selectedMembers, user.id]);
-                    } else {
-                      setSelectedMembers(selectedMembers.filter(id => id !== user.id));
-                    }
-                  }}
-                  className="w-4 h-4"
-                />
-                <span className="text-gray-700">{user.first_name} {user.last_name || ''}</span>
-              </label>
+              <div key={user.id} className="flex justify-between items-center group">
+                <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedMembers.includes(user.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedMembers([...selectedMembers, user.id]);
+                      } else {
+                        setSelectedMembers(selectedMembers.filter(id => id !== user.id));
+                      }
+                    }}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-gray-700">
+                    {user.first_name} {user.last_name || ''}
+                    {user.username ? <span className="text-gray-400 text-xs ml-1">(@{user.username})</span> : ''}
+                  </span>
+                </label>
+
+                {selectedMembers.includes(user.id) && (
+                  <select
+                    className="text-xs border border-gray-200 rounded px-1 py-1 text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
+                    onChange={(e) => handleMoveMember(user.id, parseInt(e.target.value))}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Move to...</option>
+                    {teams.filter(t => t.id !== selectedTeamForMembers?.id).map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             ))}
           </div>
 

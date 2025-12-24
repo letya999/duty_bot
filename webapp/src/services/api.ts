@@ -185,6 +185,22 @@ export const apiService = {
     return response.data;
   },
 
+  // Import team member by handle
+  importTeamMember: async (teamId: number, handle: string): Promise<any> => {
+    const response = await api.post(`/teams/${teamId}/members/import`, { handle });
+    return response.data;
+  },
+
+  // Move team member
+  moveTeamMember: async (userId: number, fromTeamId: number, toTeamId: number): Promise<any> => {
+    const response = await api.post('/teams/members/move', {
+      user_id: userId,
+      from_team_id: fromTeamId,
+      to_team_id: toTeamId
+    });
+    return response.data;
+  },
+
   // Get escalations
   getEscalations: async (teamId?: number): Promise<any> => {
     const response = await api.get('/escalations', {

@@ -14,6 +14,9 @@ export interface User {
 export interface Team {
   id: number;
   name: string;
+  display_name: string;
+  has_shifts?: boolean;
+  team_lead_id?: number;
   description?: string;
   workspace_id: number;
   members: User[];

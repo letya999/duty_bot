@@ -27,6 +27,15 @@ class CommandHandler:
         self.rotation_service = RotationService(db)
         self.settings = get_settings()
 
+    def _get_today(self, today: date = None) -> date:
+        """Get today's date in the configured timezone"""
+        if today is None:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo(self.settings.timezone)
+            today = datetime.now(tz).date()
+        return today
+
     async def help(self) -> str:
         """Return full list of commands"""
         return """*Available Commands*
@@ -92,12 +101,7 @@ class CommandHandler:
 
     async def duty_today(self, today: date = None) -> str:
         """Show all on-duty people today"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            # Use application's configured timezone for consistent date comparison
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         teams = await self.team_service.get_all_teams(self.workspace_id)
 
@@ -124,12 +128,7 @@ class CommandHandler:
 
     async def mention_duty(self, team_name: str, today: date = None) -> str:
         """Mention today's duty person/shift"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            # Use application's configured timezone for consistent date comparison
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -303,12 +302,7 @@ Members: {members_str}"""
 
     async def schedule_show(self, team_name: str, period: str = "week", today: date = None) -> str:
         """Show schedule"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            # Use application's configured timezone for consistent date comparison
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -348,12 +342,7 @@ Members: {members_str}"""
         force: bool = False
     ) -> str:
         """Set duty for date range"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            # Use application's configured timezone for consistent date comparison
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -420,12 +409,7 @@ Members: {members_str}"""
         today: date = None
     ) -> str:
         """Clear duty for date range"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            # Use application's configured timezone for consistent date comparison
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -446,12 +430,7 @@ Members: {members_str}"""
 
     async def shift_show(self, team_name: str, period: str = "week", today: date = None) -> str:
         """Show shifts"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            # Use application's configured timezone for consistent date comparison
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -491,12 +470,7 @@ Members: {members_str}"""
         force: bool = False
     ) -> str:
         """Set shift for date range"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            # Use application's configured timezone for consistent date comparison
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -569,12 +543,7 @@ Members: {members_str}"""
         force: bool = False
     ) -> str:
         """Add user to shift"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            # Use application's configured timezone for consistent date comparison
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -623,12 +592,7 @@ Members: {members_str}"""
         today: date = None
     ) -> str:
         """Remove user from shift"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            # Use application's configured timezone for consistent date comparison
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -646,12 +610,7 @@ Members: {members_str}"""
         today: date = None
     ) -> str:
         """Clear shifts for date range"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            # Use application's configured timezone for consistent date comparison
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:
@@ -757,11 +716,7 @@ Members: {members_str}"""
         today: date = None
     ) -> str:
         """Automatically assign the next person in rotation to a date"""
-        if today is None:
-            from datetime import datetime
-            from zoneinfo import ZoneInfo
-            tz = ZoneInfo(self.settings.timezone)
-            today = datetime.now(tz).date()
+        today = self._get_today(today)
 
         team = await self.team_service.get_team_by_name(self.workspace_id, team_name)
         if not team:

@@ -7,120 +7,54 @@ interface TelegramLoginWidgetProps {
   cornerRadius?: number;
   requestAccess?: 'notify' | boolean;
   usePic?: boolean;
+  mode?: 'widget' | 'callback';
 }
 
 declare global {
   interface Window {
-    onTelegramAuth: (user: any) => void;
+    TelegramAuthCallback: (user: any) => void;
+    Telegram: any;
   }
 }
 
 export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
   botUsername,
   onAuth,
-  buttonSize = 'large',
-  cornerRadius = 15,
-  requestAccess = 'notify',
-  usePic = true,
 }: TelegramLoginWidgetProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const callbackRef = React.useRef(onAuth);
+  const callbackRef = useRef(onAuth);
 
   // Update callback ref without causing widget recreation
-  React.useEffect(() => {
+  useEffect(() => {
     callbackRef.current = onAuth;
   }, [onAuth]);
 
-  // Set up the global callback handler once at component level (persists across re-renders)
-  // Note: Using 'TelegramAuthCallback' instead of 'onTelegramAuth' to avoid Telegram widget parsing issues
+  // Set up the global callback handler and load the Telegram script
   useEffect(() => {
-    console.log('📍 [TelegramWidget] Setting up global TelegramAuthCallback handler');
+    console.log('📍 [TelegramWidget] Initializing Telegram Auth API handler');
 
-    // @ts-ignore
+    // Register global callback
     window.TelegramAuthCallback = (user: any) => {
-      console.log('✅ [TelegramWidget] TelegramAuthCallback CALLED');
-      console.log('✅ [TelegramWidget] User data received:', user);
-      console.log('✅ [TelegramWidget] User ID:', user?.id);
-      console.log('✅ [TelegramWidget] User hash:', user?.hash);
-      console.log('✅ [TelegramWidget] Auth date:', user?.auth_date);
-      console.log('✅ [TelegramWidget] All keys in user object:', Object.keys(user || {}));
+      console.log('✅ [TelegramWidget] TelegramAuthCallback received data');
       callbackRef.current(user);
     };
 
-    // Only clean up if component is unmounting, not on re-renders
-    return () => {
-      console.log('📍 [TelegramWidget] Component unmounting, keeping global handler intact');
-    };
-  }, []); // Empty deps - setup only once
-
-  // Render the widget when props change, but don't reload telegram script
-  useEffect(() => {
-    if (!containerRef.current || !botUsername) return;
-
-    console.log('📍 [TelegramWidget] Creating widget container with attributes');
-    console.log('  - Bot username:', botUsername);
-    console.log('  - Button size:', buttonSize);
-    console.log('  - Corner radius:', cornerRadius);
-
-    // Create a script element but don't load the telegram.org/js/telegram-widget.js script
-    // (it's already loaded globally at app level)
-    // Instead, create an element that the telegram script will process
-    const script = document.createElement('script');
-    script.setAttribute('data-telegram-login', botUsername);
-    script.setAttribute('data-size', buttonSize);
-    script.setAttribute('data-radius', cornerRadius.toString());
-    script.setAttribute('data-request-access', requestAccess === 'notify' ? 'write' : 'write');
-    script.setAttribute('data-userpic', usePic.toString());
-    script.setAttribute('data-onauth', 'TelegramAuthCallback'); // Use different name to avoid parsing issues
-
-    // Clear and add the script element
-    containerRef.current.innerHTML = '';
-    containerRef.current.appendChild(script);
-
-    // Trigger Telegram widget rendering on the newly added element
-    // Wait for Telegram script to be available with increased timeout and better detection
-    let attempts = 0;
-    const maxAttempts = 200; // ~4 seconds timeout (200 * 20ms)
-
-    const waitForTelegram = () => {
-      attempts++;
-
-      // @ts-ignore
-      if (window.Telegram?.Login?.render) {
-        try {
-          // @ts-ignore
-          window.Telegram.Login.render(script);
-          console.log('✅ [TelegramWidget] Widget rendered via Telegram.Login.render()');
-        } catch (error) {
-          console.error('❌ [TelegramWidget] Error rendering widget:', error);
-        }
-      } else if (attempts < maxAttempts) {
-        // Telegram not ready yet, wait a bit and try again
-        if (attempts === 1 || attempts % 20 === 0) {
-          console.log(`⚠️ [TelegramWidget] Telegram.Login not available yet (attempt ${attempts}/${maxAttempts}), retrying...`);
-        }
-        setTimeout(waitForTelegram, 20);
-      } else {
-        console.error('❌ [TelegramWidget] Telegram.Login initialization timeout - script may have failed to load');
-        console.error('   - window.Telegram exists:', !!(window as any).Telegram);
-        console.error('   - window.Telegram.Login exists:', !!(window as any).Telegram?.Login);
-      }
-    };
-
-    // Start waiting for Telegram script
-    waitForTelegram();
+    // Load Telegram widget script if not already present
+    if (!document.querySelector('script[src*="telegram-widget.js"]')) {
+      const script = document.createElement('script');
+      script.src = 'https://telegram.org/js/telegram-widget.js?22';
+      script.async = true;
+      document.head.appendChild(script);
+      console.log('📍 [TelegramWidget] Telegram script added to document head');
+    }
 
     return () => {
-      console.log('📍 [TelegramWidget] Widget prop changed, cleaning up old widget');
-      if (containerRef.current) {
-        containerRef.current.innerHTML = '';
-      }
+      // Cleanup if necessary
     };
-  }, [botUsername, buttonSize, cornerRadius, requestAccess, usePic]);
+  }, []);
 
-  return (
-    <div className="flex justify-center min-h-[40px]" ref={containerRef} />
-  );
+  // This component no longer renders anything visible, it just manages the logic/script
+  return null;
 };
 
 export default TelegramLoginWidget;

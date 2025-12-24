@@ -90,8 +90,29 @@ const LoginPage: React.FC = () => {
     window.location.href = '/web/auth/slack-login';
   };
 
+  const handleProgrammaticLogin = () => {
+    if (!window.Telegram?.Login) {
+      setError("Telegram script not loaded yet. Please wait a moment.");
+      return;
+    }
+
+    console.log('🔵 [LoginPage] Triggering Method B (Programmatic API)');
+    // The bot_id must be a number! Taken from your logs: 8527825927
+    window.Telegram.Login.auth(
+      { bot_id: 8527825927, request_access: true },
+      (user: any) => {
+        if (user) {
+          console.log('✅ [LoginPage] Method B Authorization success:', user);
+          handleTelegramAuth(user);
+        } else {
+          console.log('❌ [LoginPage] Method B Authorization cancelled or failed');
+        }
+      }
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center px-4">
       <div className="w-full max-w-md bg-white rounded-lg shadow-2xl p-8">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -111,15 +132,29 @@ const LoginPage: React.FC = () => {
 
         {/* Login Options */}
         <div className="space-y-6 mt-8">
-          {/* Telegram Login Widget */}
+          {/* Telegram Login */}
           <div>
-            <p className="text-center text-sm text-gray-600 mb-3">Login with Telegram</p>
+            <Button
+              onClick={handleProgrammaticLogin}
+              className="w-full bg-[#54a9eb] hover:bg-[#4397d7] text-white py-3 h-auto"
+              disabled={loading}
+            >
+              <div className="flex flex-col items-center">
+                {loading ? (
+                  <Loader className="animate-spin" size={24} />
+                ) : (
+                  <>
+                    <span className="text-lg font-bold">✈️ Login with Telegram</span>
+                    <span className="text-xs opacity-80">Fast & Secure</span>
+                  </>
+                )}
+              </div>
+            </Button>
+            {/* Hidden logic component */}
             {botUsername && (
               <TelegramLoginWidget
                 botUsername={botUsername}
                 onAuth={handleTelegramAuth}
-                buttonSize="large"
-                usePic={true}
               />
             )}
           </div>
@@ -130,29 +165,27 @@ const LoginPage: React.FC = () => {
               <div className="w-full border-t border-gray-300" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-600">or</span>
+              <span className="px-2 bg-white text-gray-500 font-medium uppercase tracking-wider text-xs">Alternative</span>
             </div>
           </div>
 
           {/* Slack Login */}
-          <div>
-            <button
-              onClick={handleSlackLogin}
-              disabled={loading}
-              className="w-full bg-blue-400 hover:bg-blue-500 disabled:bg-blue-300 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
+          <Button
+            onClick={handleSlackLogin}
+            disabled={loading}
+            className="w-full bg-[#4A154B] hover:bg-[#3b113c] text-white py-3 h-auto"
+          >
+            <div className="flex flex-col items-center">
               {loading ? (
-                <>
-                  <Loader className="animate-spin" size={20} />
-                  Redirecting...
-                </>
+                <Loader className="animate-spin" size={24} />
               ) : (
                 <>
-                  ⚡ Login with Slack
+                  <span className="text-lg font-bold">⚡ Login with Slack</span>
+                  <span className="text-xs opacity-80">Workplace Auth</span>
                 </>
               )}
-            </button>
-          </div>
+            </div>
+          </Button>
         </div>
 
         {/* Info Section */}

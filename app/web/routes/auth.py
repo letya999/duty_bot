@@ -9,9 +9,9 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.web.auth import (
-    TelegramOAuth, SlackOAuth, session_manager, get_or_create_user
+    TelegramOAuth, SlackOAuth, session_manager
 )
-from app.models import Workspace
+from app.models import Workspace, User
 from app.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
@@ -212,28 +212,46 @@ async def telegram_callback(request: Request):
         if not user_info:
             raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
 
-        # Get or create user
-        user = await get_or_create_user('telegram', user_info)
-        if not user:
-            raise HTTPException(status_code=500, detail="Failed to create user")
-
-        # Get user's workspace (first workspace by default)
+        # Get or create user and workspace
         async with AsyncSessionLocal() as db:
-            # Get workspaces for this user
-            stmt = select(Workspace).limit(1)
-            result = await db.execute(stmt)
+            # Get or create workspace for this user's Telegram account
+            workspace_stmt = select(Workspace).where(
+                (Workspace.workspace_type == 'telegram') &
+                (Workspace.external_id == str(user_info['user_id']))
+            )
+            result = await db.execute(workspace_stmt)
             workspace = result.scalars().first()
 
             if not workspace:
-                # Create default workspace if needed
-                from app.models import Workspace as WorkspaceModel
-                workspace = WorkspaceModel(
-                    platform='telegram',
-                    platform_id=str(user_info['user_id']),
+                # Create workspace for this Telegram user
+                workspace = Workspace(
+                    workspace_type='telegram',
+                    external_id=str(user_info['user_id']),
                     name=f"Workspace for {user_info.get('first_name', 'User')}"
                 )
                 db.add(workspace)
                 await db.commit()
+                await db.refresh(workspace)
+
+            # Get or create user with workspace_id set
+            user_stmt = select(User).where(
+                (User.telegram_id == user_info['user_id']) &
+                (User.workspace_id == workspace.id)
+            )
+            result = await db.execute(user_stmt)
+            user = result.scalars().first()
+
+            if not user:
+                user = User(
+                    workspace_id=workspace.id,
+                    telegram_id=user_info['user_id'],
+                    telegram_username=user_info.get('username'),
+                    first_name=user_info.get('first_name'),
+                    last_name=user_info.get('last_name'),
+                )
+                db.add(user)
+                await db.commit()
+                await db.refresh(user)
 
         # Create session
         session_token = session_manager.create_session(
@@ -271,25 +289,46 @@ async def telegram_widget_callback(request: Request):
         if not user_info:
             raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
 
-        # Get or create user
-        user = await get_or_create_user('telegram', user_info)
-        if not user:
-            raise HTTPException(status_code=500, detail="Failed to create user")
-
-        # Get user's workspace (first workspace by default)
+        # Get or create user and workspace
         async with AsyncSessionLocal() as db:
-            stmt = select(Workspace).limit(1)
-            result = await db.execute(stmt)
+            # Get or create workspace for this user's Telegram account
+            workspace_stmt = select(Workspace).where(
+                (Workspace.workspace_type == 'telegram') &
+                (Workspace.external_id == str(user_info['user_id']))
+            )
+            result = await db.execute(workspace_stmt)
             workspace = result.scalars().first()
 
             if not workspace:
+                # Create workspace for this Telegram user
                 workspace = Workspace(
-                    platform='telegram',
-                    platform_id=str(user_info['user_id']),
+                    workspace_type='telegram',
+                    external_id=str(user_info['user_id']),
                     name=f"Workspace for {user_info.get('first_name', 'User')}"
                 )
                 db.add(workspace)
                 await db.commit()
+                await db.refresh(workspace)
+
+            # Get or create user with workspace_id set
+            user_stmt = select(User).where(
+                (User.telegram_id == user_info['user_id']) &
+                (User.workspace_id == workspace.id)
+            )
+            result = await db.execute(user_stmt)
+            user = result.scalars().first()
+
+            if not user:
+                user = User(
+                    workspace_id=workspace.id,
+                    telegram_id=user_info['user_id'],
+                    telegram_username=user_info.get('username'),
+                    first_name=user_info.get('first_name'),
+                    last_name=user_info.get('last_name'),
+                )
+                db.add(user)
+                await db.commit()
+                await db.refresh(user)
 
         # Create session
         session_token = session_manager.create_session(
@@ -303,7 +342,7 @@ async def telegram_widget_callback(request: Request):
             "session_token": session_token,
             "user": {
                 "id": user.id,
-                "username": user.username,
+                "telegram_username": user.telegram_username,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "is_admin": user.is_admin,
@@ -347,27 +386,44 @@ async def slack_callback(code: str = None, state: str = None):
         if not user_info:
             raise HTTPException(status_code=401, detail="Failed to get user info")
 
-        # Get or create user
-        user = await get_or_create_user('slack', user_info)
-        if not user:
-            raise HTTPException(status_code=500, detail="Failed to create user")
-
-        # Get or create workspace
+        # Get or create user and workspace
         async with AsyncSessionLocal() as db:
-            stmt = select(Workspace).where(
-                Workspace.platform_id == token_info['team_id']
+            # Get or create workspace for this Slack team
+            workspace_stmt = select(Workspace).where(
+                (Workspace.workspace_type == 'slack') &
+                (Workspace.external_id == token_info['team_id'])
             )
-            result = await db.execute(stmt)
+            result = await db.execute(workspace_stmt)
             workspace = result.scalars().first()
 
             if not workspace:
+                # Create workspace for this Slack team
                 workspace = Workspace(
-                    platform='slack',
-                    platform_id=token_info['team_id'],
+                    workspace_type='slack',
+                    external_id=token_info['team_id'],
                     name=token_info['team_name']
                 )
                 db.add(workspace)
                 await db.commit()
+                await db.refresh(workspace)
+
+            # Get or create user with workspace_id set
+            user_stmt = select(User).where(
+                (User.slack_user_id == user_info['user_id']) &
+                (User.workspace_id == workspace.id)
+            )
+            result = await db.execute(user_stmt)
+            user = result.scalars().first()
+
+            if not user:
+                user = User(
+                    workspace_id=workspace.id,
+                    slack_user_id=user_info['user_id'],
+                    username=user_info.get('username'),
+                )
+                db.add(user)
+                await db.commit()
+                await db.refresh(user)
 
         # Create session
         session_token = session_manager.create_session(

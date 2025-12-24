@@ -78,16 +78,26 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
     containerRef.current.appendChild(script);
 
     // Trigger Telegram widget rendering on the newly added element
-    // @ts-ignore
-    if (window.Telegram && window.Telegram.Login && window.Telegram.Login.render) {
-      setTimeout(() => {
-        // @ts-ignore
-        window.Telegram.Login.render(script);
-        console.log('✅ [TelegramWidget] Widget rendered via Telegram.Login.render()');
-      }, 0);
-    } else {
-      console.log('⚠️ [TelegramWidget] Telegram.Login.render not available yet');
-    }
+    // Wait for Telegram script to be available
+    const waitForTelegram = () => {
+      // @ts-ignore
+      if (window.Telegram && window.Telegram.Login && window.Telegram.Login.render) {
+        try {
+          // @ts-ignore
+          window.Telegram.Login.render(script);
+          console.log('✅ [TelegramWidget] Widget rendered via Telegram.Login.render()');
+        } catch (error) {
+          console.error('❌ [TelegramWidget] Error rendering widget:', error);
+        }
+      } else {
+        // Telegram not ready yet, wait a bit and try again
+        console.log('⚠️ [TelegramWidget] Telegram.Login not available yet, retrying...');
+        setTimeout(waitForTelegram, 100);
+      }
+    };
+
+    // Start waiting for Telegram script
+    waitForTelegram();
 
     return () => {
       console.log('📍 [TelegramWidget] Widget prop changed, cleaning up old widget');

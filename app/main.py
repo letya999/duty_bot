@@ -23,6 +23,7 @@ from app.web.routes.dashboard import router as dashboard_router
 from app.web.routes.schedules import router as schedules_router
 from app.web.routes.settings import router as settings_router
 from app.web.routes.reports import router as reports_router
+from app.web.api import router as web_api_router
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -159,6 +160,7 @@ app.include_router(dashboard_router)
 app.include_router(schedules_router)
 app.include_router(settings_router)
 app.include_router(reports_router)
+app.include_router(web_api_router)
 
 # Serve React static files in production
 # Check if React build exists (production deployment)

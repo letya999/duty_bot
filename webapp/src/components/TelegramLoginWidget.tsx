@@ -32,11 +32,13 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
   }, [onAuth]);
 
   // Set up the global callback handler once at component level (persists across re-renders)
+  // Note: Using 'TelegramAuthCallback' instead of 'onTelegramAuth' to avoid Telegram widget parsing issues
   useEffect(() => {
-    console.log('📍 [TelegramWidget] Setting up global onTelegramAuth handler');
+    console.log('📍 [TelegramWidget] Setting up global TelegramAuthCallback handler');
 
-    window.onTelegramAuth = (user: any) => {
-      console.log('✅ [TelegramWidget] onTelegramAuth callback CALLED');
+    // @ts-ignore
+    window.TelegramAuthCallback = (user: any) => {
+      console.log('✅ [TelegramWidget] TelegramAuthCallback CALLED');
       console.log('✅ [TelegramWidget] User data received:', user);
       console.log('✅ [TelegramWidget] User ID:', user?.id);
       console.log('✅ [TelegramWidget] User hash:', user?.hash);
@@ -69,7 +71,7 @@ export const TelegramLoginWidget: React.FC<TelegramLoginWidgetProps> = ({
     script.setAttribute('data-radius', cornerRadius.toString());
     script.setAttribute('data-request-access', requestAccess === 'notify' ? 'write' : 'write');
     script.setAttribute('data-userpic', usePic.toString());
-    script.setAttribute('data-onauth', 'onTelegramAuth');
+    script.setAttribute('data-onauth', 'TelegramAuthCallback'); // Use different name to avoid parsing issues
 
     // Clear and add the script element
     containerRef.current.innerHTML = '';

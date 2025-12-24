@@ -5,11 +5,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import secrets
 from urllib.parse import urlencode
+from sqlalchemy import select
 
 from app.config import get_settings
 from app.web.auth import (
     TelegramOAuth, SlackOAuth, session_manager, get_or_create_user
 )
+from app.models import Workspace
+from app.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -215,8 +218,6 @@ async def telegram_callback(request: Request):
             raise HTTPException(status_code=500, detail="Failed to create user")
 
         # Get user's workspace (first workspace by default)
-        from app.database import AsyncSessionLocal
-        from sqlalchemy import select
         async with AsyncSessionLocal() as db:
             # Get workspaces for this user
             stmt = select(Workspace).limit(1)
@@ -294,10 +295,6 @@ async def slack_callback(code: str = None, state: str = None):
             raise HTTPException(status_code=500, detail="Failed to create user")
 
         # Get or create workspace
-        from app.database import AsyncSessionLocal
-        from sqlalchemy import select
-        from app.models import Workspace
-
         async with AsyncSessionLocal() as db:
             stmt = select(Workspace).where(
                 Workspace.platform_id == token_info['team_id']

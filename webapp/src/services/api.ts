@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { MonthSchedule, DailySchedule, Team, User } from '../types';
+import { MonthSchedule, DailySchedule, Team, User, Schedule, AdminAction } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/miniapp';
 
@@ -10,14 +10,26 @@ const api = axios.create({
   },
 });
 
-// Add Telegram init data to all requests
+// Add session token to all requests
 api.interceptors.request.use((config) => {
-  const initData = window.Telegram?.WebApp?.initData;
-  if (initData) {
-    config.headers['X-Telegram-Init-Data'] = initData;
+  const sessionToken = localStorage.getItem('session_token');
+  if (sessionToken) {
+    config.headers['Authorization'] = `Bearer ${sessionToken}`;
   }
   return config;
 });
+
+// Handle 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('session_token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const apiService = {
   // Get current user info
@@ -47,11 +59,11 @@ export const apiService = {
   },
 
   // Assign duty to user
-  assignDuty: async (teamId: number, userId: number, date: string): Promise<any> => {
+  assignDuty: async (userId: number, dutyDate: string, teamId?: number): Promise<Schedule> => {
     const response = await api.post('/schedule/assign', {
-      team_id: teamId,
       user_id: userId,
-      date,
+      duty_date: dutyDate,
+      team_id: teamId,
     });
     return response.data;
   },
@@ -65,6 +77,38 @@ export const apiService = {
   // Get team members
   getTeamMembers: async (teamId: number): Promise<User[]> => {
     const response = await api.get(`/teams/${teamId}/members`);
+    return response.data;
+  },
+
+  // Get all admins
+  getAdmins: async (): Promise<User[]> => {
+    const response = await api.get('/admins');
+    return response.data.admins;
+  },
+
+  // Promote user to admin
+  promoteUser: async (userId: number): Promise<User> => {
+    const response = await api.post(`/users/${userId}/promote`);
+    return response.data.user;
+  },
+
+  // Demote user from admin
+  demoteUser: async (userId: number): Promise<User> => {
+    const response = await api.post(`/users/${userId}/demote`);
+    return response.data.user;
+  },
+
+  // Get all users
+  getAllUsers: async (): Promise<User[]> => {
+    const response = await api.get('/users');
+    return response.data;
+  },
+
+  // Get admin logs
+  getAdminLogs: async (limit: number = 50): Promise<AdminAction[]> => {
+    const response = await api.get('/admin-logs', {
+      params: { limit },
+    });
     return response.data;
   },
 };

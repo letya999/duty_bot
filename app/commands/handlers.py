@@ -10,7 +10,7 @@ from app.services.admin_service import AdminService
 from app.services.rotation_service import RotationService
 from app.repositories import (
     UserRepository, TeamRepository, ScheduleRepository, ShiftRepository,
-    EscalationRepository, AdminLogRepository, RotationConfigRepository
+    EscalationRepository, EscalationEventRepository, AdminLogRepository, RotationConfigRepository
 )
 from app.models import Team, User
 from app.config import get_settings
@@ -29,6 +29,7 @@ class CommandHandler:
         self.schedule_repo = ScheduleRepository(db)
         self.shift_repo = ShiftRepository(db)
         self.escalation_repo = EscalationRepository(db)
+        self.escalation_event_repo = EscalationEventRepository(db)
         self.admin_log_repo = AdminLogRepository(db)
         self.rotation_config_repo = RotationConfigRepository(db)
 
@@ -37,9 +38,9 @@ class CommandHandler:
         self.team_service = TeamService(self.team_repo)
         self.schedule_service = ScheduleService(self.schedule_repo)
         self.shift_service = ShiftService(self.shift_repo)
-        self.escalation_service = EscalationService(self.escalation_repo)
+        self.escalation_service = EscalationService(self.escalation_repo, self.escalation_event_repo)
         self.admin_service = AdminService(self.admin_log_repo, self.user_repo)
-        self.rotation_service = RotationService(self.rotation_config_repo)
+        self.rotation_service = RotationService(self.rotation_config_repo, self.schedule_repo, self.user_repo)
         self.settings = get_settings()
 
     def _get_today(self, today: date = None) -> date:

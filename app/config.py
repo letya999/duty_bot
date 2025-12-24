@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     slack_signing_secret: Optional[str] = None
     slack_channel_id: Optional[str] = None
 
+    # Slack OAuth (for web panel)
+    slack_client_id: Optional[str] = None
+    slack_client_secret: Optional[str] = None
+    slack_redirect_uri: Optional[str] = None
+
     # Database
     database_url: str
 

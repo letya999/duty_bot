@@ -138,3 +138,33 @@ class ShiftService:
         """Get today's shift members"""
         shift = await self.get_shift(team, today)
         return shift.users if shift else []
+
+    async def check_user_shift_conflict(
+        self,
+        user: User,
+        shift_date: date
+    ) -> dict | None:
+        """Check if user is already assigned to a shift on this date
+
+        Returns: dict with conflict info if conflict exists, None otherwise
+        Example: {"user_id": 1, "date": "2024-01-15", "team_name": "Engineering"}
+        """
+        stmt = select(Shift).options(
+            selectinload(Shift.users),
+            selectinload(Shift.team)
+        ).where(
+            Shift.date == shift_date
+        )
+        result = await self.db.execute(stmt)
+        shifts = result.scalars().all()
+
+        # Check all shifts on this date to see if user is already assigned
+        for shift in shifts:
+            if any(u.id == user.id for u in shift.users):
+                return {
+                    "user_id": user.id,
+                    "date": str(shift_date),
+                    "team_id": shift.team_id,
+                    "team_name": shift.team.name if shift.team else "Unknown"
+                }
+        return None

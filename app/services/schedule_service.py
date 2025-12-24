@@ -82,3 +82,30 @@ class ScheduleService:
         """Get today's duty person"""
         schedule = await self.get_duty(team, today)
         return schedule.user if schedule else None
+
+    async def check_user_schedule_conflict(
+        self,
+        user: User,
+        duty_date: date
+    ) -> dict | None:
+        """Check if user is already scheduled for this date
+
+        Returns: dict with conflict info if conflict exists, None otherwise
+        Example: {"user_id": 1, "date": "2024-01-15", "team_name": "Engineering"}
+        """
+        stmt = select(Schedule).options(
+            selectinload(Schedule.team)
+        ).where(
+            (Schedule.user_id == user.id) & (Schedule.date == duty_date)
+        )
+        result = await self.db.execute(stmt)
+        existing = result.scalars().first()
+
+        if existing and existing.team:
+            return {
+                "user_id": user.id,
+                "date": str(duty_date),
+                "team_name": existing.team.name,
+                "team_display_name": existing.team.display_name
+            }
+        return None

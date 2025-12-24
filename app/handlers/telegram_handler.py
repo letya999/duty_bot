@@ -350,15 +350,16 @@ class TelegramHandler:
                     date_idx = full_text.find("set") + 3
                     date_part = full_text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(full_text)
+                    force = CommandParser.extract_flag(full_text, "force")
 
                     if not mentions:
-                        raise CommandError("Usage: /schedule <team> set <date> @user")
+                        raise CommandError("Usage: /schedule <team> set <date> @user [--force]")
 
                     target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
                     if not target_user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
-                    result = await handler.schedule_set(team_name, date_part, target_user)
+                    result = await handler.schedule_set(team_name, date_part, target_user, force=force)
 
                 elif "clear" in full_text and len(args) >= 3:
                     # Check admin permission
@@ -419,9 +420,10 @@ class TelegramHandler:
                     date_idx = full_text.find("set") + 3
                     date_part = full_text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(full_text)
+                    force = CommandParser.extract_flag(full_text, "force")
 
                     if not mentions:
-                        raise CommandError("Usage: /shift <team> set <date> @user1 @user2 ...")
+                        raise CommandError("Usage: /shift <team> set <date> @user1 @user2 ... [--force]")
 
                     users = []
                     for mention in mentions:
@@ -430,7 +432,7 @@ class TelegramHandler:
                             raise CommandError(f"User not found: @{mention}")
                         users.append(target_user)
 
-                    result = await handler.shift_set(team_name, date_part, users)
+                    result = await handler.shift_set(team_name, date_part, users, force=force)
 
                 elif "add" in full_text and len(args) >= 3:
                     # Check admin permission
@@ -441,15 +443,16 @@ class TelegramHandler:
                     date_idx = full_text.find("add") + 3
                     date_part = full_text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(full_text)
+                    force = CommandParser.extract_flag(full_text, "force")
 
                     if not mentions:
-                        raise CommandError("Usage: /shift <team> add <date> @user")
+                        raise CommandError("Usage: /shift <team> add <date> @user [--force]")
 
                     target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
                     if not target_user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
-                    result = await handler.shift_add_user(team_name, date_part, target_user)
+                    result = await handler.shift_add_user(team_name, date_part, target_user, force=force)
 
                 elif "remove" in full_text and len(args) >= 3:
                     # Check admin permission

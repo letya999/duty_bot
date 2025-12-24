@@ -248,15 +248,16 @@ class SlackHandler:
                     date_idx = text.find("set") + 3
                     date_part = text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(text)
+                    force = CommandParser.extract_flag(text, "force")
 
                     if not mentions:
-                        raise CommandError("Usage: /schedule <team> set <date> @user")
+                        raise CommandError("Usage: /schedule <team> set <date> @user [--force]")
 
                     user = await user_service.get_user_by_slack(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
-                    result = await handler.schedule_set(team_name, date_part, user)
+                    result = await handler.schedule_set(team_name, date_part, user, force=force)
 
                 elif "clear" in text and len(parts) >= 3:
                     date_idx = text.find("clear") + 5
@@ -305,9 +306,10 @@ class SlackHandler:
                     date_idx = text.find("set") + 3
                     date_part = text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(text)
+                    force = CommandParser.extract_flag(text, "force")
 
                     if not mentions:
-                        raise CommandError("Usage: /shift <team> set <date> @user1 @user2 ...")
+                        raise CommandError("Usage: /shift <team> set <date> @user1 @user2 ... [--force]")
 
                     users = []
                     for mention in mentions:
@@ -316,21 +318,22 @@ class SlackHandler:
                             raise CommandError(f"User not found: <@{mention}>")
                         users.append(user)
 
-                    result = await handler.shift_set(team_name, date_part, users)
+                    result = await handler.shift_set(team_name, date_part, users, force=force)
 
                 elif "add" in text and len(parts) >= 3:
                     date_idx = text.find("add") + 3
                     date_part = text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(text)
+                    force = CommandParser.extract_flag(text, "force")
 
                     if not mentions:
-                        raise CommandError("Usage: /shift <team> add <date> @user")
+                        raise CommandError("Usage: /shift <team> add <date> @user [--force]")
 
                     user = await user_service.get_user_by_slack(workspace_id, mentions[0])
                     if not user:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
-                    result = await handler.shift_add_user(team_name, date_part, user)
+                    result = await handler.shift_add_user(team_name, date_part, user, force=force)
 
                 elif "remove" in text and len(parts) >= 3:
                     date_idx = text.find("remove") + 6

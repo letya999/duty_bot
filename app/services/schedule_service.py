@@ -1,109 +1,73 @@
 from datetime import date
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from app.models import Schedule, Team, User
+from app.repositories import ScheduleRepository
 
 
 class ScheduleService:
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    def __init__(self, schedule_repo: ScheduleRepository):
+        self.schedule_repo = schedule_repo
 
     async def set_duty(
         self,
-        team: Team,
-        user: User | None,
+        team_id: int,
+        user_id: int | None,
         duty_date: date
     ) -> Schedule:
         """Set or update duty for a date"""
-        stmt = select(Schedule).where(
-            (Schedule.team_id == team.id) & (Schedule.date == duty_date)
-        )
-        result = await self.db.execute(stmt)
-        schedule = result.scalars().first()
+        schedule = await self.schedule_repo.get_by_team_and_date(team_id, duty_date)
 
         if schedule:
-            schedule.user_id = user.id if user else None
+            schedule = await self.schedule_repo.update(schedule.id, {
+                'user_id': user_id
+            })
         else:
-            schedule = Schedule(
-                team_id=team.id,
-                user_id=user.id if user else None,
-                date=duty_date,
-            )
-            self.db.add(schedule)
+            schedule = await self.schedule_repo.create({
+                'team_id': team_id,
+                'user_id': user_id,
+                'date': duty_date,
+            })
 
-        await self.db.commit()
-        await self.db.refresh(schedule)
         return schedule
 
-    async def get_duty(self, team: Team, duty_date: date) -> Schedule | None:
+    async def get_duty(self, team_id: int, duty_date: date) -> Schedule | None:
         """Get duty for a specific date"""
-        stmt = select(Schedule).options(
-            selectinload(Schedule.user)
-        ).where(
-            (Schedule.team_id == team.id) & (Schedule.date == duty_date)
-        )
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
+        return await self.schedule_repo.get_by_team_and_date(team_id, duty_date)
 
     async def get_duties_by_date_range(
         self,
-        team: Team,
+        team_id: int,
         start_date: date,
         end_date: date
     ) -> list[Schedule]:
         """Get duties for a date range"""
-        stmt = select(Schedule).options(
-            selectinload(Schedule.user)
-        ).where(
-            (Schedule.team_id == team.id) &
-            (Schedule.date >= start_date) &
-            (Schedule.date <= end_date)
-        ).order_by(Schedule.date)
-        result = await self.db.execute(stmt)
-        return result.scalars().all()
+        return await self.schedule_repo.list_by_team_and_date_range(team_id, start_date, end_date)
 
-    async def clear_duty(self, team: Team, duty_date: date) -> bool:
+    async def clear_duty(self, team_id: int, duty_date: date) -> bool:
         """Clear duty for a date"""
-        stmt = select(Schedule).where(
-            (Schedule.team_id == team.id) & (Schedule.date == duty_date)
-        )
-        result = await self.db.execute(stmt)
-        schedule = result.scalars().first()
+        return await self.schedule_repo.delete_by_team_and_date(team_id, duty_date)
 
-        if schedule:
-            await self.db.delete(schedule)
-            await self.db.commit()
-            return True
-
-        return False
-
-    async def get_today_duty(self, team: Team, today: date) -> User | None:
+    async def get_today_duty(self, team_id: int, today: date) -> User | None:
         """Get today's duty person"""
-        schedule = await self.get_duty(team, today)
+        schedule = await self.get_duty(team_id, today)
         return schedule.user if schedule else None
 
     async def check_user_schedule_conflict(
         self,
-        user: User,
+        user_id: int,
         duty_date: date
     ) -> dict | None:
-        """Check if user is already scheduled for this date
-
-        Returns: dict with conflict info if conflict exists, None otherwise
-        Example: {"user_id": 1, "date": "2024-01-15", "team_name": "Engineering"}
-        """
-        stmt = select(Schedule).options(
-            selectinload(Schedule.team)
-        ).where(
-            (Schedule.user_id == user.id) & (Schedule.date == duty_date)
+        """Check if user is already scheduled for this date"""
+        stmt = select(Schedule).where(
+            Schedule.user_id == user_id,
+            Schedule.date == duty_date
         )
-        result = await self.db.execute(stmt)
+        result = await self.schedule_repo.execute(stmt)
         existing = result.scalars().first()
 
         if existing and existing.team:
             return {
-                "user_id": user.id,
+                "user_id": user_id,
                 "date": str(duty_date),
                 "team_name": existing.team.name,
                 "team_display_name": existing.team.display_name
@@ -115,21 +79,18 @@ class ScheduleService:
         schedule_id: int,
         user_id: int,
         duty_date: date,
-        team: Team | None = None
+        team_id: int | None = None
     ) -> Schedule:
         """Update existing duty assignment"""
-        stmt = select(Schedule).where(Schedule.id == schedule_id)
-        result = await self.db.execute(stmt)
-        schedule = result.scalars().first()
-
+        schedule = await self.schedule_repo.get_by_id(schedule_id)
         if not schedule:
             raise ValueError(f"Schedule with id {schedule_id} not found")
 
-        schedule.user_id = user_id
-        schedule.date = duty_date
-        if team:
-            schedule.team_id = team.id
+        update_data = {
+            'user_id': user_id,
+            'date': duty_date,
+        }
+        if team_id:
+            update_data['team_id'] = team_id
 
-        await self.db.commit()
-        await self.db.refresh(schedule)
-        return schedule
+        return await self.schedule_repo.update(schedule_id, update_data)

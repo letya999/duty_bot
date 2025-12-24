@@ -127,4 +127,142 @@ export const apiService = {
     });
     return response.data;
   },
+
+  // Assign multiple duties for date range
+  assignBulkDuties: async (userIds: number[], startDate: string, endDate: string, teamId?: number): Promise<any> => {
+    const response = await api.post('/schedule/assign-bulk', {
+      user_ids: userIds,
+      start_date: startDate,
+      end_date: endDate,
+      team_id: teamId,
+    });
+    return response.data;
+  },
+
+  // Edit duty assignment
+  editDuty: async (scheduleId: number, userId: number, dutyDate: string, teamId?: number): Promise<any> => {
+    const response = await api.put(`/schedule/${scheduleId}`, {
+      user_id: userId,
+      duty_date: dutyDate,
+      team_id: teamId,
+    });
+    return response.data;
+  },
+
+  // Get teams with details
+  getTeamsWithDetails: async (): Promise<Team[]> => {
+    const response = await api.get('/teams/details');
+    return response.data;
+  },
+
+  // Create team
+  createTeam: async (data: { name: string; display_name: string; has_shifts?: boolean; team_lead_id?: number }): Promise<any> => {
+    const response = await api.post('/teams', data);
+    return response.data;
+  },
+
+  // Update team
+  updateTeam: async (teamId: number, data: any): Promise<any> => {
+    const response = await api.put(`/teams/${teamId}`, data);
+    return response.data;
+  },
+
+  // Delete team
+  deleteTeam: async (teamId: number): Promise<any> => {
+    const response = await api.delete(`/teams/${teamId}`);
+    return response.data;
+  },
+
+  // Add team member
+  addTeamMember: async (teamId: number, userId: number): Promise<any> => {
+    const response = await api.post(`/teams/${teamId}/members`, { user_id: userId });
+    return response.data;
+  },
+
+  // Remove team member
+  removeTeamMember: async (teamId: number, userId: number): Promise<any> => {
+    const response = await api.delete(`/teams/${teamId}/members/${userId}`);
+    return response.data;
+  },
+
+  // Get escalations
+  getEscalations: async (teamId?: number): Promise<any> => {
+    const response = await api.get('/escalations', {
+      params: { team_id: teamId },
+    });
+    return response.data;
+  },
+
+  // Create escalation
+  createEscalation: async (data: { team_id?: number; cto_id: number }): Promise<any> => {
+    const response = await api.post('/escalations', data);
+    return response.data;
+  },
+
+  // Delete escalation
+  deleteEscalation: async (escalationId: number): Promise<any> => {
+    const response = await api.delete(`/escalations/${escalationId}`);
+    return response.data;
+  },
+
+  // Move duty to different date
+  moveDuty: async (scheduleId: number, newDate: string): Promise<any> => {
+    const response = await api.patch(`/schedule/${scheduleId}/move`, { new_date: newDate });
+    return response.data;
+  },
+
+  // Replace person in duty
+  replaceDutyUser: async (scheduleId: number, newUserId: number): Promise<any> => {
+    const response = await api.patch(`/schedule/${scheduleId}/replace`, { user_id: newUserId });
+    return response.data;
+  },
+
+  // Assign user to shift (for teams with shifts enabled)
+  assignShift: async (userId: number, shiftDate: string, teamId: number): Promise<any> => {
+    const response = await api.post('/shifts/assign', {
+      user_id: userId,
+      shift_date: shiftDate,
+      team_id: teamId,
+    });
+    return response.data;
+  },
+
+  // Bulk assign users to shifts for date range
+  assignShiftsBulk: async (userIds: number[], startDate: string, endDate: string, teamId: number): Promise<any> => {
+    const response = await api.post('/shifts/assign-bulk', {
+      user_ids: userIds,
+      start_date: startDate,
+      end_date: endDate,
+      team_id: teamId,
+    });
+    return response.data;
+  },
+
+  // Get shifts for a specific date
+  getShiftsForDate: async (shiftDate: string, teamId?: number): Promise<any> => {
+    const response = await api.get(`/shifts/date/${shiftDate}`, {
+      params: { team_id: teamId },
+    });
+    return response.data;
+  },
+
+  // Get shifts for date range
+  getShiftsRange: async (startDate: string, endDate: string, teamId?: number): Promise<any> => {
+    const response = await api.get('/shifts/range', {
+      params: { start_date: startDate, end_date: endDate, team_id: teamId },
+    });
+    return response.data;
+  },
+
+  // Remove user from shift
+  removeShiftMember: async (shiftId: number, userId: number): Promise<any> => {
+    const response = await api.delete(`/shifts/${shiftId}/members/${userId}`);
+    return response.data;
+  },
+
+  // Delete entire shift
+  deleteShift: async (shiftId: number): Promise<any> => {
+    const response = await api.delete(`/shifts/${shiftId}`);
+    return response.data;
+  },
 };

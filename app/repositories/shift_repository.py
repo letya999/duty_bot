@@ -64,7 +64,7 @@ class ShiftRepository(BaseRepository[Shift]):
             return True
         return False
 
-    async def create_or_update_shift(self, team_id: int, shift_date: date, users: list = None) -> Optional[Shift]:
+    async def create_or_update_shift(self, team_id: int, shift_date: date, users: list = None, commit: bool = True) -> Optional[Shift]:
         """Create new shift or update existing one with users."""
         shift = await self.get_by_team_and_date(team_id, shift_date)
 
@@ -78,8 +78,11 @@ class ShiftRepository(BaseRepository[Shift]):
         if users:
             shift.users.extend(users)
 
-        await self.db.commit()
-        await self.db.refresh(shift)
+        if commit:
+            await self.db.commit()
+            await self.db.refresh(shift)
+        else:
+            await self.db.flush()
         return shift
 
     async def add_user_to_shift(self, team_id: int, shift_date: date, user) -> Optional[Shift]:

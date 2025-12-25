@@ -16,7 +16,8 @@ class ScheduleService:
         self,
         team_id: int,
         user_id: int | None,
-        duty_date: date
+        duty_date: date,
+        commit: bool = True
     ) -> Schedule:
         """Set or update duty for a date"""
         schedule = await self.schedule_repo.get_by_team_and_date(team_id, duty_date)
@@ -36,6 +37,7 @@ class ScheduleService:
         await self._sync_schedule_to_calendar(schedule)
 
         return schedule
+        return await self.schedule_repo.create_or_update_schedule(team_id, duty_date, user_id, commit=commit)
 
     async def get_duty(self, team_id: int, duty_date: date) -> Schedule | None:
         """Get duty for a specific date"""

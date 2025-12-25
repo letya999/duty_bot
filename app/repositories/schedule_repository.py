@@ -70,19 +70,30 @@ class ScheduleRepository(BaseRepository[Schedule]):
             return True
         return False
 
-    async def create_or_update_schedule(self, team_id: int, duty_date: date, user_id: int) -> Schedule:
+    async def create_or_update_schedule(self, team_id: int, duty_date: date, user_id: int, commit: bool = True) -> Schedule:
         """Create new schedule or update existing one."""
         schedule = await self.get_by_team_and_date(team_id, duty_date)
 
         if schedule:
             schedule.user_id = user_id
-            await self.db.commit()
-            await self.db.refresh(schedule)
+            if commit:
+                await self.db.commit()
+                await self.db.refresh(schedule)
+            else:
+                await self.db.flush()
         else:
-            schedule = await self.create({
-                'team_id': team_id,
-                'date': duty_date,
-                'user_id': user_id,
-            })
+            # Note: create() also commits and refreshes by default in BaseRepository
+            # We bypass it here to support custom commit flag
+            schedule = Schedule(
+                team_id=team_id,
+                date=duty_date,
+                user_id=user_id,
+            )
+            self.db.add(schedule)
+            if commit:
+                await self.db.commit()
+                await self.db.refresh(schedule)
+            else:
+                await self.db.flush()
 
         return schedule

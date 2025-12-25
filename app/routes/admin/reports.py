@@ -394,7 +394,7 @@ async def generate_report(
             elif format == "html":
                 # Generate HTML
                 rows = ''.join(f'''<tr>
-                    <td>{schedule.duty_date}</td>
+                    <td>{schedule.date}</td>
                     <td>{schedule.user.first_name or schedule.user.username}</td>
                     <td>{schedule.team.name if schedule.team else ''}</td>
                 </tr>''' for schedule in schedules)
@@ -447,7 +447,7 @@ async def generate_report(
                         "total_duties": len(schedules),
                         "schedules": [
                             {
-                                "date": str(schedule.duty_date),
+                                "date": str(schedule.date),
                                 "user": schedule.user.first_name or schedule.user.username,
                                 "team": schedule.team.name if schedule.team else None,
                             }

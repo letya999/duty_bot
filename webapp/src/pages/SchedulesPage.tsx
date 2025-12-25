@@ -579,7 +579,7 @@ const SchedulesPage: React.FC = () => {
               className={getSelectedTeam()?.has_shifts ? "h-32" : ""}
             >
               <option value="" disabled={getSelectedTeam()?.has_shifts}>{t('schedules.modal.select_user')}</option>
-              {users.map(u => (
+              {(formData.teamId ? (getSelectedTeam()?.members || []) : users).map(u => (
                 <option key={u.id} value={u.id}>
                   {u.display_name || `${u.first_name} ${u.last_name || ''}`}
                 </option>

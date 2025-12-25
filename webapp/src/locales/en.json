@@ -61,7 +61,10 @@
         },
         "upcoming": {
             "title": "Upcoming Duties (Next 7 Days)",
-            "no_duties": "No upcoming duties scheduled"
+            "no_duties": "No upcoming duties scheduled",
+            "user": "User",
+            "team": "Team",
+            "date": "Date"
         },
         "teams": {
             "title": "Teams",
@@ -105,5 +108,21 @@
             "move_to": "Move to...",
             "save_btn": "Save Members"
         }
+    },
+    "settings": {
+        "title": "Settings",
+        "subtitle": "Manage workspace admins and configuration",
+        "language": "Language",
+        "select_language": "Select Language",
+        "save_success": "Settings saved successfully",
+        "save_error": "Failed to save settings",
+        "admin_management": "Admin Management",
+        "current_admins": "Current Admins",
+        "promote_title": "Promote to Admin",
+        "make_admin": "Make Admin",
+        "remove_admin": "Remove Admin",
+        "workspace_settings": "Workspace Settings",
+        "note": "Note",
+        "note_details": "Additional workspace settings (work hours, auto-rotation, holidays) are configured through the automation configuration."
     }
 }

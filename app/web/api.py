@@ -402,7 +402,7 @@ async def assign_duty(
         date_obj = dt.fromisoformat(duty_date).date()
 
         # Use ScheduleService to set duty
-        schedule = await schedule_service.set_duty(team, target_user, date_obj)
+        schedule = await schedule_service.set_duty(team.id, target_user.id, date_obj)
 
         return {
             "status": "assigned",
@@ -492,8 +492,8 @@ async def assign_shift(
 
         date_obj = dt.fromisoformat(shift_date).date()
 
-        # Check for user conflicts
-        conflict = await shift_service.check_user_shift_conflict(target_user, date_obj)
+        # Check for user conflicts (filtered to current workspace)
+        conflict = await shift_service.check_user_shift_conflict(target_user, date_obj, current_user.workspace_id)
         if conflict:
             raise HTTPException(status_code=409, detail=f"User already assigned to {conflict['team_name']} on this date")
 
@@ -1210,14 +1210,14 @@ async def assign_bulk_duties(
         start = datetime.strptime(start_date, '%Y-%m-%d').date()
         end = datetime.strptime(end_date, '%Y-%m-%d').date()
 
-        team = await team_service.get_team(team_id) if team_id else None
+        team = await team_service.get_team(team_id, user.workspace_id) if team_id else None
 
         created_count = 0
         current_date = start
         while current_date <= end:
             for user_id in user_ids:
                 try:
-                    await schedule_service.set_duty(team, user_id, current_date)
+                    await schedule_service.set_duty(team.id if team else None, user_id, current_date)
                     created_count += 1
                 except Exception:
                     pass  # Skip if already exists

@@ -14,7 +14,7 @@ type ViewMode = 'calendar' | 'list';
 type CalendarMode = 'month' | 'week' | 'day';
 
 const SchedulesPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('calendar');
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('month');
@@ -37,7 +37,6 @@ const SchedulesPage: React.FC = () => {
   const [formData, setFormData] = useState({
     teamId: '',
     userIds: [] as string[],
-    role: '',
     isBulk: false,
     startDate: '',
     endDate: ''
@@ -104,7 +103,6 @@ const SchedulesPage: React.FC = () => {
     setFormData({
       teamId: '',
       userIds: [],
-      role: '',
       isBulk: false,
       startDate: dateStr || new Date().toISOString().split('T')[0],
       endDate: dateStr || new Date().toISOString().split('T')[0]
@@ -118,7 +116,6 @@ const SchedulesPage: React.FC = () => {
     setFormData({
       teamId: duty.team_id ? duty.team_id.toString() : '',
       userIds: [duty.user_id.toString()],
-      role: duty.role || '',
       isBulk: false,
       startDate: duty.duty_date,
       endDate: duty.duty_date
@@ -130,46 +127,45 @@ const SchedulesPage: React.FC = () => {
     try {
       if (editingDuty) {
         // Edit single duty
-        await apiService.updateSchedule(editingDuty.id, {
-          team_id: formData.teamId ? parseInt(formData.teamId) : null,
-          user_id: parseInt(formData.userIds[0]),
-          duty_date: selectedDate,
-          role: formData.role
-        });
+        await apiService.editDuty(
+          editingDuty.id,
+          parseInt(formData.userIds[0]),
+          selectedDate,
+          formData.teamId ? parseInt(formData.teamId) : undefined
+        );
       } else {
         // Create new duty (or bulk)
         if (formData.isBulk && getSelectedTeam()?.has_shifts) {
-          await apiService.createScheduleBulk({
-            team_id: formData.teamId ? parseInt(formData.teamId) : undefined,
-            user_ids: formData.userIds.map(id => parseInt(id)),
-            start_date: formData.startDate,
-            end_date: formData.endDate
-          });
+          await apiService.assignBulkDuties(
+            formData.userIds.map((id: string) => parseInt(id)),
+            formData.startDate,
+            formData.endDate,
+            formData.teamId ? parseInt(formData.teamId) : undefined
+          );
         } else if (formData.isBulk) {
-          await apiService.createScheduleBulk({
-            team_id: formData.teamId ? parseInt(formData.teamId) : undefined,
-            user_ids: formData.userIds.map(id => parseInt(id)),
-            start_date: formData.startDate,
-            end_date: formData.endDate
-          });
+          await apiService.assignBulkDuties(
+            formData.userIds.map((id: string) => parseInt(id)),
+            formData.startDate,
+            formData.endDate,
+            formData.teamId ? parseInt(formData.teamId) : undefined
+          );
         } else {
           // Single assignment (possibly multiple users for same day if shift enabled)
           if (formData.userIds.length > 1) {
             // treat as bulk for single day
-            await apiService.createScheduleBulk({
-              team_id: formData.teamId ? parseInt(formData.teamId) : undefined,
-              user_ids: formData.userIds.map(id => parseInt(id)),
-              start_date: selectedDate,
-              end_date: selectedDate
-            });
+            await apiService.assignBulkDuties(
+              formData.userIds.map((id: string) => parseInt(id)),
+              selectedDate,
+              selectedDate,
+              formData.teamId ? parseInt(formData.teamId) : undefined
+            );
           } else {
             if (formData.userIds.length > 0) {
-              await apiService.createSchedule({
-                team_id: formData.teamId ? parseInt(formData.teamId) : undefined,
-                user_id: parseInt(formData.userIds[0]),
-                duty_date: selectedDate,
-                role: formData.role
-              });
+              await apiService.assignDuty(
+                parseInt(formData.userIds[0]),
+                selectedDate,
+                formData.teamId ? parseInt(formData.teamId) : undefined
+              );
             }
           }
         }
@@ -184,7 +180,7 @@ const SchedulesPage: React.FC = () => {
   const handleDeleteDuty = async (id: number) => {
     if (!window.confirm(t('schedules.modal.delete_confirm'))) return;
     try {
-      await apiService.deleteSchedule(id);
+      await apiService.removeDuty(id);
       loadData();
     } catch (err) {
       console.error('Failed to delete duty', err);
@@ -222,50 +218,88 @@ const SchedulesPage: React.FC = () => {
   const renderCalendar = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
+    const locale = i18n.language || 'default';
 
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 is Sunday
+    let days: (Date | null)[] = [];
+    let headers: string[] = [];
+    let gridCols = 'grid-cols-7';
 
-    const days = [];
-    // Padding for first week
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      days.push(null);
+    if (calendarMode === 'month') {
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 is Sunday
+      // Padding for first week
+      for (let i = 0; i < firstDayOfMonth; i++) {
+        days.push(null);
+      }
+      // Days of month
+      for (let i = 1; i <= daysInMonth; i++) {
+        days.push(new Date(year, month, i));
+      }
+
+      const tempDate = new Date(2024, 0, 7); // A Sunday (Jan 7, 2024 was Sunday)
+      for (let i = 0; i < 7; i++) {
+        headers.push(tempDate.toLocaleDateString(locale, { weekday: 'short' }));
+        tempDate.setDate(tempDate.getDate() + 1);
+      }
+    } else if (calendarMode === 'week') {
+      const firstDay = currentDate.getDate() - currentDate.getDay();
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(currentDate);
+        d.setDate(firstDay + i);
+        days.push(d);
+      }
+      const tempDate = new Date(2024, 0, 7); // A Sunday
+      for (let i = 0; i < 7; i++) {
+        headers.push(tempDate.toLocaleDateString(locale, { weekday: 'short' }));
+        tempDate.setDate(tempDate.getDate() + 1);
+      }
+    } else {
+      days.push(new Date(currentDate));
+      headers.push(currentDate.toLocaleDateString(locale, { weekday: 'long' }));
+      gridCols = 'grid-cols-1';
     }
-    // Days of month
-    for (let i = 1; i <= daysInMonth; i++) {
-      days.push(new Date(year, month, i));
-    }
 
-    // week handling for rendering rows is standard
+    const getPeriodDisplay = () => {
+      if (calendarMode === 'month') {
+        return currentDate.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+      }
+      if (calendarMode === 'week') {
+        const firstDay = currentDate.getDate() - currentDate.getDay();
+        const start = new Date(currentDate);
+        start.setDate(firstDay);
+        const end = new Date(currentDate);
+        end.setDate(firstDay + 6);
+        return `${start.toLocaleDateString(locale, { day: 'numeric', month: 'short' })} - ${end.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+      }
+      return currentDate.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
+    };
 
     return (
       <Card>
         <CardHeader className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h2 className="text-xl font-semibold text-gray-900">
-              {currentDate.toLocaleDateString('default', { month: 'long', year: 'numeric' })}
-            </h2>
-            <div className="flex gap-1">
-              <button onClick={prevPeriod} className="p-1 hover:bg-gray-100 rounded">
-                <Icons.ChevronLeft size={20} />
-              </button>
-              <button onClick={nextPeriod} className="p-1 hover:bg-gray-100 rounded">
-                <Icons.ChevronRight size={20} />
-              </button>
-            </div>
+          <div className="flex gap-1">
+            <button onClick={prevPeriod} title={t('common.prev')} className="p-1 hover:bg-gray-100 rounded text-gray-600 transition-colors">
+              <Icons.ChevronLeft size={20} />
+            </button>
+            <button onClick={nextPeriod} title={t('common.next')} className="p-1 hover:bg-gray-100 rounded text-gray-600 transition-colors">
+              <Icons.ChevronRight size={20} />
+            </button>
           </div>
+          <h2 className="text-xl font-semibold text-gray-900 capitalize">
+            {getPeriodDisplay()}
+          </h2>
         </CardHeader>
         <CardBody>
-          <div className="grid grid-cols-7 gap-px bg-gray-200 border border-gray-200 rounded-lg overflow-hidden">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="bg-gray-50 p-2 text-center text-sm font-medium text-text-muted">
+          <div className={`grid ${gridCols} gap-px bg-gray-200 border border-gray-200 rounded-lg overflow-hidden`}>
+            {headers.map((day, idx) => (
+              <div key={idx} className="bg-gray-50 p-2 text-center text-sm font-medium text-text-muted capitalize">
                 {day}
               </div>
             ))}
             {days.map((day, idx) => {
               if (!day) return <div key={`pad-${idx}`} className="bg-white min-h-[120px]" />;
 
-              const dateStr = day.toISOString().split('T')[0];
+              const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
               const daySchedules = schedules.filter(s => s.duty_date === dateStr);
               const isToday = new Date().toISOString().split('T')[0] === dateStr;
 

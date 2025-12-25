@@ -22,6 +22,7 @@ class Workspace(Base):
     teams = relationship('Team', back_populates='workspace', cascade='all, delete-orphan')
     admin_logs = relationship('AdminLog', back_populates='workspace', cascade='all, delete-orphan')
     incidents = relationship('Incident', back_populates='workspace', cascade='all, delete-orphan')
+    google_calendar_integration = relationship('GoogleCalendarIntegration', back_populates='workspace', uselist=False, cascade='all, delete-orphan')
 
     __table_args__ = (
         UniqueConstraint('workspace_type', 'external_id', name='workspace_type_external_id_unique'),
@@ -271,3 +272,29 @@ class Incident(Base):
 
     # Relationships
     workspace = relationship('Workspace')
+
+
+class GoogleCalendarIntegration(Base):
+    """Google Calendar integration for workspace"""
+    __tablename__ = 'google_calendar_integration'
+
+    id = Column(Integer, primary_key=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, unique=True, index=True)
+
+    # Encrypted Service Account key
+    service_account_key_encrypted = Column(Text, nullable=False)
+
+    # Google Calendar information
+    google_calendar_id = Column(String, nullable=False, unique=True, index=True)
+    public_calendar_url = Column(String, nullable=False)
+
+    # Status
+    is_active = Column(Boolean, default=True)
+    last_sync_at = Column(DateTime, nullable=True)
+    service_account_email = Column(String, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    workspace = relationship('Workspace', back_populates='google_calendar_integration')

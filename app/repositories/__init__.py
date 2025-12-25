@@ -12,6 +12,7 @@ from app.repositories.admin_log_repository import AdminLogRepository
 from app.repositories.rotation_config_repository import RotationConfigRepository
 from app.repositories.duty_stats_repository import DutyStatsRepository
 from app.repositories.incident_repository import IncidentRepository
+from app.repositories.google_calendar_repository import GoogleCalendarRepository
 
 __all__ = [
     'BaseRepository',
@@ -26,4 +27,5 @@ __all__ = [
     'RotationConfigRepository',
     'DutyStatsRepository',
     'IncidentRepository',
+    'GoogleCalendarRepository',
 ]

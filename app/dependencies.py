@@ -13,6 +13,7 @@ from app.repositories import (
     RotationConfigRepository,
     DutyStatsRepository,
     IncidentRepository,
+    GoogleCalendarRepository,
 )
 
 
@@ -72,3 +73,8 @@ async def get_duty_stats_repository(db: AsyncSession = Depends(get_db)) -> DutyS
 async def get_incident_repository(db: AsyncSession = Depends(get_db)) -> IncidentRepository:
     """Get incident repository."""
     return IncidentRepository(db)
+
+
+async def get_google_calendar_repository(db: AsyncSession = Depends(get_db)) -> GoogleCalendarRepository:
+    """Get Google Calendar repository."""
+    return GoogleCalendarRepository(db)

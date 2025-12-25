@@ -1,11 +1,15 @@
 from datetime import date
+import logging
 from app.models import Shift, Team, User
-from app.repositories import ShiftRepository
+from app.repositories import ShiftRepository, GoogleCalendarRepository
+
+logger = logging.getLogger(__name__)
 
 
 class ShiftService:
-    def __init__(self, shift_repo: ShiftRepository):
+    def __init__(self, shift_repo: ShiftRepository, google_calendar_repo: GoogleCalendarRepository = None):
         self.shift_repo = shift_repo
+        self.google_calendar_repo = google_calendar_repo
 
     async def create_shift(
         self,
@@ -14,7 +18,12 @@ class ShiftService:
         users: list[User] | None = None
     ) -> Shift:
         """Create or update shift for a date"""
-        return await self.shift_repo.create_or_update_shift(team.id, shift_date, users)
+        shift = await self.shift_repo.create_or_update_shift(team.id, shift_date, users)
+
+        # Sync to Google Calendar if available
+        await self._sync_shift_to_calendar(shift, team)
+
+        return shift
 
     async def add_user_to_shift(
         self,
@@ -79,3 +88,26 @@ class ShiftService:
                     "team_name": shift.team.name if shift.team else "Unknown"
                 }
         return None
+
+    async def _sync_shift_to_calendar(self, shift: Shift, team: Team) -> None:
+        """Sync shift to Google Calendar if integration is available"""
+        if not self.google_calendar_repo or not shift or not team:
+            return
+
+        try:
+            from app.services.google_calendar_service import GoogleCalendarService
+
+            # Get workspace from team
+            workspace_id = team.workspace_id
+
+            # Check if Google Calendar is configured for this workspace
+            integration = await self.google_calendar_repo.get_by_workspace(workspace_id)
+            if not integration or not integration.is_active:
+                return
+
+            # Sync to calendar
+            google_service = GoogleCalendarService(self.google_calendar_repo)
+            await google_service.sync_shift_to_calendar(integration, team, shift)
+
+        except Exception as e:
+            logger.error(f"Error syncing shift to Google Calendar: {e}")

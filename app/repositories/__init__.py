@@ -11,6 +11,7 @@ from app.repositories.escalation_event_repository import EscalationEventReposito
 from app.repositories.admin_log_repository import AdminLogRepository
 from app.repositories.rotation_config_repository import RotationConfigRepository
 from app.repositories.duty_stats_repository import DutyStatsRepository
+from app.repositories.incident_repository import IncidentRepository
 
 __all__ = [
     'BaseRepository',
@@ -24,4 +25,5 @@ __all__ = [
     'AdminLogRepository',
     'RotationConfigRepository',
     'DutyStatsRepository',
+    'IncidentRepository',
 ]

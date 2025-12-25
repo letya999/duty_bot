@@ -11,6 +11,7 @@ import TeamsPage from './pages/TeamsPage';
 import EscalationsPage from './pages/EscalationsPage';
 import SettingsPage from './pages/SettingsPage';
 import ReportsPage from './pages/ReportsPage';
+import IncidentsPage from './pages/IncidentsPage';
 
 // Components
 import Navigation from './components/Navigation';
@@ -69,10 +70,12 @@ function App() {
                     <Route path="/schedules" element={<SchedulesPage />} />
                     <Route path="/teams" element={<TeamsPage />} />
                     <Route path="/escalations" element={<EscalationsPage />} />
+                    <Route path="/incidents" element={<IncidentsPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
                     <Route index element={<DashboardPage />} />
                     <Route path="schedules" element={<SchedulesPage />} />
+                    <Route path="incidents" element={<IncidentsPage />} />
                     <Route path="settings" element={<SettingsPage />} />
                     <Route path="reports" element={<ReportsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />

@@ -287,4 +287,46 @@ export const apiService = {
     const response = await api.delete(`/shifts/${shiftId}`);
     return response.data;
   },
+
+  // Incidents
+  createIncident: async (workspaceId: number, name: string): Promise<any> => {
+    const response = await api.post(`/workspaces/${workspaceId}/incidents`, { name });
+    return response.data;
+  },
+
+  getIncidents: async (workspaceId: number, status?: string): Promise<any> => {
+    const response = await api.get(`/workspaces/${workspaceId}/incidents`, {
+      params: { status },
+    });
+    return response.data;
+  },
+
+  getIncident: async (workspaceId: number, incidentId: number): Promise<any> => {
+    const response = await api.get(`/workspaces/${workspaceId}/incidents/${incidentId}`);
+    return response.data;
+  },
+
+  completeIncident: async (workspaceId: number, incidentId: number): Promise<any> => {
+    const response = await api.patch(`/workspaces/${workspaceId}/incidents/${incidentId}/complete`);
+    return response.data;
+  },
+
+  deleteIncident: async (workspaceId: number, incidentId: number): Promise<any> => {
+    const response = await api.delete(`/workspaces/${workspaceId}/incidents/${incidentId}`);
+    return response.data;
+  },
+
+  getActiveIncidents: async (workspaceId: number): Promise<any> => {
+    const response = await api.get(`/workspaces/${workspaceId}/incidents`, {
+      params: { status: 'active' },
+    });
+    return response.data;
+  },
+
+  getMetrics: async (workspaceId: number, period: string = 'week'): Promise<any> => {
+    const response = await api.get(`/workspaces/${workspaceId}/incidents/metrics/summary`, {
+      params: { period },
+    });
+    return response.data;
+  },
 };

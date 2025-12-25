@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Calendar, Home, LogOut, Menu, Settings, X, Users, AlertCircle, ChevronDown } from 'lucide-react';
+import { BarChart3, Calendar, Home, LogOut, Menu, Settings, X, Users, AlertCircle, ChevronDown, Zap } from 'lucide-react';
 import { User } from '../types';
 
 interface Workspace {
@@ -86,6 +86,7 @@ const Navigation: React.FC = () => {
   const navItems = [
     { path: '/', label: 'Dashboard', icon: <Home size={20} /> },
     { path: '/schedules', label: 'Schedules', icon: <Calendar size={20} /> },
+    { path: '/incidents', label: 'Incidents', icon: <Zap size={20} /> },
     ...(user?.is_admin ? [
       { path: '/teams', label: 'Teams', icon: <Users size={20} /> },
       { path: '/escalations', label: 'Escalations', icon: <AlertCircle size={20} /> },

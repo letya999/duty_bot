@@ -11,10 +11,11 @@ class ShiftService:
         self,
         team: Team,
         shift_date: date,
-        users: list[User] | None = None
+        users: list[User] | None = None,
+        commit: bool = True
     ) -> Shift:
         """Create or update shift for a date"""
-        return await self.shift_repo.create_or_update_shift(team.id, shift_date, users)
+        return await self.shift_repo.create_or_update_shift(team.id, shift_date, users, commit=commit)
 
     async def add_user_to_shift(
         self,

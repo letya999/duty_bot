@@ -31,6 +31,7 @@ export const Icons = {
     Close: X,
     Check,
     Warning: AlertTriangle,
+    X,
     Info
 };
 

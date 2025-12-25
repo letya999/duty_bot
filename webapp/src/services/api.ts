@@ -104,6 +104,12 @@ export const apiService = {
     return response.data;
   },
 
+  // Update user information
+  updateUser: async (userId: number, data: { display_name?: string; first_name?: string; last_name?: string }): Promise<User> => {
+    const response = await api.put(`/users/${userId}`, data);
+    return response.data;
+  },
+
   // Get admin logs
   getAdminLogs: async (limit: number = 50): Promise<AdminAction[]> => {
     const response = await api.get('/admin-logs', {

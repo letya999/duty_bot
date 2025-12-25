@@ -139,7 +139,7 @@ const DashboardPage: React.FC = () => {
                 <tbody>
                   {upcomingSchedules.map((schedule) => (
                     <tr key={schedule.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 text-gray-900">{schedule.user.first_name} {schedule.user.last_name || ''}</td>
+                      <td className="py-3 px-4 text-gray-900">{schedule.user.display_name || `${schedule.user.first_name} ${schedule.user.last_name || ''}`}</td>
                       <td className="py-3 px-4 text-gray-600">{schedule.team?.name || 'N/A'}</td>
                       <td className="py-3 px-4 text-gray-600">{schedule.duty_date}</td>
                     </tr>

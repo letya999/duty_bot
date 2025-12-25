@@ -98,8 +98,11 @@ class TelegramOAuth(OAuthProvider):
             # Create data check string (exclude hash)
             data_list = []
             for key in sorted(data.keys()):
-                if key != 'hash':
-                    data_list.append(f"{key}={data[key]}")
+                if key != 'hash' and data[key] is not None:
+                    value = data[key]
+                    if isinstance(value, bool):
+                        value = "true" if value else "false"
+                    data_list.append(f"{key}={value}")
             data_check_string = '\n'.join(data_list)
 
             logger.info(f"🔵 [Validate] Data check string: {data_check_string[:100]}...")
@@ -117,6 +120,9 @@ class TelegramOAuth(OAuthProvider):
 
             if data_hash != expected_hash:
                 logger.warning(f"❌ [Validate] Invalid hash: {data_hash} != {expected_hash}")
+                # FALLBACK: If hash fails but we define a DEV_BYPASS_AUTH_ID in env, allow it (for testing only)
+                # But for now, strictly enforce hash.
+                # Common issue: URL decoding of special chars. Web widget sends raw strings.
                 return None
 
             logger.info("✅ [Validate] Hash valid, returning user data")
@@ -137,7 +143,7 @@ class TelegramOAuth(OAuthProvider):
             }
 
         except Exception as e:
-            logger.error(f"❌ [Validate] Error validating Telegram widget data: {e}")
+            logger.error(f"❌ [Validate] Error validating Telegram widget data: {e}", exc_info=True)
             return None
 
 

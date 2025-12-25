@@ -336,10 +336,10 @@ const SchedulesPage: React.FC = () => {
                           handleOpenEditModal(schedule);
                         }}
                         className="text-xs p-1.5 rounded bg-info-light border-l-2 border-info cursor-pointer hover:brightness-95 transition-all truncate"
-                        title={`${schedule.user.first_name} ${schedule.team ? `(${schedule.team.name})` : ''}`}
+                        title={`${schedule.user.display_name || schedule.user.first_name} ${schedule.team ? `(${schedule.team.name})` : ''}`}
                       >
                         <span className="font-medium text-info-dark">
-                          {schedule.user.first_name}
+                          {schedule.user.display_name || schedule.user.first_name}
                         </span>
                         {schedule.team && (
                           <span className="text-info-dark/70 ml-1">
@@ -383,7 +383,7 @@ const SchedulesPage: React.FC = () => {
                     <tr key={schedule.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-3 px-4 text-gray-900">{schedule.duty_date}</td>
                       <td className="py-3 px-4 text-gray-900 font-medium">
-                        {schedule.user.first_name} {schedule.user.last_name}
+                        {schedule.user.display_name || `${schedule.user.first_name} ${schedule.user.last_name || ''}`}
                       </td>
                       <td className="py-3 px-4 text-text-muted">
                         {schedule.team?.name || '-'}
@@ -565,7 +565,7 @@ const SchedulesPage: React.FC = () => {
               <option value="">{t('schedules.modal.select_user')}</option>
               {users.map(u => (
                 <option key={u.id} value={u.id}>
-                  {u.first_name} {u.last_name}
+                  {u.display_name || `${u.first_name} ${u.last_name || ''}`}
                 </option>
               ))}
             </Select>

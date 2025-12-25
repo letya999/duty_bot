@@ -8,6 +8,10 @@ from app.database import AsyncSessionLocal, get_db_with_retry
 from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.commands.parser import CommandParser, DateParser, CommandError
 from app.services.user_service import UserService
+from app.repositories import (
+    UserRepository, TeamRepository, ScheduleRepository, ShiftRepository,
+    EscalationRepository, RotationConfigRepository, AdminLogRepository
+)
 from app.models import Workspace
 from app.config import get_settings
 
@@ -61,7 +65,7 @@ class TelegramHandler:
                 update.effective_chat.id,
                 update.effective_chat.title
             )
-            user_service = UserService(db)
+            user_service = UserService(UserRepository(db))
             user_info = update.effective_user
             user = await user_service.get_or_create_by_telegram(
                 workspace_id,
@@ -164,8 +168,8 @@ class TelegramHandler:
 
             workspace_id, user, db = await self._get_workspace_and_user(update)
             handler = BotCommandHandler(db, workspace_id)
-            user_service = UserService(db)
-            admin_service = AdminService(db)
+            user_service = UserService(UserRepository(db))
+            admin_service = AdminService(AdminLogRepository(db))
 
             args = context.args
             if not args:
@@ -315,8 +319,8 @@ class TelegramHandler:
 
             workspace_id, user, db = await self._get_workspace_and_user(update)
             handler = BotCommandHandler(db, workspace_id)
-            user_service = UserService(db)
-            admin_service = AdminService(db)
+            user_service = UserService(UserRepository(db))
+            admin_service = AdminService(AdminLogRepository(db))
 
             args = context.args
             if not args:
@@ -417,8 +421,8 @@ class TelegramHandler:
 
             workspace_id, user, db = await self._get_workspace_and_user(update)
             handler = BotCommandHandler(db, workspace_id)
-            user_service = UserService(db)
-            admin_service = AdminService(db)
+            user_service = UserService(UserRepository(db))
+            admin_service = AdminService(AdminLogRepository(db))
 
             args = context.args
             if not args:
@@ -518,8 +522,8 @@ class TelegramHandler:
 
             workspace_id, user, db = await self._get_workspace_and_user(update)
             handler = BotCommandHandler(db, workspace_id)
-            user_service = UserService(db)
-            admin_service = AdminService(db)
+            user_service = UserService(UserRepository(db))
+            admin_service = AdminService(AdminLogRepository(db))
 
             args = context.args
             full_text = " ".join(args) if args else ""
@@ -594,8 +598,8 @@ class TelegramHandler:
             from app.services.admin_service import AdminService
 
             workspace_id, user, db = await self._get_workspace_and_user(update)
-            user_service = UserService(db)
-            admin_service = AdminService(db)
+            user_service = UserService(UserRepository(db))
+            admin_service = AdminService(AdminLogRepository(db))
 
             args = context.args
             if not args:

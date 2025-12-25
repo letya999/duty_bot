@@ -16,22 +16,24 @@ class AdminService:
     async def check_permission(self, user_id: int, workspace_id: int, action: str) -> bool:
         """
         Check if user has permission for action.
-        If no admins configured, allow all users.
-        If admins configured, only admins can perform actions.
+        If user is in master admin list (env), always allow.
+        Otherwise, check if user is admin in this workspace.
         """
-        # Get admin IDs from config
-        admin_ids = self.settings.get_admin_ids('telegram') + self.settings.get_admin_ids('slack')
-
-        # If no admins configured, allow all
-        if not admin_ids:
-            return True
-
-        # Check if user is admin
         user_obj = await self.user_repo.get_by_id(user_id)
         if not user_obj:
             return False
 
-        # Check if user is in admin list by ID
+        # Check master admin status
+        admin_telegram_ids = self.settings.get_admin_ids('telegram')
+        admin_slack_ids = self.settings.get_admin_ids('slack')
+
+        if user_obj.telegram_id and str(user_obj.telegram_id) in admin_telegram_ids:
+            return True
+        if user_obj.slack_user_id and user_obj.slack_user_id in admin_slack_ids:
+            return True
+
+        # If no master admins configured at all, and no admins in workspace, 
+        # we might want a fallback, but for now just check is_admin flag
         return user_obj.is_admin
 
     async def log_action(

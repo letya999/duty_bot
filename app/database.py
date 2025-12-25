@@ -89,8 +89,8 @@ async def apply_migrations():
         logger.info("No SQL migration files found")
         return
 
-    async with engine.begin() as conn:
-        for migration_file in migration_files:
+    for migration_file in migration_files:
+        async with engine.begin() as conn:
             try:
                 logger.info(f"Applying migration: {migration_file.name}")
                 migration_sql = migration_file.read_text()

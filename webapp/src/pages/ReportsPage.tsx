@@ -184,7 +184,7 @@ const ReportsPage: React.FC = () => {
                 <div key={stat.user?.id}>
                   <div className="flex items-center justify-between mb-2">
                     <p className="font-medium text-gray-900">
-                      {idx + 1}. {stat.user?.first_name} {stat.user?.last_name || ''}
+                      {idx + 1}. {stat.user?.display_name || `${stat.user?.first_name} ${stat.user?.last_name || ''}`}
                     </p>
                     <span className="text-sm font-semibold text-blue-600">
                       {stat.count} duties

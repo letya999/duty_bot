@@ -4,6 +4,7 @@ export interface User {
   username: string;
   first_name: string;
   last_name?: string;
+  display_name?: string;
   is_admin: boolean;
   workspace_id: number;
   telegram_id?: number;

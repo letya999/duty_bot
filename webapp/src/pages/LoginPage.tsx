@@ -96,10 +96,10 @@ const LoginPage: React.FC = () => {
       return;
     }
 
-    console.log('🔵 [LoginPage] Triggering Method B (Programmatic API)');
-    // The bot_id must be a number! Taken from your logs: 8527825927
+    const botId = parseInt(import.meta.env.VITE_TELEGRAM_BOT_ID || '8527825927');
+    console.log('🔵 [LoginPage] Triggering Method B (Programmatic API) with bot_id:', botId);
     window.Telegram.Login.auth(
-      { bot_id: 8527825927, request_access: true },
+      { bot_id: botId, request_access: true },
       (user: any) => {
         if (user) {
           console.log('✅ [LoginPage] Method B Authorization success:', user);

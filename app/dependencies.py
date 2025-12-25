@@ -15,52 +15,54 @@ from app.repositories import (
 )
 
 
+from fastapi import Depends
+
 async def get_db() -> AsyncSession:
     """Get database session."""
     async with AsyncSessionLocal() as session:
         yield session
 
 
-async def get_user_repository(db: AsyncSession) -> UserRepository:
+async def get_user_repository(db: AsyncSession = Depends(get_db)) -> UserRepository:
     """Get user repository."""
     return UserRepository(db)
 
 
-async def get_team_repository(db: AsyncSession) -> TeamRepository:
+async def get_team_repository(db: AsyncSession = Depends(get_db)) -> TeamRepository:
     """Get team repository."""
     return TeamRepository(db)
 
 
-async def get_workspace_repository(db: AsyncSession) -> WorkspaceRepository:
+async def get_workspace_repository(db: AsyncSession = Depends(get_db)) -> WorkspaceRepository:
     """Get workspace repository."""
     return WorkspaceRepository(db)
 
 
-async def get_schedule_repository(db: AsyncSession) -> ScheduleRepository:
+async def get_schedule_repository(db: AsyncSession = Depends(get_db)) -> ScheduleRepository:
     """Get schedule repository."""
     return ScheduleRepository(db)
 
 
-async def get_shift_repository(db: AsyncSession) -> ShiftRepository:
+async def get_shift_repository(db: AsyncSession = Depends(get_db)) -> ShiftRepository:
     """Get shift repository."""
     return ShiftRepository(db)
 
 
-async def get_escalation_repository(db: AsyncSession) -> EscalationRepository:
+async def get_escalation_repository(db: AsyncSession = Depends(get_db)) -> EscalationRepository:
     """Get escalation repository."""
     return EscalationRepository(db)
 
 
-async def get_admin_log_repository(db: AsyncSession) -> AdminLogRepository:
+async def get_admin_log_repository(db: AsyncSession = Depends(get_db)) -> AdminLogRepository:
     """Get admin log repository."""
     return AdminLogRepository(db)
 
 
-async def get_rotation_config_repository(db: AsyncSession) -> RotationConfigRepository:
+async def get_rotation_config_repository(db: AsyncSession = Depends(get_db)) -> RotationConfigRepository:
     """Get rotation config repository."""
     return RotationConfigRepository(db)
 
 
-async def get_duty_stats_repository(db: AsyncSession) -> DutyStatsRepository:
+async def get_duty_stats_repository(db: AsyncSession = Depends(get_db)) -> DutyStatsRepository:
     """Get duty stats repository."""
     return DutyStatsRepository(db)

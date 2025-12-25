@@ -2,6 +2,7 @@
 import logging
 from datetime import datetime, timedelta, date as date_type
 from fastapi import APIRouter, Depends, HTTPException, Header, Body
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, case
 
@@ -86,6 +87,13 @@ async def get_admin_service(admin_log_repo: AdminLogRepository = Depends(get_adm
     return AdminService(admin_log_repo, user_repo)
 
 
+async def get_stats_service(db: AsyncSession = Depends(get_db)) -> StatsService:
+    """Get stats service"""
+    return StatsService(db)
+
+
+from app.config import get_settings
+
 async def get_user_from_token(
     authorization: str = Header(None),
     user_repo: UserRepository = Depends(get_user_repository)
@@ -105,8 +113,27 @@ async def get_user_from_token(
     if not user:
         raise AuthenticationError("User not found")
 
+    # Check if user is a master admin - always grant admin status in any workspace
+    settings = get_settings()
+    is_master = False
+    if user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram'):
+        is_master = True
+    if user.slack_user_id and user.slack_user_id in settings.get_admin_ids('slack'):
+        is_master = True
+    
+    if is_master and not user.is_admin:
+        # We can temporarily set it for this request context
+        user.is_admin = True
+        # Optional: update in DB for future requests
+        await user_repo.update(user.id, {"is_admin": True})
+
     return user
 
+
+class UserUpdateRequest(BaseModel):
+    display_name: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
 
 # ============ User Endpoints ============
 
@@ -145,17 +172,66 @@ async def get_all_users(
         return [
             {
                 "id": u.id,
+                "workspace_id": u.workspace_id,
+                "telegram_id": str(u.telegram_id) if u.telegram_id else None,
+                "telegram_username": u.telegram_username,
                 "username": u.username,
+                "slack_user_id": u.slack_user_id,
                 "first_name": u.first_name,
                 "last_name": u.last_name or "",
+                "display_name": u.display_name,
                 "is_admin": u.is_admin,
-                "telegram_username": u.telegram_username,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
             }
             for u in users
         ]
     except Exception as e:
         logger.error(f"Error getting all users: {e}")
         raise HTTPException(status_code=500, detail="Failed to get users")
+
+
+@router.put(
+    "/users/{user_id}",
+    tags=["Users"],
+    summary="Update user information",
+    description="Обновить информацию о пользователе (например, display_name)."
+)
+async def update_user_info(
+    user_id: int,
+    data: UserUpdateRequest,
+    user: User = Depends(get_user_from_token),
+    user_service: UserService = Depends(get_user_service)
+) -> dict:
+    """Update user info"""
+    try:
+        logger.info(f"Updating user {user_id}: {data.model_dump(exclude_unset=True)}")
+        if not user.is_admin:
+            logger.warning(f"User {user.id} tried to update user {user_id} without admin perms")
+            raise HTTPException(status_code=403, detail="Only admins can update user info")
+
+        update_data = data.model_dump(exclude_unset=True)
+
+        if not update_data:
+            logger.warning(f"No update data provided for user {user_id}")
+            raise HTTPException(status_code=400, detail="No update data provided")
+
+        updated_user = await user_service.update_user(user_id, user.workspace_id, update_data)
+        if not updated_user:
+            logger.error(f"User {user_id} not found in workspace {user.workspace_id}")
+            raise HTTPException(status_code=404, detail="User not found in this workspace")
+
+        logger.info(f"Successfully updated user {user_id}: display_name={updated_user.display_name}")
+        return {
+            "id": updated_user.id,
+            "display_name": updated_user.display_name,
+            "first_name": updated_user.first_name,
+            "last_name": updated_user.last_name,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update user")
 
 
 # ============ Team Endpoints ============
@@ -186,8 +262,11 @@ async def get_teams(
                     {
                         "id": m.id,
                         "username": m.username,
+                        "telegram_username": m.telegram_username,
+                        "slack_user_id": m.slack_user_id,
                         "first_name": m.first_name,
                         "last_name": m.last_name or "",
+                        "display_name": m.display_name,
                     }
                     for m in (team.members or [])
                 ]
@@ -216,9 +295,16 @@ async def get_team_members(
         for member in (team.members or []):
             result.append({
                 "id": member.id,
+                "workspace_id": member.workspace_id,
+                "telegram_id": str(member.telegram_id) if member.telegram_id else None,
+                "telegram_username": member.telegram_username,
                 "username": member.username,
+                "slack_user_id": member.slack_user_id,
                 "first_name": member.first_name,
                 "last_name": member.last_name or "",
+                "display_name": member.display_name,
+                "is_admin": member.is_admin,
+                "created_at": member.created_at.isoformat() if member.created_at else None,
             })
 
         return result
@@ -241,14 +327,13 @@ async def get_month_schedule(
     year: int,
     month: int,
     user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
+    schedule_service: ScheduleService = Depends(get_schedule_service),
+    team_service: TeamService = Depends(get_team_service)
 ) -> dict:
     """Get schedule for a month - uses ScheduleService"""
     try:
         from datetime import datetime as dt
 
-        schedule_service = ScheduleService(db)
-        team_service = TeamService(db)
 
         # Get all schedules for the month
         start_date = dt(year, month, 1).date()
@@ -261,7 +346,7 @@ async def get_month_schedule(
 
         schedule_by_date = {}
         for team in teams:
-            duties = await schedule_service.get_duties_by_date_range(team, start_date, end_date - timedelta(days=1))
+            duties = await schedule_service.get_duties_by_date_range(team.id, start_date, end_date - timedelta(days=1))
             for duty in duties:
                 date_key = duty.date.isoformat()
                 if date_key not in schedule_by_date:
@@ -289,6 +374,7 @@ async def get_month_schedule(
                                 "username": schedule.user.username,
                                 "first_name": schedule.user.first_name,
                                 "last_name": schedule.user.last_name or "",
+                                "display_name": schedule.user.display_name,
                             },
                             "team": {
                                 "id": schedule.team.id if schedule.team else None,
@@ -323,15 +409,14 @@ async def get_month_schedule(
 async def get_daily_schedule(
     date: str,
     user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
+    schedule_service: ScheduleService = Depends(get_schedule_service),
+    team_service: TeamService = Depends(get_team_service)
 ) -> dict:
     """Get schedule for a specific day - uses ScheduleService"""
     try:
         from datetime import datetime as dt
 
         date_obj = dt.fromisoformat(date).date()
-        schedule_service = ScheduleService(db)
-        team_service = TeamService(db)
 
         teams = await team_service.get_all_teams(user.workspace_id)
 
@@ -339,7 +424,7 @@ async def get_daily_schedule(
         seen_users = set()
 
         for team in teams:
-            duty = await schedule_service.get_duty(team, date_obj)
+            duty = await schedule_service.get_duty(team.id, date_obj)
             if duty and duty.user_id not in seen_users:
                 duties.append({
                     "id": duty.id,
@@ -350,6 +435,7 @@ async def get_daily_schedule(
                         "username": duty.user.username,
                         "first_name": duty.user.first_name,
                         "last_name": duty.user.last_name or "",
+                        "display_name": duty.user.display_name,
                     },
                     "team": {
                         "id": duty.team.id if duty.team else None,
@@ -385,9 +471,9 @@ async def assign_duty(
     try:
         from datetime import datetime as dt
 
-        schedule_service = ScheduleService(db)
-        team_service = TeamService(db)
-        user_service = UserService(db)
+        schedule_service = ScheduleService(ScheduleRepository(db))
+        team_service = TeamService(TeamRepository(db))
+        user_service = UserService(UserRepository(db))
 
         # Verify team belongs to user's workspace
         team = await team_service.get_team(team_id, current_user.workspace_id)
@@ -440,7 +526,7 @@ async def remove_duty(
             raise AuthorizationError("Not authorized to modify this schedule")
 
         # Use ScheduleService to clear duty
-        schedule_service = ScheduleService(db)
+        schedule_service = ScheduleService(ScheduleRepository(db))
         success = await schedule_service.clear_duty(schedule_obj.team, schedule_obj.date)
 
         if not success:
@@ -474,9 +560,9 @@ async def assign_shift(
         from datetime import datetime as dt
         from app.models import Team
 
-        shift_service = ShiftService(db)
-        team_service = TeamService(db)
-        user_service = UserService(db)
+        shift_service = ShiftService(ShiftRepository(db))
+        team_service = TeamService(TeamRepository(db))
+        user_service = UserService(UserRepository(db))
 
         # Verify team belongs to user's workspace and has shifts enabled
         team = await team_service.get_team(team_id, current_user.workspace_id)
@@ -531,8 +617,8 @@ async def assign_shifts_bulk(
     try:
         from datetime import datetime as dt
 
-        shift_service = ShiftService(db)
-        team_service = TeamService(db)
+        shift_service = ShiftService(ShiftRepository(db))
+        team_service = TeamService(TeamRepository(db))
 
         # Verify team belongs to user's workspace and has shifts enabled
         team = await team_service.get_team(team_id, current_user.workspace_id)
@@ -594,8 +680,8 @@ async def get_shifts_for_date(
         from app.models import Shift
 
         date_obj = dt.fromisoformat(shift_date).date()
-        shift_service = ShiftService(db)
-        team_service = TeamService(db)
+        shift_service = ShiftService(ShiftRepository(db))
+        team_service = TeamService(TeamRepository(db))
 
         shifts = []
 
@@ -679,8 +765,8 @@ async def get_shifts_range(
 
         start_date_obj = dt.fromisoformat(start_date).date()
         end_date_obj = dt.fromisoformat(end_date).date()
-        shift_service = ShiftService(db)
-        team_service = TeamService(db)
+        shift_service = ShiftService(ShiftRepository(db))
+        team_service = TeamService(TeamRepository(db))
 
         shifts_by_date = {}
 
@@ -856,7 +942,7 @@ async def get_admins(
 ) -> dict:
     """Get list of all admins in workspace - uses UserService"""
     try:
-        user_service = UserService(db)
+        user_service = UserService(UserRepository(db))
         admins = await user_service.get_all_admins(user.workspace_id)
 
         return {
@@ -900,7 +986,7 @@ async def promote_user(
         await db.commit()
 
         # Log action using AdminService
-        admin_service = AdminService(db)
+        admin_service = AdminService(AdminLogRepository(db))
         await admin_service.log_action(
             workspace_id=current_user.workspace_id,
             admin_id=current_user.id,
@@ -953,7 +1039,7 @@ async def demote_user(
         await db.commit()
 
         # Log action using AdminService
-        admin_service = AdminService(db)
+        admin_service = AdminService(AdminLogRepository(db))
         await admin_service.log_action(
             workspace_id=current_user.workspace_id,
             admin_id=current_user.id,
@@ -994,7 +1080,7 @@ async def get_admin_logs(
 ) -> dict:
     """Get recent admin action logs - uses AdminService"""
     try:
-        admin_service = AdminService(db)
+        admin_service = AdminService(AdminLogRepository(db))
         logs = await admin_service.get_action_history(user.workspace_id, limit)
 
         return {
@@ -1030,7 +1116,8 @@ async def get_schedules_by_date_range(
     start_date: str,
     end_date: str,
     user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
+    schedule_service: ScheduleService = Depends(get_schedule_service),
+    team_service: TeamService = Depends(get_team_service)
 ) -> dict:
     """Get all schedules within a date range - uses ScheduleService"""
     try:
@@ -1039,14 +1126,11 @@ async def get_schedules_by_date_range(
         start = dt.fromisoformat(start_date).date()
         end = dt.fromisoformat(end_date).date()
 
-        schedule_service = ScheduleService(db)
-        team_service = TeamService(db)
-
         teams = await team_service.get_all_teams(user.workspace_id)
 
         schedules = []
         for team in teams:
-            team_duties = await schedule_service.get_duties_by_date_range(team, start, end)
+            team_duties = await schedule_service.get_duties_by_date_range(team.id, start, end)
             for duty in team_duties:
                 schedules.append({
                     "id": duty.id,
@@ -1087,13 +1171,14 @@ async def get_schedule_statistics(
     start_date: str = None,
     end_date: str = None,
     user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
+    stats_service: StatsService = Depends(get_stats_service),
+    schedule_service: ScheduleService = Depends(get_schedule_service),
+    team_service: TeamService = Depends(get_team_service)
 ) -> dict:
     """Get schedule statistics - uses StatsService"""
     try:
         from datetime import datetime as dt
 
-        stats_service = StatsService(db)
 
         # Default to last 30 days if not specified
         if not end_date:
@@ -1111,15 +1196,13 @@ async def get_schedule_statistics(
         top_users_data = await stats_service.get_top_users_by_duties(user.workspace_id, year, month)
 
         # Get total duties for the period
-        schedule_service = ScheduleService(db)
-        team_service = TeamService(db)
 
         teams = await team_service.get_all_teams(user.workspace_id)
         total_duties = 0
         unique_users = set()
 
         for team in teams:
-            duties = await schedule_service.get_duties_by_date_range(team, start, end)
+            duties = await schedule_service.get_duties_by_date_range(team.id, start, end)
             total_duties += len(duties)
             for duty in duties:
                 unique_users.add(duty.user_id)
@@ -1165,8 +1248,8 @@ async def update_duty(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can update duties")
 
-        schedule_service = ScheduleService(db)
-        team_service = TeamService(db)
+        schedule_service = ScheduleService(ScheduleRepository(db))
+        team_service = TeamService(TeamRepository(db))
 
         # Get team
         team = await team_service.get_team(team_id) if team_id else None
@@ -1204,8 +1287,8 @@ async def assign_bulk_duties(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can assign duties")
 
-        schedule_service = ScheduleService(db)
-        team_service = TeamService(db)
+        schedule_service = ScheduleService(ScheduleRepository(db))
+        team_service = TeamService(TeamRepository(db))
 
         start = datetime.strptime(start_date, '%Y-%m-%d').date()
         end = datetime.strptime(end_date, '%Y-%m-%d').date()
@@ -1237,7 +1320,7 @@ async def assign_bulk_duties(
 )
 async def move_duty(
     schedule_id: int,
-    new_date: str = Body(..., embed=False),
+    new_date: str = Body(..., embed=True),
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
@@ -1246,12 +1329,13 @@ async def move_duty(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can modify duties")
 
-        schedule_service = ScheduleService(db)
+        schedule_service = ScheduleService(ScheduleRepository(db))
         new_date_obj = datetime.strptime(new_date, '%Y-%m-%d').date()
 
         # Get schedule
         from sqlalchemy import select
-        stmt = select(schedule_service.schedule_model).where(schedule_service.schedule_model.id == schedule_id)
+        from app.models import Schedule
+        stmt = select(Schedule).where(Schedule.id == schedule_id)
         result = await db.execute(stmt)
         schedule = result.scalar_one_or_none()
 
@@ -1278,7 +1362,7 @@ async def move_duty(
 )
 async def replace_duty_user(
     schedule_id: int,
-    user_id: int = Body(..., embed=False),
+    user_id: int = Body(..., embed=True),
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
@@ -1330,7 +1414,7 @@ async def create_team(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can create teams")
 
-        team_service = TeamService(db)
+        team_service = TeamService(TeamRepository(db))
         team = await team_service.create_team(
             workspace_id=user.workspace_id,
             name=name,
@@ -1370,7 +1454,7 @@ async def update_team(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can update teams")
 
-        team_service = TeamService(db)
+        team_service = TeamService(TeamRepository(db))
         team = await team_service.get_team(team_id, user.workspace_id)
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
@@ -1416,7 +1500,7 @@ async def delete_team(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can delete teams")
 
-        team_service = TeamService(db)
+        team_service = TeamService(TeamRepository(db))
         team = await team_service.get_team(team_id, user.workspace_id)
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
@@ -1439,7 +1523,7 @@ async def delete_team(
 )
 async def add_team_member(
     team_id: int,
-    user_id: int = Body(..., embed=False),
+    user_id: int = Body(..., embed=True),
     user: User = Depends(get_user_from_token),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
@@ -1448,13 +1532,13 @@ async def add_team_member(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can manage team members")
 
-        team_service = TeamService(db)
+        team_service = TeamService(TeamRepository(db))
         team = await team_service.get_team(team_id, user.workspace_id)
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
 
         member = await db.get(User, user_id)
-        if not member:
+        if not member or member.workspace_id != user.workspace_id:
             raise HTTPException(status_code=404, detail="User not found")
 
         await team_service.add_member(team.id, member)
@@ -1484,13 +1568,13 @@ async def remove_team_member(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can manage team members")
 
-        team_service = TeamService(db)
+        team_service = TeamService(TeamRepository(db))
         team = await team_service.get_team(team_id, user.workspace_id)
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
 
         member = await db.get(User, member_id)
-        if not member:
+        if not member or member.workspace_id != user.workspace_id:
             raise HTTPException(status_code=404, detail="User not found")
 
         await team_service.remove_member(team.id, member)
@@ -1536,19 +1620,22 @@ async def import_team_member(
             raise HTTPException(status_code=404, detail="Team not found")
 
         # Clean handle
-        clean_handle = handle.strip()
-        source = "unknown"
+        handle_orig = handle.strip()
+        clean_handle = handle_orig
+        source = "internal"
         
+        # Initial info based on handle
         imported_info = {
             "first_name": clean_handle,
             "last_name": None,
             "username": clean_handle,
+            "display_name": clean_handle,
             "telegram_id": None,
             "slack_id": None
         }
 
         # Telegram detection
-        if clean_handle.startswith("https://t.me/") or clean_handle.startswith("t.me/") or clean_handle.startswith("@"):
+        if clean_handle.startswith("https://t.me/") or clean_handle.startswith("t.me/") or clean_handle.startswith("@") or source == "telegram":
             source = "telegram"
             if clean_handle.startswith("https://t.me/"):
                 clean_handle = clean_handle.replace("https://t.me/", "")
@@ -1558,17 +1645,26 @@ async def import_team_member(
                 clean_handle = clean_handle[1:]
             
             imported_info["username"] = clean_handle
+            imported_info["first_name"] = clean_handle
+            imported_info["display_name"] = clean_handle
             
             # Try to fetch from Telegram
             if settings.telegram_token:
                 try:
                     bot = Bot(token=settings.telegram_token)
-                    # get_chat works for @username
+                    # get_chat works for @username if bot has seen user or it's a public username
+                    logger.info(f"Attempting to fetch Telegram info for @{clean_handle}")
                     chat = await bot.get_chat(f"@{clean_handle}")
                     imported_info["first_name"] = chat.first_name or clean_handle
                     imported_info["last_name"] = chat.last_name
                     imported_info["username"] = chat.username or clean_handle
                     imported_info["telegram_id"] = str(chat.id)
+                    # For display name, prefer real name if available
+                    if chat.first_name:
+                        imported_info["display_name"] = f"{chat.first_name} {chat.last_name or ''}".strip()
+                    else:
+                        imported_info["display_name"] = chat.username or clean_handle
+                    logger.info(f"Successfully fetched Telegram info for @{clean_handle}: ID={chat.id}")
                 except Exception as e:
                     logger.warning(f"Failed to fetch Telegram info for {clean_handle}: {e}")
 
@@ -1578,7 +1674,6 @@ async def import_team_member(
             slack_user_id = clean_handle
             
             # Extract ID from URL if present
-            # Format: https://workspace.slack.com/team/U12345678
             if "slack.com" in clean_handle and "/team/" in clean_handle:
                 parts = clean_handle.split("/team/")
                 if len(parts) > 1:
@@ -1598,6 +1693,7 @@ async def import_team_member(
                         imported_info["last_name"] = profile.get("last_name")
                         imported_info["username"] = slack_user.get("name")
                         imported_info["slack_id"] = slack_user.get("id")
+                        imported_info["display_name"] = slack_user.get("real_name") or slack_user.get("name")
                 except Exception as e:
                      logger.warning(f"Failed to fetch Slack info for {slack_user_id}: {e}")
 
@@ -1627,16 +1723,25 @@ async def import_team_member(
                 telegram_username=imported_info["username"] if source == "telegram" else None,
                 first_name=imported_info["first_name"],
                 last_name=imported_info["last_name"],
-                slack_user_id=imported_info["slack_id"]
+                slack_user_id=imported_info["slack_id"],
+                telegram_id=int(imported_info["telegram_id"]) if imported_info["telegram_id"] else None,
+                display_name=imported_info["display_name"]
             )
-            # Update explicit IDs provided by API if not set during creation (create_user might not accept all)
-            # Actually create_user signature in UserService might need check but we can update manually
+        else:
+            # Update existing user info if it was missing
+            updated = False
             if imported_info["telegram_id"] and not target_user.telegram_id:
-                try:
-                    target_user.telegram_id = int(imported_info["telegram_id"])
-                    await db.commit()
-                except ValueError:
-                    logger.warning(f"Invalid telegram_id format: {imported_info['telegram_id']}")
+                target_user.telegram_id = int(imported_info["telegram_id"])
+                updated = True
+            if imported_info["first_name"] and not target_user.first_name:
+                target_user.first_name = imported_info["first_name"]
+                updated = True
+            if imported_info["last_name"] and not target_user.last_name:
+                target_user.last_name = imported_info["last_name"]
+                updated = True
+            
+            if updated:
+                await db.commit()
 
         if not target_user:
              raise HTTPException(status_code=500, detail="Failed to find or create user")
@@ -1651,6 +1756,7 @@ async def import_team_member(
                 "username": target_user.username,
                 "first_name": target_user.first_name,
                 "last_name": target_user.last_name,
+                "display_name": target_user.display_name
             }
         }
     except HTTPException:
@@ -1683,7 +1789,7 @@ async def move_team_member(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can manage team members")
 
-        team_service = TeamService(db)
+        team_service = TeamService(TeamRepository(db))
         
         # Verify teams
         from_team = await team_service.get_team(from_team_id, user.workspace_id)

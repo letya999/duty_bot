@@ -73,8 +73,13 @@ class TeamService:
 
         # Add to team members if not already there
         if team and user_id not in [member.id for member in team.members]:
-            user = User(id=user_id)
-            team = await self.team_repo.add_member(team_id, user)
+            # Use same session to fetch full user object
+            from sqlalchemy.future import select
+            stmt = select(User).where(User.id == user_id)
+            result = await self.team_repo.db.execute(stmt)
+            user = result.scalar_one_or_none()
+            if user:
+                team = await self.team_repo.add_member(team_id, user)
 
         return team
 

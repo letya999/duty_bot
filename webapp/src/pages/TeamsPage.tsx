@@ -41,24 +41,33 @@ const TeamsPage: React.FC = () => {
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
   const [importHandle, setImportHandle] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [editingUser, setEditingUser] = useState<{ id: number; displayName: string } | null>(null);
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [teamsData, usersData] = await Promise.all([
         apiService.getTeams(),
         apiService.getAllUsers(),
       ]);
       setTeams(teamsData);
       setUsers(usersData);
+
+      // Update selectedTeamForMembers if it's currently open to reflect any changes (e.g. member names)
+      if (selectedTeamForMembers) {
+        const updatedTeam = teamsData.find(t => t.id === selectedTeamForMembers.id);
+        if (updatedTeam) {
+          setSelectedTeamForMembers(updatedTeam);
+        }
+      }
     } catch (err) {
       console.error('Failed to load data', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -129,6 +138,13 @@ const TeamsPage: React.FC = () => {
     if (!selectedTeamForMembers) return;
 
     try {
+      // If there's an active name edit, save it first
+      if (editingUser) {
+        console.log('[TeamsPage] Saving pending name edit before team save');
+        await apiService.updateUser(editingUser.id, { display_name: editingUser.displayName });
+        setEditingUser(null);
+      }
+
       const currentMemberIds = selectedTeamForMembers.members?.map(m => m.id) || [];
 
       // Add new members
@@ -146,9 +162,10 @@ const TeamsPage: React.FC = () => {
       }
 
       setMemberModalOpen(false);
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to save members', err);
+      alert(t('common.error'));
     }
   };
 
@@ -159,17 +176,11 @@ const TeamsPage: React.FC = () => {
       setIsImporting(true);
       await apiService.importTeamMember(selectedTeamForMembers.id, importHandle);
       setImportHandle('');
-      loadData();
-      // We don't close the modal, so user can see the new member
 
-      // Refresh the selected members list for the current modal? 
-      // Actually loadData updates 'teams', but we need to update 'selectedMembers' or 'users'.
-      // If we reload data, 'teams' and 'users' update.
-      // But 'selectedMembers' state is static ids.
-      // We should probably re-init selectedMembers if we want to reflect the change visually immediately? 
-      // Or just wait for re-render.
-      // Because we fetched new teams, selectedTeamForMembers (which is a reference to old team object) might be stale if we don't update it.
-      // But we can just find the team again.
+      // Refresh all data
+      await loadData();
+
+      // Update local state for the modal to show the new member as checked
       const updatedTeams = await apiService.getTeams();
       const updatedTeam = updatedTeams.find(t => t.id === selectedTeamForMembers.id);
       if (updatedTeam) {
@@ -199,6 +210,22 @@ const TeamsPage: React.FC = () => {
 
     } catch (err) {
       console.error('Failed to move member', err);
+    }
+  };
+
+  const handleUpdateUserDisplayName = async (userId: number, newName: string) => {
+    console.log(`[TeamsPage] Calling handleUpdateUserDisplayName for user ${userId}, newName: "${newName}"`);
+    try {
+      const response = await apiService.updateUser(userId, { display_name: newName });
+      console.log('[TeamsPage] Update successful, response:', response);
+      setEditingUser(null);
+      await loadData(true); // silent refresh
+    } catch (err: any) {
+      console.error('[TeamsPage] Failed to update user display name:', err);
+      if (err.response) {
+        console.error('[TeamsPage] Error response data:', err.response.data);
+      }
+      alert(t('common.error'));
     }
   };
 
@@ -257,7 +284,7 @@ const TeamsPage: React.FC = () => {
                         key={member.id}
                         className="text-xs bg-info-light text-info-dark px-2 py-1 rounded"
                       >
-                        {member.first_name}
+                        {member.display_name || member.first_name}
                       </span>
                     ))}
                     {(team.members?.length || 0) > 3 && (
@@ -327,7 +354,7 @@ const TeamsPage: React.FC = () => {
               <option value="">{t('teams.modal.select_lead')}</option>
               {users.map(user => (
                 <option key={user.id} value={user.id}>
-                  {user.first_name} {user.last_name || ''}
+                  {user.display_name || `${user.first_name} ${user.last_name || ''}`}
                 </option>
               ))}
             </Select>
@@ -392,7 +419,7 @@ const TeamsPage: React.FC = () => {
           <div className="max-h-96 overflow-y-auto border border-gray-300 rounded-lg p-3 space-y-2">
             {users.map(user => (
               <div key={user.id} className="flex justify-between items-center group">
-                <label className="flex items-center gap-2 flex-1 cursor-pointer">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
                   <input
                     type="checkbox"
                     checked={selectedMembers.includes(user.id)}
@@ -403,15 +430,50 @@ const TeamsPage: React.FC = () => {
                         setSelectedMembers(selectedMembers.filter(id => id !== user.id));
                       }
                     }}
-                    className="w-4 h-4"
+                    className="w-4 h-4 flex-shrink-0"
                   />
-                  <span className="text-gray-700">
-                    {user.first_name} {user.last_name || ''}
-                    {user.username ? <span className="text-text-muted text-xs ml-1">(@{user.username})</span> : ''}
-                  </span>
-                </label>
+                  {editingUser?.id === user.id ? (
+                    <div className="flex items-center gap-1 flex-1">
+                      <input
+                        type="text"
+                        value={editingUser.displayName}
+                        onChange={(e) => setEditingUser({ ...editingUser, displayName: e.target.value })}
+                        className="flex-1 px-2 py-1 text-sm border border-primary rounded focus:outline-none"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleUpdateUserDisplayName(user.id, editingUser.displayName)}
+                        className="p-1 text-success hover:bg-success-light rounded"
+                      >
+                        <Icons.Check size={16} />
+                      </button>
+                      <button
+                        onClick={() => setEditingUser(null)}
+                        className="p-1 text-error hover:bg-error-light rounded"
+                      >
+                        <Icons.X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between flex-1 min-w-0">
+                      <span className="text-gray-700 truncate">
+                        {user.display_name || `${user.first_name} ${user.last_name || ''}`}
+                        {!user.display_name && user.username && (
+                          <span className="text-text-muted text-xs ml-1">(@{user.username})</span>
+                        )}
+                      </span>
+                      <button
+                        onClick={() => setEditingUser({ id: user.id, displayName: user.display_name || user.first_name })}
+                        className="p-1 text-text-muted hover:text-info opacity-0 group-hover:opacity-100 transition-opacity"
+                        title={t('common.edit')}
+                      >
+                        <Icons.Edit size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
 
-                {selectedMembers.includes(user.id) && (
+                {selectedMembers.includes(user.id) && !editingUser && (
                   <select
                     className="text-xs border border-gray-200 rounded px-1 py-1 text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
                     onChange={(e) => handleMoveMember(user.id, parseInt(e.target.value))}

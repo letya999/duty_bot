@@ -19,7 +19,6 @@ const Navigation: React.FC = () => {
   const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
-  const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false);
   const user: User | null = JSON.parse(localStorage.getItem('user') || 'null');
 
   // Load available workspaces on mount
@@ -29,13 +28,13 @@ const Navigation: React.FC = () => {
 
   const loadWorkspaces = async () => {
     try {
-      setIsLoadingWorkspaces(true);
       const token = localStorage.getItem('session_token');
       const response = await fetch('/web/auth/workspaces', {
         method: 'GET',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
         },
       });
 
@@ -47,18 +46,18 @@ const Navigation: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to load workspaces:', error);
-    } finally {
-      setIsLoadingWorkspaces(false);
     }
   };
 
   const handleSwitchWorkspace = async (workspaceId: number) => {
     try {
+      const token = localStorage.getItem('session_token');
       const response = await fetch('/web/auth/switch-workspace', {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
         },
         body: JSON.stringify({ workspace_id: workspaceId }),
       });
@@ -109,9 +108,8 @@ const Navigation: React.FC = () => {
 
       {/* Sidebar */}
       <nav
-        className={`${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:translate-x-0 fixed md:relative w-64 h-screen bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 z-30`}
+        className={`${isOpen ? 'translate-x-0' : '-translate-x-full'
+          } md:translate-x-0 fixed md:relative w-64 h-screen bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 z-30`}
       >
         {/* Logo */}
         <div className="px-6 py-4 border-b border-gray-200">
@@ -126,11 +124,10 @@ const Navigation: React.FC = () => {
                 <Link
                   to={item.path}
                   onClick={() => setIsOpen(false)}
-                  className={`flex items-center gap-3 px-6 py-3 text-sm font-medium transition-colors ${
-                    isActive(item.path)
-                      ? 'text-blue-600 bg-blue-50 border-r-4 border-blue-600'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
+                  className={`flex items-center gap-3 px-6 py-3 text-sm font-medium transition-colors ${isActive(item.path)
+                    ? 'text-blue-600 bg-blue-50 border-r-4 border-blue-600'
+                    : 'text-gray-700 hover:bg-gray-50'
+                    }`}
                 >
                   {item.icon}
                   {item.label}
@@ -177,11 +174,10 @@ const Navigation: React.FC = () => {
                           key={workspace.id}
                           onClick={() => handleSwitchWorkspace(workspace.id)}
                           disabled={workspace.is_current}
-                          className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors ${
-                            workspace.is_current
-                              ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
-                              : 'text-gray-700 hover:bg-gray-50'
-                          } ${workspace !== workspaces[workspaces.length - 1] ? 'border-b border-gray-100' : ''}`}
+                          className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors ${workspace.is_current
+                            ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
+                            : 'text-gray-700 hover:bg-gray-50'
+                            } ${workspace !== workspaces[workspaces.length - 1] ? 'border-b border-gray-100' : ''}`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex-1">

@@ -7,7 +7,7 @@ class UserService:
         self.user_repo = user_repo
         self.admin_log_repo = admin_log_repo
 
-    async def create_user(self, workspace_id: int, username: str, telegram_username: str = None, first_name: str = None, last_name: str = None, slack_user_id: str = None) -> User:
+    async def create_user(self, workspace_id: int, username: str, telegram_username: str = None, first_name: str = None, last_name: str = None, slack_user_id: str = None, telegram_id: int = None, display_name: str = None) -> User:
         """Create a new user"""
         return await self.user_repo.create({
             'workspace_id': workspace_id,
@@ -16,7 +16,8 @@ class UserService:
             'first_name': first_name,
             'last_name': last_name,
             'slack_user_id': slack_user_id,
-            'display_name': first_name or username
+            'telegram_id': telegram_id,
+            'display_name': display_name or first_name or username
         })
     async def get_or_create_by_telegram(self, workspace_id: int, telegram_username: str, display_name: str, first_name: str = None, last_name: str = None, telegram_id: int = None) -> User:
         """Get or create user by Telegram username or ID in workspace"""
@@ -30,18 +31,49 @@ class UserService:
         user = await self.user_repo.get_by_telegram_username(workspace_id, telegram_username)
 
         if not user:
+            # Check if this is the first user in workspace
+            existing_users = await self.user_repo.list_by_workspace(workspace_id, limit=1)
+            is_first = len(existing_users) == 0
+            
+            # Use get_settings to check for master admins
+            from app.config import get_settings
+            settings = get_settings()
+            is_master = False
+            if telegram_id and str(telegram_id) in settings.get_admin_ids('telegram'):
+                is_master = True
+
             user = await self.user_repo.create({
                 'workspace_id': workspace_id,
                 'telegram_id': telegram_id,
                 'telegram_username': telegram_username,
+                'username': telegram_username or (str(telegram_id) if telegram_id else None),
                 'display_name': display_name,
                 'first_name': first_name,
                 'last_name': last_name,
+                'is_admin': is_first or is_master
             })
         else:
-            # Update telegram_id if it wasn't set before
+            # Update info if it was missing
+            update_data = {}
             if telegram_id and not user.telegram_id:
-                user = await self.user_repo.update(user.id, {'telegram_id': telegram_id})
+                update_data['telegram_id'] = telegram_id
+            if telegram_username and not user.telegram_username:
+                update_data['telegram_username'] = telegram_username
+            if not user.username:
+                update_data['username'] = telegram_username or (str(telegram_id) if telegram_id else None)
+            if first_name and not user.first_name:
+                update_data['first_name'] = first_name
+            if last_name and not user.last_name:
+                update_data['last_name'] = last_name
+            
+            # Sync master admin status
+            from app.config import get_settings
+            settings = get_settings()
+            if telegram_id and str(telegram_id) in settings.get_admin_ids('telegram') and not user.is_admin:
+                update_data['is_admin'] = True
+            
+            if update_data:
+                user = await self.user_repo.update(user.id, update_data)
 
         return user
 
@@ -53,6 +85,7 @@ class UserService:
             user = await self.user_repo.create({
                 'workspace_id': workspace_id,
                 'slack_user_id': slack_user_id,
+                'username': slack_user_id,
                 'display_name': display_name,
                 'first_name': first_name,
                 'last_name': last_name,
@@ -117,3 +150,10 @@ class UserService:
         """Check if user is admin"""
         user = await self.user_repo.get_by_id(user_id)
         return user.is_admin if user else False
+
+    async def update_user(self, user_id: int, workspace_id: int, update_data: dict) -> User | None:
+        """Update user information"""
+        user = await self.user_repo.get_by_id(user_id)
+        if not user or user.workspace_id != workspace_id:
+            return None
+        return await self.user_repo.update(user_id, update_data)

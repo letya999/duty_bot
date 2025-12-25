@@ -85,12 +85,18 @@ async def get_or_create_user(platform: str, user_info: Dict[str, Any]) -> Option
                 user = result.scalars().first()
 
                 if not user:
+                    first_name = user_info.get('first_name', '')
+                    last_name = user_info.get('last_name', '')
+                    username = user_info.get('username', '')
+                    
                     # Create new user
                     user = User(
                         telegram_id=user_info['user_id'],
-                        username=user_info.get('username', ''),
-                        first_name=user_info.get('first_name', ''),
-                        last_name=user_info.get('last_name', ''),
+                        username=username or str(user_info['user_id']),
+                        telegram_username=username,
+                        first_name=first_name,
+                        last_name=last_name,
+                        display_name=f"{first_name} {last_name}".strip() or username or str(user_info['user_id']),
                         workspace_id=None,  # Will be set during workspace selection
                     )
                     session.add(user)

@@ -19,12 +19,12 @@ from app.handlers.telegram_handler import TelegramHandler
 from app.handlers.slack_handler import SlackHandler
 from app.tasks.scheduled_tasks import ScheduledTasks
 from app.routes.miniapp import router as miniapp_router
-from app.web.routes.auth import router as auth_router
-from app.web.routes.dashboard import router as dashboard_router
-from app.web.routes.schedules import router as schedules_router
-from app.web.routes.settings import router as settings_router
-from app.web.routes.reports import router as reports_router
-from app.web.api import router as web_api_router
+from app.routes.admin.auth import router as auth_router
+from app.routes.admin.dashboard import router as dashboard_router
+from app.routes.admin.schedules import router as schedules_router
+from app.routes.admin.settings import router as settings_router
+from app.routes.admin.reports import router as reports_router
+from app.routes.admin.api import router as web_api_router
 from app.exceptions import (
     ApplicationException,
     ValidationError,
@@ -124,7 +124,7 @@ async def lifespan(app: FastAPI):
 
 
 # Create FastAPI app with custom OpenAPI configuration
-from app.web.openapi_config import get_openapi_schema
+from app.config import get_openapi_schema
 
 app = FastAPI(
     title="Duty Bot",
@@ -242,7 +242,7 @@ app.include_router(reports_router)
 app.include_router(web_api_router)
 
 # Register authentication API router
-from app.web.auth_api import router as auth_api_router
+from app.routes.admin.auth_api import router as auth_api_router
 app.include_router(auth_api_router)
 
 

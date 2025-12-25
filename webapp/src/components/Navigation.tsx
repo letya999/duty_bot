@@ -1,13 +1,82 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart3, Calendar, Home, LogOut, Menu, Settings, X, Users, AlertCircle } from 'lucide-react';
+import { BarChart3, Calendar, Home, LogOut, Menu, Settings, X, Users, AlertCircle, ChevronDown } from 'lucide-react';
 import { User } from '../types';
+
+interface Workspace {
+  id: number;
+  name: string;
+  type: string;
+  is_current: boolean;
+  is_admin: boolean;
+  role: string;
+}
 
 const Navigation: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
+  const [isWorkspaceSwitcherOpen, setIsWorkspaceSwitcherOpen] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
+  const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false);
   const user: User | null = JSON.parse(localStorage.getItem('user') || 'null');
+
+  // Load available workspaces on mount
+  useEffect(() => {
+    loadWorkspaces();
+  }, []);
+
+  const loadWorkspaces = async () => {
+    try {
+      setIsLoadingWorkspaces(true);
+      const token = localStorage.getItem('session_token');
+      const response = await fetch('/web/auth/workspaces', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setWorkspaces(data.workspaces);
+        const current = data.workspaces.find((w: Workspace) => w.is_current);
+        setCurrentWorkspace(current || null);
+      }
+    } catch (error) {
+      console.error('Failed to load workspaces:', error);
+    } finally {
+      setIsLoadingWorkspaces(false);
+    }
+  };
+
+  const handleSwitchWorkspace = async (workspaceId: number) => {
+    try {
+      const response = await fetch('/web/auth/switch-workspace', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ workspace_id: workspaceId }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Store new token and reload
+        localStorage.setItem('session_token', data.session_token);
+        // Close switcher and reload page to get new workspace data
+        setIsWorkspaceSwitcherOpen(false);
+        window.location.href = '/';
+      } else {
+        console.error('Failed to switch workspace');
+      }
+    } catch (error) {
+      console.error('Error switching workspace:', error);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('session_token');
@@ -85,6 +154,52 @@ const Navigation: React.FC = () => {
                 </span>
               )}
             </div>
+
+            {/* Workspace Switcher - show only if multiple workspaces */}
+            {workspaces.length > 1 && (
+              <div className="mb-4">
+                <div className="relative">
+                  <button
+                    onClick={() => setIsWorkspaceSwitcherOpen(!isWorkspaceSwitcherOpen)}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors text-xs font-medium border border-gray-200"
+                  >
+                    <span className="truncate">
+                      {currentWorkspace?.name || 'Workspace'}
+                    </span>
+                    <ChevronDown size={14} />
+                  </button>
+
+                  {/* Workspace dropdown menu */}
+                  {isWorkspaceSwitcherOpen && (
+                    <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                      {workspaces.map((workspace) => (
+                        <button
+                          key={workspace.id}
+                          onClick={() => handleSwitchWorkspace(workspace.id)}
+                          disabled={workspace.is_current}
+                          className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors ${
+                            workspace.is_current
+                              ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
+                              : 'text-gray-700 hover:bg-gray-50'
+                          } ${workspace !== workspaces[workspaces.length - 1] ? 'border-b border-gray-100' : ''}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="font-medium">{workspace.name}</div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                {workspace.type === 'telegram' ? '✈️ Telegram' : '⚡ Slack'} • {workspace.role}
+                              </div>
+                            </div>
+                            {workspace.is_current && <span className="text-green-600">✓</span>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <button
               onClick={handleLogout}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors text-sm font-medium"

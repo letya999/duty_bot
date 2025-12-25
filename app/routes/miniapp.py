@@ -424,8 +424,10 @@ async def promote_user(
         await db.commit()
 
         # Log action
+        # Log action
         from app.services.admin_service import AdminService
-        admin_service = AdminService(db)
+        from app.repositories import AdminLogRepository, UserRepository
+        admin_service = AdminService(AdminLogRepository(db), UserRepository(db))
         await admin_service.log_action(
             workspace_id=current_user.workspace_id,
             admin_user_id=current_user.id,
@@ -481,8 +483,10 @@ async def demote_user(
         await db.commit()
 
         # Log action
+        # Log action
         from app.services.admin_service import AdminService
-        admin_service = AdminService(db)
+        from app.repositories import AdminLogRepository, UserRepository
+        admin_service = AdminService(AdminLogRepository(db), UserRepository(db))
         await admin_service.log_action(
             workspace_id=current_user.workspace_id,
             admin_user_id=current_user.id,

@@ -37,7 +37,9 @@
             "start_date_label": "Start Date",
             "end_date_label": "End Date",
             "bulk_assign": "Bulk assign for date range",
+            "user_label": "User",
             "users_label": "Users",
+            "select_user": "Select a user",
             "delete_confirm": "Delete this duty assignment?",
             "no_team_error": "Please select a team for bulk assignment"
         },
@@ -79,6 +81,7 @@
         "create_first": "Create First Team",
         "delete_confirm": "Delete this team?",
         "move_confirm": "Move member to another team?",
+        "remove_member_confirm": "Remove member from this team?",
         "import_error": "Failed to import member",
         "modal": {
             "create_title": "Create Team",

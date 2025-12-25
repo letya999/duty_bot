@@ -134,7 +134,7 @@ class CommandHandler:
                 else:
                     result.append(f"**{team.display_name}**: не назначен")
             else:
-                user = await self.schedule_service.get_today_duty(team, today)
+                user = await self.schedule_service.get_today_duty(team.id, today)
                 if user:
                     result.append(f"**{team.display_name}**: {user.display_name}")
                 else:
@@ -157,7 +157,7 @@ class CommandHandler:
             mentions = " ".join([f"@{u.telegram_username or u.slack_user_id}" for u in shift])
             return f"Today's shift for {team.display_name}: {mentions}"
         else:
-            user = await self.schedule_service.get_today_duty(team, today)
+            user = await self.schedule_service.get_today_duty(team.id, today)
             if not user:
                 raise CommandError(f"No duty assigned for {team.display_name} today")
             mention = f"@{user.telegram_username or user.slack_user_id}"
@@ -336,7 +336,7 @@ Members: {members_str}"""
             date_range = DateParser.get_month_dates(period, today, self.settings.timezone)
 
         schedules = await self.schedule_service.get_duties_by_date_range(
-            team, date_range.start, date_range.end
+            team.id, date_range.start, date_range.end
         )
 
         if not schedules:
@@ -436,7 +436,7 @@ Members: {members_str}"""
         current = date_range.start
         count = 0
         while current <= date_range.end:
-            if await self.schedule_service.clear_duty(team, current):
+            if await self.schedule_service.clear_duty(team.id, current):
                 count += 1
             current += timedelta(days=1)
 

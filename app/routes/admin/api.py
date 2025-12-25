@@ -378,7 +378,8 @@ async def get_month_schedule(
                             },
                             "team": {
                                 "id": schedule.team.id if schedule.team else None,
-                                "name": schedule.team.display_name or schedule.team.name if schedule.team else None,
+                                "name": schedule.team.name if schedule.team else None,
+                                "display_name": schedule.team.display_name if schedule.team else None,
                             } if schedule.team else None,
                             "notes": None,
                         })
@@ -439,7 +440,8 @@ async def get_daily_schedule(
                     },
                     "team": {
                         "id": duty.team.id if duty.team else None,
-                        "name": duty.team.display_name or duty.team.name if duty.team else None,
+                        "name": duty.team.name if duty.team else None,
+                        "display_name": duty.team.display_name if duty.team else None,
                     } if duty.team else None,
                     "notes": None,
                 })
@@ -527,7 +529,7 @@ async def remove_duty(
 
         # Use ScheduleService to clear duty
         schedule_service = ScheduleService(ScheduleRepository(db))
-        success = await schedule_service.clear_duty(schedule_obj.team, schedule_obj.date)
+        success = await schedule_service.clear_duty(schedule_obj.team_id, schedule_obj.date)
 
         if not success:
             raise ValidationError("Failed to clear duty")
@@ -698,7 +700,8 @@ async def get_shifts_for_date(
                     "date": shift.date.isoformat(),
                     "team": {
                         "id": shift.team.id,
-                        "name": shift.team.display_name or shift.team.name,
+                        "name": shift.team.name,
+                        "display_name": shift.team.display_name,
                     },
                     "users": [
                         {
@@ -812,7 +815,8 @@ async def get_shifts_range(
                             "date": shift.date.isoformat(),
                             "team": {
                                 "id": shift.team.id,
-                                "name": shift.team.display_name or shift.team.name,
+                                "name": shift.team.name,
+                                "display_name": shift.team.display_name,
                             },
                             "users": [
                                 {
@@ -1145,7 +1149,8 @@ async def get_schedules_by_date_range(
                     },
                     "team": {
                         "id": duty.team.id if duty.team else None,
-                        "name": duty.team.display_name or duty.team.name if duty.team else None,
+                        "name": duty.team.name if duty.team else None,
+                        "display_name": duty.team.display_name if duty.team else None,
                     } if duty.team else None,
                     "notes": None,
                 })
@@ -1295,15 +1300,19 @@ async def assign_bulk_duties(
 
         team = await team_service.get_team(team_id, user.workspace_id) if team_id else None
 
+        if not team:
+            raise HTTPException(status_code=400, detail="Team is required for bulk assignment")
+
         created_count = 0
         current_date = start
         while current_date <= end:
             for user_id in user_ids:
                 try:
-                    await schedule_service.set_duty(team.id if team else None, user_id, current_date)
+                    await schedule_service.set_duty(team.id, user_id, current_date)
                     created_count += 1
-                except Exception:
-                    pass  # Skip if already exists
+                except Exception as e:
+                    logger.warning(f"Failed to set duty for user {user_id} on {current_date}: {e}")
+                    pass
             current_date += timedelta(days=1)
 
         return {"created": created_count, "total_expected": len(user_ids) * ((end - start).days + 1)}
@@ -1803,8 +1812,8 @@ async def move_team_member(
             raise HTTPException(status_code=404, detail="User not found")
 
         # Execute move
-        await team_service.remove_member(from_team, target_user)
-        await team_service.add_member(to_team, target_user)
+        await team_service.remove_member(from_team.id, target_user)
+        await team_service.add_member(to_team.id, target_user)
 
         return {"status": "moved"}
     except HTTPException:

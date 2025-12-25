@@ -212,6 +212,16 @@ const TeamsPage: React.FC = () => {
       console.error('Failed to move member', err);
     }
   };
+  const handleRemoveMemberFromTeam = async (teamId: number, userId: number) => {
+    if (!window.confirm(t('teams.remove_member_confirm'))) return;
+    try {
+      await apiService.removeTeamMember(teamId, userId);
+      loadData();
+    } catch (err) {
+      console.error('Failed to remove member from team', err);
+      alert(t('common.error'));
+    }
+  };
 
   const handleUpdateUserDisplayName = async (userId: number, newName: string) => {
     console.log(`[TeamsPage] Calling handleUpdateUserDisplayName for user ${userId}, newName: "${newName}"`);
@@ -277,20 +287,61 @@ const TeamsPage: React.FC = () => {
             <CardBody>
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm text-text-muted mb-2">{t('teams.members_count')} ({team.members?.length || 0})</p>
-                  <div className="flex flex-wrap gap-2">
-                    {team.members?.slice(0, 3).map(member => (
-                      <span
-                        key={member.id}
-                        className="text-xs bg-info-light text-info-dark px-2 py-1 rounded"
-                      >
-                        {member.display_name || member.first_name}
-                      </span>
-                    ))}
-                    {(team.members?.length || 0) > 3 && (
-                      <span className="text-xs text-text-muted">
-                        +{(team.members?.length || 0) - 3} {t('teams.more_members')}
-                      </span>
+                  <div className="flex justify-between items-center mb-3">
+                    <p className="text-sm font-semibold text-gray-700">{t('teams.members_count')} ({team.members?.length || 0})</p>
+                  </div>
+                  <div className="space-y-2">
+                    {team.members?.length > 0 ? (
+                      team.members.map(member => (
+                        <div
+                          key={member.id}
+                          className={`flex items-center justify-between p-2 bg-gray-50 rounded-lg group/member border transition-all ${team.team_lead_id === member.id ? 'border-primary/20 bg-primary/5' : 'border-transparent hover:border-gray-200'
+                            }`}
+                        >
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900 truncate">
+                                {member.display_name || `${member.first_name} ${member.last_name || ''}`}
+                              </span>
+                              {team.team_lead_id === member.id && (
+                                <span className="text-[10px] font-bold bg-primary text-primary-text px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                  Lead
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2 shrink-0 items-center">
+                            {member.telegram_username && (
+                              <a
+                                href={`https://t.me/${member.telegram_username.replace('@', '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full hover:bg-blue-100 transition-colors"
+                              >
+                                @{member.telegram_username.replace('@', '')}
+                                <Icons.ExternalLink size={10} />
+                              </a>
+                            )}
+                            {member.slack_user_id && (
+                              <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">
+                                Slack: {member.slack_user_id}
+                              </span>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveMemberFromTeam(team.id, member.id);
+                              }}
+                              className="p-1 text-error hover:bg-error-light rounded opacity-0 group-hover/member:opacity-100 transition-opacity"
+                              title={t('common.remove', 'Remove')}
+                            >
+                              <Icons.X size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-text-muted italic py-2">{t('teams.no_members')}</p>
                     )}
                   </div>
                 </div>

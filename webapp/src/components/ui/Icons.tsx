@@ -13,7 +13,8 @@ import {
     X,
     Check,
     AlertTriangle,
-    Info
+    Info,
+    ExternalLink
 } from 'lucide-react';
 
 export const Icons = {
@@ -32,7 +33,8 @@ export const Icons = {
     Check,
     Warning: AlertTriangle,
     X,
-    Info
+    Info,
+    ExternalLink
 };
 
 export type IconName = keyof typeof Icons;

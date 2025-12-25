@@ -8,6 +8,7 @@ export interface User {
   is_admin: boolean;
   workspace_id: number;
   telegram_id?: number;
+  telegram_username?: string;
   slack_user_id?: string;
 }
 

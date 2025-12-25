@@ -124,6 +124,10 @@ const SchedulesPage: React.FC = () => {
   };
 
   const handleSaveDuty = async () => {
+    if (formData.isBulk && !formData.teamId) {
+      alert(t('schedules.modal.no_team_error'));
+      return;
+    }
     try {
       if (editingDuty) {
         // Edit single duty
@@ -136,11 +140,11 @@ const SchedulesPage: React.FC = () => {
       } else {
         // Create new duty (or bulk)
         if (formData.isBulk && getSelectedTeam()?.has_shifts) {
-          await apiService.assignBulkDuties(
+          await apiService.assignShiftsBulk(
             formData.userIds.map((id: string) => parseInt(id)),
             formData.startDate,
             formData.endDate,
-            formData.teamId ? parseInt(formData.teamId) : undefined
+            parseInt(formData.teamId)
           );
         } else if (formData.isBulk) {
           await apiService.assignBulkDuties(
@@ -542,7 +546,7 @@ const SchedulesPage: React.FC = () => {
 
           <div>
             <Select
-              label={t('schedules.modal.team_label')}
+              label={t('schedules.filters.team')}
               value={formData.teamId}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, teamId: e.target.value })}
             >
@@ -556,68 +560,67 @@ const SchedulesPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{t('schedules.modal.user_label')}</label>
             <Select
-              multiple={false}
-              value={formData.userIds[0] || ''}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, userIds: [e.target.value] })}
+              label={getSelectedTeam()?.has_shifts ? t('schedules.modal.users_label') : t('schedules.modal.user_label')}
+              multiple={getSelectedTeam()?.has_shifts}
+              value={getSelectedTeam()?.has_shifts ? formData.userIds : (formData.userIds[0] || '')}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                if (getSelectedTeam()?.has_shifts) {
+                  const options = e.target.options;
+                  const values = [];
+                  for (let i = 0; i < options.length; i++) {
+                    if (options[i].selected) values.push(options[i].value);
+                  }
+                  setFormData({ ...formData, userIds: values });
+                } else {
+                  setFormData({ ...formData, userIds: [e.target.value] });
+                }
+              }}
+              className={getSelectedTeam()?.has_shifts ? "h-32" : ""}
             >
-              <option value="">{t('schedules.modal.select_user')}</option>
+              <option value="" disabled={getSelectedTeam()?.has_shifts}>{t('schedules.modal.select_user')}</option>
               {users.map(u => (
                 <option key={u.id} value={u.id}>
                   {u.display_name || `${u.first_name} ${u.last_name || ''}`}
                 </option>
               ))}
             </Select>
-            {/* Note multiple select support is limited in current UI component, using single select for now as per previous code assumption or need to upgrade Select component */}
+            {getSelectedTeam()?.has_shifts && (
+              <p className="text-[10px] text-text-muted mt-1">
+                {t('common.hold_ctrl_hint', 'Hold Ctrl/Cmd to select multiple')}
+              </p>
+            )}
           </div>
 
-          {getSelectedTeam()?.has_shifts && !editingDuty ? (
-            <>
-              <div className="bg-info-light border border-info-light/50 rounded-lg p-3 mb-2">
-                <p className="text-sm text-info-dark">
-                  {t('schedules.modal.shifts_enabled_hint')}
-                </p>
-              </div>
-
-              {!formData.isBulk ? (
-                <div>
-                  <Input
-                    label={`${t('schedules.modal.date_label')} *`}
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedDate(e.target.value)}
-                  />
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <Input
-                      label={`${t('schedules.modal.start_date_label')} *`}
-                      type="date"
-                      value={formData.startDate}
-                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Input
-                      label={`${t('schedules.modal.end_date_label')} *`}
-                      type="date"
-                      value={formData.endDate}
-                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                    />
-                  </div>
-                </>
-              )}
-            </>
-          ) : (
-            <div>
+          {formData.isBulk ? (
+            <div className="grid grid-cols-2 gap-4">
               <Input
-                label={`${t('schedules.modal.date_label')} *`}
+                label={`${t('schedules.modal.start_date_label')} *`}
                 type="date"
-                value={selectedDate}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedDate(e.target.value)}
+                value={formData.startDate}
+                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
               />
+              <Input
+                label={`${t('schedules.modal.end_date_label')} *`}
+                type="date"
+                value={formData.endDate}
+                onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+              />
+            </div>
+          ) : (
+            <Input
+              label={`${t('schedules.modal.date_label')} *`}
+              type="date"
+              value={selectedDate}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedDate(e.target.value)}
+            />
+          )}
+
+          {getSelectedTeam()?.has_shifts && !editingDuty && (
+            <div className="bg-info-light border border-info-light/50 rounded-lg p-3">
+              <p className="text-sm text-info-dark">
+                {t('schedules.modal.shifts_enabled_hint')}
+              </p>
             </div>
           )}
 

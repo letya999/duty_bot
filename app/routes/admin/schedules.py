@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload
 
 from app.database import AsyncSessionLocal
 from app.models import Schedule, Shift, User, Team, Workspace
-from app.web.auth import session_manager
+from app.auth import session_manager
 from app.services.schedule_service import ScheduleService
 
 logger = logging.getLogger(__name__)

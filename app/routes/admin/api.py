@@ -17,8 +17,8 @@ from app.dependencies import (
     get_duty_stats_repository,
 )
 from app.models import User
-from app.web.auth import session_manager
-from app.web.schemas import (
+from app.auth import session_manager
+from app.schemas.admin import (
     UserResponse,
     TeamResponse,
     TeamDetailResponse,

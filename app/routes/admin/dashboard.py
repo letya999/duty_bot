@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload
 
 from app.database import AsyncSessionLocal
 from app.models import User, Team, Schedule, Shift, AdminLog, Workspace
-from app.web.auth import session_manager
+from app.auth import session_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/web/dashboard", tags=["dashboard"])

@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 from sqlalchemy import select
 
 from app.config import get_settings
-from app.web.auth import (
+from app.auth import (
     TelegramOAuth, SlackOAuth, session_manager
 )
 from app.models import Workspace, User

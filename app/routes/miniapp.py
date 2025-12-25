@@ -10,6 +10,15 @@ from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
 from app.services.shift_service import ShiftService
+from app.web.api_utils import (
+    format_user_response,
+    get_month_dates,
+    get_schedules_and_shifts_for_period,
+    build_schedule_by_date,
+    build_days_array,
+    get_daily_schedules_and_shifts,
+    build_daily_users_list
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,86 +138,17 @@ async def get_month_schedule(
 ) -> dict:
     """Get schedule for a month"""
     try:
-        # Get all schedules for the month in this workspace
-        start_date = datetime(year, month, 1).date()
-        if month == 12:
-            end_date = datetime(year + 1, 1, 1).date()
-        else:
-            end_date = datetime(year, month + 1, 1).date()
+        # Get month dates
+        start_date, end_date = await get_month_dates(year, month)
 
-        schedules_stmt = select(Schedule).where(
-            and_(
-                Schedule.date >= start_date,
-                Schedule.date < end_date,
-                Schedule.team.has(Team.workspace_id == user.workspace_id)
-            )
-        )
-        schedules = (await db.execute(schedules_stmt)).scalars().all()
+        # Get schedules and shifts
+        schedules, shifts = await get_schedules_and_shifts_for_period(db, user, start_date, end_date)
 
-        # Also get shifts for the month
-        shifts_stmt = select(Shift).where(
-            and_(
-                Shift.date >= start_date,
-                Shift.date < end_date,
-                Shift.team.has(Team.workspace_id == user.workspace_id)
-            )
-        )
-        shifts = (await db.execute(shifts_stmt)).scalars().all()
-
-        # Group schedules by date
-        schedule_by_date = {}
-        for schedule in schedules:
-            date_key = schedule.date.isoformat()
-            if date_key not in schedule_by_date:
-                schedule_by_date[date_key] = []
-            schedule_by_date[date_key].append(schedule)
-
-        # Add shift users to schedule_by_date
-        for shift in shifts:
-            date_key = shift.date.isoformat()
-            if date_key not in schedule_by_date:
-                schedule_by_date[date_key] = []
-
-            # Load shift users
-            await db.refresh(shift, ['users'])
-            for shift_user in shift.users:
-                schedule_obj = Schedule(
-                    team_id=shift.team_id,
-                    user_id=shift_user.id,
-                    date=shift.date,
-                    notes="Shift"
-                )
-                schedule_by_date[date_key].append(schedule_obj)
+        # Group by date
+        schedule_by_date = await build_schedule_by_date(schedules, shifts, db)
 
         # Build response days array
-        days = []
-        current_date = start_date
-        while current_date < end_date:
-            date_key = current_date.isoformat()
-            users_list = []
-            notes = None
-
-            if date_key in schedule_by_date:
-                seen_users = set()
-                for schedule in schedule_by_date[date_key]:
-                    if schedule.user_id not in seen_users:
-                        users_list.append({
-                            "id": schedule.user.id,
-                            "telegram_id": schedule.user.telegram_username,
-                            "first_name": schedule.user.display_name,
-                            "last_name": "",
-                            "username": schedule.user.telegram_username
-                        })
-                        seen_users.add(schedule.user_id)
-                    if schedule.notes and not notes:
-                        notes = schedule.notes
-
-            days.append({
-                "date": date_key,
-                "users": users_list,
-                "notes": notes
-            })
-            current_date += timedelta(days=1)
+        days = await build_days_array(start_date, end_date, schedule_by_date)
 
         return {
             "year": year,
@@ -231,61 +171,16 @@ async def get_daily_schedule(
         from datetime import datetime as dt
         date_obj = dt.fromisoformat(date).date()
 
-        # Get schedules for this date
-        schedules_stmt = select(Schedule).where(
-            and_(
-                Schedule.date == date_obj,
-                Schedule.team.has(Team.workspace_id == user.workspace_id)
-            )
-        )
-        schedules = (await db.execute(schedules_stmt)).scalars().all()
+        # Get schedules and shifts for this date
+        schedules, shifts = await get_daily_schedules_and_shifts(db, user, date_obj)
 
-        # Get shifts for this date
-        shifts_stmt = select(Shift).where(
-            and_(
-                Shift.date == date_obj,
-                Shift.team.has(Team.workspace_id == user.workspace_id)
-            )
-        )
-        shifts = (await db.execute(shifts_stmt)).scalars().all()
-
-        users_list = []
-        seen_users = set()
-        notes = None
-
-        # Add users from schedules
-        for schedule in schedules:
-            if schedule.user_id not in seen_users:
-                await db.refresh(schedule, ['user'])
-                users_list.append({
-                    "id": schedule.user.id,
-                    "telegram_id": schedule.user.telegram_username,
-                    "first_name": schedule.user.display_name,
-                    "last_name": "",
-                    "username": schedule.user.telegram_username
-                })
-                seen_users.add(schedule.user_id)
-            if schedule.notes and not notes:
-                notes = schedule.notes
-
-        # Add users from shifts
-        for shift in shifts:
-            await db.refresh(shift, ['users'])
-            for shift_user in shift.users:
-                if shift_user.id not in seen_users:
-                    users_list.append({
-                        "id": shift_user.id,
-                        "telegram_id": shift_user.telegram_username,
-                        "first_name": shift_user.display_name,
-                        "last_name": "",
-                        "username": shift_user.telegram_username
-                    })
-                    seen_users.add(shift_user.id)
+        # Build users list
+        result = await build_daily_users_list(schedules, shifts, db)
 
         return {
             "date": date,
-            "users": users_list,
-            "notes": notes
+            "users": result["users"],
+            "count": result["count"]
         }
     except Exception as e:
         logger.error(f"Error getting daily schedule: {e}")

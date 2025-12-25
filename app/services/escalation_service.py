@@ -1,34 +1,15 @@
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from app.models import Escalation, EscalationEvent, Team, User
-from app.config import get_settings
+from app.repositories import EscalationRepository, EscalationEventRepository
 
 
 class EscalationService:
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    def __init__(self, escalation_repo: EscalationRepository, escalation_event_repo: EscalationEventRepository = None):
+        self.escalation_repo = escalation_repo
+        self.escalation_event_repo = escalation_event_repo
 
     async def set_cto(self, workspace_id: int, user: User) -> Escalation:
         """Set CTO (level 2) for workspace"""
-        stmt = select(Escalation).where(
-            (Escalation.team_id.is_(None)) &
-            (Escalation.cto_id == user.id)
-        )
-        # Try to get existing escalation with this CTO
-        result = await self.db.execute(stmt)
-        escalation = result.scalars().first()
-
-        if not escalation:
-            # Create new escalation record
-            escalation = Escalation(cto_id=user.id)
-            self.db.add(escalation)
-            await self.db.commit()
-            await self.db.refresh(escalation)
-
-        return escalation
+        return await self.escalation_repo.set_global_cto(user.id)
 
     async def get_cto(self, workspace_id: int) -> User | None:
         """Get CTO for workspace
@@ -36,11 +17,7 @@ class EscalationService:
         Note: Since CTOs are not directly workspace-scoped in the model,
         we get the user's workspace to ensure we return the correct context.
         """
-        stmt = select(Escalation).options(
-            selectinload(Escalation.cto_user)
-        ).where(Escalation.team_id.is_(None))
-        result = await self.db.execute(stmt)
-        escalation = result.scalars().first()
+        escalation = await self.escalation_repo.get_global_cto()
 
         if escalation and escalation.cto_user and escalation.cto_user.workspace_id == workspace_id:
             return escalation.cto_user
@@ -52,38 +29,37 @@ class EscalationService:
         messenger: str
     ) -> EscalationEvent:
         """Create new escalation event"""
-        event = EscalationEvent(
-            team_id=team.id,
-            messenger=messenger,
-        )
-        self.db.add(event)
-        await self.db.commit()
-        await self.db.refresh(event)
-        return event
+        if not self.escalation_event_repo:
+            from app.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as session:
+                self.escalation_event_repo = EscalationEventRepository(session)
+                return await self.escalation_event_repo.create({
+                    'team_id': team.id,
+                    'messenger': messenger,
+                })
+
+        return await self.escalation_event_repo.create({
+            'team_id': team.id,
+            'messenger': messenger,
+        })
 
     async def get_active_escalation(self, team: Team) -> EscalationEvent | None:
         """Get active escalation event (not acknowledged)"""
-        stmt = select(EscalationEvent).where(
-            (EscalationEvent.team_id == team.id) &
-            (EscalationEvent.acknowledged_at.is_(None))
-        ).order_by(EscalationEvent.initiated_at.desc())
-        result = await self.db.execute(stmt)
-        return result.scalars().first()
+        if not self.escalation_event_repo:
+            return None
+
+        return await self.escalation_event_repo.get_active_escalation(team.id)
 
     async def acknowledge_escalation(self, event: EscalationEvent) -> EscalationEvent:
         """Acknowledge escalation event"""
-        settings = get_settings()
-        tz = ZoneInfo(settings.timezone)
-        event.acknowledged_at = datetime.now(tz)
-        await self.db.commit()
-        await self.db.refresh(event)
-        return event
+        if not self.escalation_event_repo:
+            return event
+
+        return await self.escalation_event_repo.acknowledge_escalation(event.id)
 
     async def escalate_to_level2(self, event: EscalationEvent) -> EscalationEvent:
         """Mark escalation as escalated to level 2"""
-        settings = get_settings()
-        tz = ZoneInfo(settings.timezone)
-        event.escalated_to_level2_at = datetime.now(tz)
-        await self.db.commit()
-        await self.db.refresh(event)
-        return event
+        if not self.escalation_event_repo:
+            return event
+
+        return await self.escalation_event_repo.escalate_to_level2(event.id)

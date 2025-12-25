@@ -5,44 +5,105 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, case
 
-from app.database import AsyncSessionLocal
+from app.dependencies import (
+    get_db,
+    get_user_repository,
+    get_team_repository,
+    get_schedule_repository,
+    get_shift_repository,
+    get_escalation_repository,
+    get_rotation_config_repository,
+    get_admin_log_repository,
+    get_duty_stats_repository,
+)
 from app.models import User
 from app.web.auth import session_manager
+from app.web.schemas import (
+    UserResponse,
+    TeamResponse,
+    TeamDetailResponse,
+    ScheduleResponse,
+    ShiftResponse,
+    ShiftDetailResponse,
+    ErrorResponse,
+)
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
 from app.services.shift_service import ShiftService
+from app.services.escalation_service import EscalationService
+from app.services.rotation_service import RotationService
 from app.services.admin_service import AdminService
 from app.services.stats_service import StatsService
+from app.repositories import (
+    UserRepository, TeamRepository, ScheduleRepository, ShiftRepository,
+    EscalationRepository, RotationConfigRepository, AdminLogRepository
+)
+from app.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    NotFoundError,
+    ValidationError,
+    ConflictError,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin")
 
 
-async def get_db():
-    """Get database session"""
-    async with AsyncSessionLocal() as session:
-        yield session
+async def get_user_service(user_repo: UserRepository = Depends(get_user_repository), admin_log_repo: AdminLogRepository = Depends(get_admin_log_repository)) -> UserService:
+    """Get user service with repositories"""
+    return UserService(user_repo, admin_log_repo)
+
+
+async def get_team_service(team_repo: TeamRepository = Depends(get_team_repository)) -> TeamService:
+    """Get team service with repositories"""
+    return TeamService(team_repo)
+
+
+async def get_schedule_service(schedule_repo: ScheduleRepository = Depends(get_schedule_repository)) -> ScheduleService:
+    """Get schedule service with repositories"""
+    return ScheduleService(schedule_repo)
+
+
+async def get_shift_service(shift_repo: ShiftRepository = Depends(get_shift_repository)) -> ShiftService:
+    """Get shift service with repositories"""
+    return ShiftService(shift_repo)
+
+
+async def get_escalation_service(escalation_repo: EscalationRepository = Depends(get_escalation_repository)) -> EscalationService:
+    """Get escalation service with repositories"""
+    return EscalationService(escalation_repo)
+
+
+async def get_rotation_service(rotation_config_repo: RotationConfigRepository = Depends(get_rotation_config_repository), schedule_repo: ScheduleRepository = Depends(get_schedule_repository), user_repo: UserRepository = Depends(get_user_repository)) -> RotationService:
+    """Get rotation service with repositories"""
+    return RotationService(rotation_config_repo, schedule_repo, user_repo)
+
+
+async def get_admin_service(admin_log_repo: AdminLogRepository = Depends(get_admin_log_repository), user_repo: UserRepository = Depends(get_user_repository)) -> AdminService:
+    """Get admin service with repositories"""
+    return AdminService(admin_log_repo, user_repo)
 
 
 async def get_user_from_token(
     authorization: str = Header(None),
-    db: AsyncSession = Depends(get_db)
+    user_repo: UserRepository = Depends(get_user_repository)
 ) -> User:
     """Extract and verify user from Bearer token"""
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+        raise AuthenticationError("Missing or invalid authorization header")
 
     token = authorization.split(" ", 1)[1]
     session = session_manager.validate_session(token)
 
     if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise AuthenticationError("Invalid or expired token")
 
-    # Get user from database
-    user = await db.get(User, session['user_id'])
+    # Get user from repository
+    user = await user_repo.get_by_id(session['user_id'])
     if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+        raise AuthenticationError("User not found")
 
     return user
 
@@ -75,11 +136,10 @@ async def get_user_info(user: User = Depends(get_user_from_token)) -> dict:
 )
 async def get_all_users(
     user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
+    user_service: UserService = Depends(get_user_service)
 ) -> list:
     """Get all users in workspace - uses UserService"""
     try:
-        user_service = UserService(db)
         users = await user_service.get_all_users(user.workspace_id)
 
         return [
@@ -108,11 +168,10 @@ async def get_all_users(
 )
 async def get_teams(
     user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
+    team_service: TeamService = Depends(get_team_service)
 ) -> list:
     """Get all teams in workspace - uses TeamService"""
     try:
-        team_service = TeamService(db)
         teams = await team_service.get_all_teams(user.workspace_id)
 
         result_list = []
@@ -144,15 +203,14 @@ async def get_teams(
 async def get_team_members(
     team_id: int,
     user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
+    team_service: TeamService = Depends(get_team_service)
 ) -> list:
     """Get all members of a team - uses TeamService"""
     try:
-        team_service = TeamService(db)
         team = await team_service.get_team(team_id, user.workspace_id)
 
         if not team:
-            raise HTTPException(status_code=404, detail="Team not found")
+            raise NotFoundError("Team")
 
         result = []
         for member in (team.members or []):
@@ -164,11 +222,11 @@ async def get_team_members(
             })
 
         return result
-    except HTTPException:
+    except NotFoundError:
         raise
     except Exception as e:
         logger.error(f"Error getting team members: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get team members")
+        raise ValidationError("Failed to get team members")
 
 
 # ============ Schedule Endpoints ============
@@ -375,25 +433,25 @@ async def remove_duty(
 
         schedule_obj = await db.get(Schedule, schedule_id)
         if not schedule_obj:
-            raise HTTPException(status_code=404, detail="Schedule not found")
+            raise NotFoundError("Schedule")
 
         # Verify schedule belongs to user's workspace
         if schedule_obj.team.workspace_id != user.workspace_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+            raise AuthorizationError("Not authorized to modify this schedule")
 
         # Use ScheduleService to clear duty
         schedule_service = ScheduleService(db)
         success = await schedule_service.clear_duty(schedule_obj.team, schedule_obj.date)
 
         if not success:
-            raise HTTPException(status_code=400, detail="Failed to clear duty")
+            raise ValidationError("Failed to clear duty")
 
         return {"status": "removed", "schedule_id": schedule_id}
-    except HTTPException:
+    except (NotFoundError, AuthorizationError, ValidationError):
         raise
     except Exception as e:
         logger.error(f"Error removing duty: {e}")
-        raise HTTPException(status_code=500, detail="Failed to remove duty")
+        raise ValidationError("Failed to remove duty")
 
 
 # ============ Shift Endpoints (for teams with has_shifts=True) ============

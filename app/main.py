@@ -3,6 +3,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from slack_bolt.async_app import AsyncApp
@@ -24,6 +25,15 @@ from app.web.routes.schedules import router as schedules_router
 from app.web.routes.settings import router as settings_router
 from app.web.routes.reports import router as reports_router
 from app.web.api import router as web_api_router
+from app.exceptions import (
+    ApplicationException,
+    ValidationError,
+    AuthenticationError,
+    AuthorizationError,
+    NotFoundError,
+    ConflictError,
+    CommandError,
+)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -125,6 +135,65 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
     redoc_url="/api/redoc"
 )
+
+
+# ============================================================================
+# Exception Handlers
+# ============================================================================
+
+
+async def application_exception_handler(request: Request, exc: ApplicationException):
+    """Handle custom application exceptions with structured response"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error_code": exc.error_code,
+            "message": exc.message,
+            "status_code": exc.status_code,
+            "details": exc.details if exc.details else None,
+        },
+    )
+
+
+async def validation_error_handler(request: Request, exc: ValidationError):
+    """Handle validation errors"""
+    return await application_exception_handler(request, exc)
+
+
+async def authentication_error_handler(request: Request, exc: AuthenticationError):
+    """Handle authentication errors"""
+    return await application_exception_handler(request, exc)
+
+
+async def authorization_error_handler(request: Request, exc: AuthorizationError):
+    """Handle authorization errors"""
+    return await application_exception_handler(request, exc)
+
+
+async def not_found_error_handler(request: Request, exc: NotFoundError):
+    """Handle not found errors"""
+    return await application_exception_handler(request, exc)
+
+
+async def conflict_error_handler(request: Request, exc: ConflictError):
+    """Handle conflict errors"""
+    return await application_exception_handler(request, exc)
+
+
+async def command_error_handler(request: Request, exc: CommandError):
+    """Handle command errors"""
+    return await application_exception_handler(request, exc)
+
+
+# Register exception handlers
+app.add_exception_handler(ValidationError, validation_error_handler)
+app.add_exception_handler(AuthenticationError, authentication_error_handler)
+app.add_exception_handler(AuthorizationError, authorization_error_handler)
+app.add_exception_handler(NotFoundError, not_found_error_handler)
+app.add_exception_handler(ConflictError, conflict_error_handler)
+app.add_exception_handler(CommandError, command_error_handler)
+app.add_exception_handler(ApplicationException, application_exception_handler)
+
 
 # Add CORS middleware for web panel API
 app.add_middleware(

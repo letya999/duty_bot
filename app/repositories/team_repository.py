@@ -60,3 +60,21 @@ class TeamRepository(BaseRepository[Team]):
             await self.db.commit()
             await self.db.refresh(team)
         return team
+
+    async def add_member(self, team_id: int, user) -> Optional[Team]:
+        """Add member to team and return updated team with members loaded."""
+        team = await self.get_by_id_with_members(team_id)
+        if team and user not in team.members:
+            team.members.append(user)
+            await self.db.commit()
+            await self.db.refresh(team)
+        return team
+
+    async def remove_member(self, team_id: int, user) -> Optional[Team]:
+        """Remove member from team and return updated team with members loaded."""
+        team = await self.get_by_id_with_members(team_id)
+        if team and user in team.members:
+            team.members.remove(user)
+            await self.db.commit()
+            await self.db.refresh(team)
+        return team

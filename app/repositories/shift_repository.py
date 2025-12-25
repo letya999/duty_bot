@@ -59,3 +59,47 @@ class ShiftRepository(BaseRepository[Shift]):
             await self.db.commit()
             return True
         return False
+
+    async def create_or_update_shift(self, team_id: int, shift_date: date, users: list = None) -> Optional[Shift]:
+        """Create new shift or update existing one with users."""
+        shift = await self.get_by_team_and_date(team_id, shift_date)
+
+        if shift:
+            # Replace users
+            shift.users.clear()
+        else:
+            shift = Shift(team_id=team_id, date=shift_date)
+            self.db.add(shift)
+
+        if users:
+            shift.users.extend(users)
+
+        await self.db.commit()
+        await self.db.refresh(shift)
+        return shift
+
+    async def add_user_to_shift(self, team_id: int, shift_date: date, user) -> Optional[Shift]:
+        """Add user to shift."""
+        shift = await self.get_by_team_and_date(team_id, shift_date)
+
+        if not shift:
+            shift = Shift(team_id=team_id, date=shift_date)
+            self.db.add(shift)
+
+        if user not in shift.users:
+            shift.users.append(user)
+
+        await self.db.commit()
+        await self.db.refresh(shift)
+        return shift
+
+    async def remove_user_from_shift(self, team_id: int, shift_date: date, user) -> Optional[Shift]:
+        """Remove user from shift."""
+        shift = await self.get_by_team_and_date(team_id, shift_date)
+
+        if shift and user in shift.users:
+            shift.users.remove(user)
+            await self.db.commit()
+            await self.db.refresh(shift)
+
+        return shift

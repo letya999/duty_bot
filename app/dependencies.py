@@ -11,6 +11,7 @@ from app.repositories import (
     EscalationRepository,
     AdminLogRepository,
     RotationConfigRepository,
+    DutyStatsRepository,
 )
 
 
@@ -58,3 +59,8 @@ async def get_admin_log_repository(db: AsyncSession) -> AdminLogRepository:
 async def get_rotation_config_repository(db: AsyncSession) -> RotationConfigRepository:
     """Get rotation config repository."""
     return RotationConfigRepository(db)
+
+
+async def get_duty_stats_repository(db: AsyncSession) -> DutyStatsRepository:
+    """Get duty stats repository."""
+    return DutyStatsRepository(db)

@@ -1,11 +1,12 @@
 """Service for duty statistics and reports generation"""
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
 
 from app.models import DutyStats, Schedule, Shift, User, Team, Workspace
+from app.repositories import DutyStatsRepository
 
 
 class StatsService:
@@ -13,6 +14,7 @@ class StatsService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+        self.stats_repo = DutyStatsRepository(db)
 
     async def recalculate_stats(
         self, workspace_id: int, year: int, month: int
@@ -73,193 +75,60 @@ class StatsService:
                 )
                 shift_days = shift_count_result.scalar() or 0
 
-                # Create or update DutyStats record
-                existing_result = await self.db.execute(
-                    select(DutyStats).where(
-                        and_(
-                            DutyStats.workspace_id == workspace_id,
-                            DutyStats.team_id == team.id,
-                            DutyStats.user_id == user.id,
-                            DutyStats.year == year,
-                            DutyStats.month == month,
-                        )
-                    )
+                # Create or update DutyStats record through repository
+                stat = await self.stats_repo.get_or_create(
+                    workspace_id, team.id, user.id, year, month
                 )
-                existing_stat = existing_result.scalar_one_or_none()
+                stat.duty_days = duty_days
+                stat.shift_days = shift_days
+                stat.updated_at = datetime.utcnow()
+                await self.db.commit()
 
-                if existing_stat:
-                    existing_stat.duty_days = duty_days
-                    existing_stat.shift_days = shift_days
-                    existing_stat.updated_at = datetime.utcnow()
-                else:
-                    stat = DutyStats(
-                        workspace_id=workspace_id,
-                        team_id=team.id,
-                        user_id=user.id,
-                        year=year,
-                        month=month,
-                        duty_days=duty_days,
-                        shift_days=shift_days,
-                    )
-                    self.db.add(stat)
-                    existing_stat = stat
+                stats_list.append(stat)
 
-                stats_list.append(existing_stat)
-
-        await self.db.commit()
         return stats_list
 
     async def get_user_monthly_stats(
         self, workspace_id: int, user_id: int, year: int, month: int
     ) -> list[DutyStats]:
         """Get monthly statistics for a specific user across all teams"""
-        result = await self.db.execute(
-            select(DutyStats)
-            .where(
-                and_(
-                    DutyStats.workspace_id == workspace_id,
-                    DutyStats.user_id == user_id,
-                    DutyStats.year == year,
-                    DutyStats.month == month,
-                )
-            )
-            .options(selectinload(DutyStats.team))
-        )
-        return result.scalars().all()
+        return await self.stats_repo.get_user_monthly_stats(workspace_id, user_id, year, month)
 
     async def get_team_monthly_stats(
         self, workspace_id: int, team_id: int, year: int, month: int
     ) -> list[DutyStats]:
         """Get monthly statistics for a specific team across all users"""
-        result = await self.db.execute(
-            select(DutyStats)
-            .where(
-                and_(
-                    DutyStats.workspace_id == workspace_id,
-                    DutyStats.team_id == team_id,
-                    DutyStats.year == year,
-                    DutyStats.month == month,
-                )
-            )
-            .options(selectinload(DutyStats.user))
-            .order_by(DutyStats.duty_days.desc())
-        )
-        return result.scalars().all()
+        return await self.stats_repo.get_team_monthly_stats(workspace_id, team_id, year, month)
 
     async def get_workspace_monthly_stats(
         self, workspace_id: int, year: int, month: int
     ) -> list[DutyStats]:
         """Get all statistics for workspace in a given month"""
-        result = await self.db.execute(
-            select(DutyStats)
-            .where(
-                and_(
-                    DutyStats.workspace_id == workspace_id,
-                    DutyStats.year == year,
-                    DutyStats.month == month,
-                )
-            )
-            .options(selectinload(DutyStats.user), selectinload(DutyStats.team))
-            .order_by(DutyStats.duty_days.desc())
-        )
-        return result.scalars().all()
+        return await self.stats_repo.get_workspace_monthly_stats(workspace_id, year, month)
 
     async def get_user_annual_stats(
         self, workspace_id: int, user_id: int, year: int
     ) -> list[DutyStats]:
         """Get annual statistics for a user"""
-        result = await self.db.execute(
-            select(DutyStats)
-            .where(
-                and_(
-                    DutyStats.workspace_id == workspace_id,
-                    DutyStats.user_id == user_id,
-                    DutyStats.year == year,
-                )
-            )
-            .options(selectinload(DutyStats.team))
-            .order_by(DutyStats.month)
-        )
-        return result.scalars().all()
+        return await self.stats_repo.get_user_annual_stats(workspace_id, user_id, year)
 
     async def get_team_annual_stats(
         self, workspace_id: int, team_id: int, year: int
     ) -> list[DutyStats]:
         """Get annual statistics for a team"""
-        result = await self.db.execute(
-            select(DutyStats)
-            .where(
-                and_(
-                    DutyStats.workspace_id == workspace_id,
-                    DutyStats.team_id == team_id,
-                    DutyStats.year == year,
-                )
-            )
-            .options(selectinload(DutyStats.user))
-            .order_by(DutyStats.month, DutyStats.duty_days.desc())
-        )
-        return result.scalars().all()
+        return await self.stats_repo.get_team_annual_stats(workspace_id, team_id, year)
 
     async def get_top_users_by_duties(
         self, workspace_id: int, year: int, month: int, limit: int = 10
     ) -> list[dict]:
         """Get top users by duty count in a month"""
-        result = await self.db.execute(
-            select(
-                User.id,
-                User.display_name,
-                func.sum(DutyStats.duty_days).label("total_duties"),
-            )
-            .join(User, DutyStats.user_id == User.id)
-            .where(
-                and_(
-                    DutyStats.workspace_id == workspace_id,
-                    DutyStats.year == year,
-                    DutyStats.month == month,
-                )
-            )
-            .group_by(User.id, User.display_name)
-            .order_by(func.sum(DutyStats.duty_days).desc())
-            .limit(limit)
-        )
-        rows = result.all()
-        return [
-            {"user_id": row[0], "display_name": row[1], "total_duties": row[2]}
-            for row in rows
-        ]
+        return await self.stats_repo.get_top_users_by_duties(workspace_id, year, month, limit)
 
     async def get_team_workload(
         self, workspace_id: int, year: int, month: int
     ) -> list[dict]:
         """Get workload distribution across teams"""
-        result = await self.db.execute(
-            select(
-                Team.id,
-                Team.display_name,
-                func.sum(DutyStats.duty_days).label("total_duties"),
-                func.count(func.distinct(DutyStats.user_id)).label("team_members"),
-            )
-            .join(Team, DutyStats.team_id == Team.id)
-            .where(
-                and_(
-                    DutyStats.workspace_id == workspace_id,
-                    DutyStats.year == year,
-                    DutyStats.month == month,
-                )
-            )
-            .group_by(Team.id, Team.display_name)
-            .order_by(func.sum(DutyStats.duty_days).desc())
-        )
-        rows = result.all()
-        return [
-            {
-                "team_id": row[0],
-                "team_name": row[1],
-                "total_duties": row[2],
-                "team_members": row[3],
-            }
-            for row in rows
-        ]
+        return await self.stats_repo.get_team_workload(workspace_id, year, month)
 
     async def generate_html_report(
         self,
@@ -317,8 +186,6 @@ class StatsService:
         th {{ background-color: #007bff; color: white; padding: 12px; text-align: left; }}
         td {{ padding: 10px 12px; border-bottom: 1px solid #ddd; }}
         tr:hover {{ background-color: #f9f9f9; }}
-        .chart-container {{ margin: 20px 0; padding: 15px; background-color: #f9f9f9; border-radius: 5px; }}
-        .report-footer {{ margin-top: 30px; text-align: center; color: #666; font-size: 12px; border-top: 1px solid #ddd; padding-top: 15px; }}
     </style>
 </head>
 <body>
@@ -430,7 +297,7 @@ class StatsService:
 """
 
         html += f"""
-        <div class="report-footer">
+        <div style="margin-top: 30px; text-align: center; color: #666; font-size: 12px; border-top: 1px solid #ddd; padding-top: 15px;">
             <p>Report generated on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
         </div>
     </div>

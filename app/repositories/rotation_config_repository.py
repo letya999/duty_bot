@@ -46,3 +46,36 @@ class RotationConfigRepository(BaseRepository[RotationConfig]):
             await self.db.commit()
             await self.db.refresh(config)
         return config
+
+    async def enable_rotation(self, team_id: int, member_ids: list[int]) -> RotationConfig:
+        """Enable rotation for team with member order."""
+        config = await self.get_by_team(team_id)
+
+        if config:
+            # Update existing config
+            config.enabled = True
+            config.member_ids = member_ids
+            if not config.last_assigned_user_id and member_ids:
+                config.last_assigned_user_id = member_ids[0]
+            await self.db.commit()
+            await self.db.refresh(config)
+        else:
+            # Create new config
+            config = await self.create({
+                'team_id': team_id,
+                'enabled': True,
+                'member_ids': member_ids,
+                'last_assigned_user_id': member_ids[0] if member_ids else None,
+            })
+
+        return config
+
+    async def update_last_assigned_for_rotation(self, team_id: int, user_id: int, assigned_date) -> Optional[RotationConfig]:
+        """Update last assigned user and date for rotation."""
+        config = await self.get_by_team(team_id)
+        if config:
+            config.last_assigned_user_id = user_id
+            config.last_assigned_date = assigned_date
+            await self.db.commit()
+            await self.db.refresh(config)
+        return config

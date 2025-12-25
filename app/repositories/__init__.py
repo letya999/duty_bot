@@ -7,8 +7,10 @@ from app.repositories.workspace_repository import WorkspaceRepository
 from app.repositories.schedule_repository import ScheduleRepository
 from app.repositories.shift_repository import ShiftRepository
 from app.repositories.escalation_repository import EscalationRepository
+from app.repositories.escalation_event_repository import EscalationEventRepository
 from app.repositories.admin_log_repository import AdminLogRepository
 from app.repositories.rotation_config_repository import RotationConfigRepository
+from app.repositories.duty_stats_repository import DutyStatsRepository
 
 __all__ = [
     'BaseRepository',
@@ -18,6 +20,8 @@ __all__ = [
     'ScheduleRepository',
     'ShiftRepository',
     'EscalationRepository',
+    'EscalationEventRepository',
     'AdminLogRepository',
     'RotationConfigRepository',
+    'DutyStatsRepository',
 ]

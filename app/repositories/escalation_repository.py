@@ -39,3 +39,15 @@ class EscalationRepository(BaseRepository[Escalation]):
             await self.db.commit()
             await self.db.refresh(escalation)
         return escalation
+
+    async def set_global_cto(self, user_id: int) -> Escalation:
+        """Set global CTO (team_id is NULL)."""
+        escalation = await self.get_global_cto()
+
+        if escalation:
+            return await self.update(escalation.id, {'cto_id': user_id})
+        else:
+            return await self.create({
+                'team_id': None,
+                'cto_id': user_id
+            })

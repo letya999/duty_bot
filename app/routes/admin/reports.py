@@ -13,7 +13,7 @@ from sqlalchemy.orm import joinedload
 from app.database import AsyncSessionLocal
 from app.models import Schedule, User, Team, AdminLog, Workspace, Shift, DutyStats
 from app.services.stats_service import StatsService
-from app.web.auth import session_manager
+from app.auth import session_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/web/reports", tags=["reports"])

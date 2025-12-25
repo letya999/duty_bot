@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload
 from app.database import AsyncSessionLocal
 from app.models import User, Workspace
 from app.config import get_settings
-from app.web.auth import session_manager
+from app.auth import session_manager
 from app.services.admin_service import AdminService
 
 logger = logging.getLogger(__name__)

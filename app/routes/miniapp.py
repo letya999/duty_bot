@@ -10,7 +10,7 @@ from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
 from app.services.shift_service import ShiftService
-from app.web.api_utils import (
+from app.config.api_utils import (
     format_user_response,
     get_month_dates,
     get_schedules_and_shifts_for_period,

@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 from sqlalchemy import select
 
 from app.config import get_settings
-from app.web.auth import (
+from app.auth import (
     TelegramOAuth, SlackOAuth, session_manager
 )
 from app.models import Workspace, User
@@ -596,3 +596,149 @@ async def logout(request: Request):
     response = RedirectResponse(url="/web/auth/login", status_code=302)
     response.delete_cookie("session_token")
     return response
+
+
+@router.get("/workspaces")
+async def list_workspaces(request: Request, session: dict = Depends(get_session_from_cookie)):
+    """Get list of available workspaces for current user.
+
+    Returns workspaces where the user has access (is a member or admin).
+    If user is only in one workspace, return that single workspace.
+    """
+    try:
+        user_id = session['user_id']
+        current_workspace_id = session['workspace_id']
+
+        async with AsyncSessionLocal() as db:
+            # Get current user to access their telegram_id or slack_user_id
+            current_user = await db.get(User, user_id)
+            if not current_user:
+                raise HTTPException(status_code=404, detail="User not found")
+
+            # Find all workspaces where this user exists with same platform ID
+            # This ensures we only list workspaces where the user actually belongs
+            stmt = select(User).where(
+                User.telegram_id == current_user.telegram_id if current_user.telegram_id else None or
+                User.slack_user_id == current_user.slack_user_id if current_user.slack_user_id else None
+            )
+
+            if current_user.telegram_id:
+                stmt = select(User).where(User.telegram_id == current_user.telegram_id)
+            elif current_user.slack_user_id:
+                stmt = select(User).where(User.slack_user_id == current_user.slack_user_id)
+            else:
+                raise HTTPException(status_code=400, detail="User has no platform ID")
+
+            result = await db.execute(stmt)
+            all_user_records = result.scalars().all()
+
+            # Build workspace list from all user records
+            workspaces = []
+            workspace_ids = set()
+
+            for user_record in all_user_records:
+                if user_record.workspace_id not in workspace_ids:
+                    workspace_ids.add(user_record.workspace_id)
+                    workspace = await db.get(Workspace, user_record.workspace_id)
+                    if workspace:
+                        workspaces.append({
+                            'id': workspace.id,
+                            'name': workspace.name,
+                            'type': workspace.workspace_type,
+                            'is_current': workspace.id == current_workspace_id,
+                            'is_admin': user_record.is_admin,
+                            'role': 'admin' if user_record.is_admin else 'member'
+                        })
+
+            logger.info(f"User {user_id} has access to {len(workspaces)} workspace(s)")
+            return {'workspaces': workspaces}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing workspaces: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to list workspaces")
+
+
+@router.post("/switch-workspace")
+async def switch_workspace(request: Request, session: dict = Depends(get_session_from_cookie)):
+    """Switch to a different workspace.
+
+    Request body: {"workspace_id": <id>}
+    Response: New session token
+    """
+    try:
+        user_id = session['user_id']
+        current_workspace_id = session['workspace_id']
+
+        data = await request.json()
+        target_workspace_id = data.get('workspace_id')
+
+        if not target_workspace_id:
+            raise HTTPException(status_code=400, detail="Missing workspace_id")
+
+        if target_workspace_id == current_workspace_id:
+            logger.info(f"User {user_id} already in workspace {target_workspace_id}")
+            return {
+                'session_token': request.cookies.get('session_token'),
+                'message': 'Already in this workspace'
+            }
+
+        async with AsyncSessionLocal() as db:
+            # Get current user to get their platform ID
+            current_user = await db.get(User, user_id)
+            if not current_user:
+                raise HTTPException(status_code=404, detail="User not found")
+
+            # Find user record in target workspace with same platform ID
+            if current_user.telegram_id:
+                target_user_stmt = select(User).where(
+                    User.telegram_id == current_user.telegram_id,
+                    User.workspace_id == target_workspace_id
+                )
+            elif current_user.slack_user_id:
+                target_user_stmt = select(User).where(
+                    User.slack_user_id == current_user.slack_user_id,
+                    User.workspace_id == target_workspace_id
+                )
+            else:
+                raise HTTPException(status_code=400, detail="User has no platform ID")
+
+            result = await db.execute(target_user_stmt)
+            target_user = result.scalar_one_or_none()
+
+            if not target_user:
+                logger.warning(f"User {user_id} not found in target workspace {target_workspace_id}")
+                raise HTTPException(status_code=403, detail="Access denied to this workspace")
+
+            # Verify workspace exists
+            target_workspace = await db.get(Workspace, target_workspace_id)
+            if not target_workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+
+            logger.info(f"Switching user {user_id} from workspace {current_workspace_id} to {target_workspace_id}")
+
+        # Create new session for target workspace
+        new_token = session_manager.create_session(
+            target_user.id,
+            target_workspace_id,
+            target_workspace.workspace_type
+        )
+
+        response_data = {
+            'success': True,
+            'session_token': new_token,
+            'workspace': {
+                'id': target_workspace_id,
+                'name': target_workspace.name,
+                'type': target_workspace.workspace_type
+            }
+        }
+
+        return response_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error switching workspace: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to switch workspace")

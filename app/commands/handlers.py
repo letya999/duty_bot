@@ -373,7 +373,7 @@ Members: {members_str}"""
         conflicts = []
         current = date_range.start
         while current <= date_range.end:
-            conflict = await self.schedule_service.check_user_schedule_conflict(user, current)
+            conflict = await self.schedule_service.check_user_schedule_conflict(user.id, current, self.workspace_id)
             if conflict:
                 conflicts.append(conflict)
             current += timedelta(days=1)
@@ -408,7 +408,7 @@ Members: {members_str}"""
         current = date_range.start
         count = 0
         while current <= date_range.end:
-            await self.schedule_service.set_duty(team, user, current)
+            await self.schedule_service.set_duty(team.id, user.id, current)
             count += 1
             current += timedelta(days=1)
 
@@ -502,7 +502,7 @@ Members: {members_str}"""
         current = date_range.start
         while current <= date_range.end:
             for user in users:
-                conflict = await self.shift_service.check_user_shift_conflict(user, current)
+                conflict = await self.shift_service.check_user_shift_conflict(user, current, self.workspace_id)
                 if conflict:
                     conflicts.append(conflict)
             current += timedelta(days=1)
@@ -568,7 +568,7 @@ Members: {members_str}"""
         shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
 
         # Check for conflicts
-        conflict = await self.shift_service.check_user_shift_conflict(user, shift_date)
+        conflict = await self.shift_service.check_user_shift_conflict(user, shift_date, self.workspace_id)
 
         # Handle conflicts
         if conflict and not force:

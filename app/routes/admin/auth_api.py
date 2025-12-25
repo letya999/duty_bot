@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
 
-from app.web.auth import session_manager
+from app.auth import session_manager
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload
 
 from app.database import AsyncSessionLocal
 from app.models import User, Team, Schedule, Shift, AdminLog, Workspace
-from app.web.auth import session_manager
+from app.auth import session_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/web/dashboard", tags=["dashboard"])
@@ -38,20 +38,22 @@ async def dashboard_page(request: Request, session: dict = Depends(get_session_f
         async with AsyncSessionLocal() as db:
             workspace_id = session['workspace_id']
 
-            # Get current duties (today)
+            # Get current duties (today) - ONLY from this workspace
             today = datetime.now().date()
-            stmt = select(Schedule).where(
-                (Schedule.date == today)
+            stmt = select(Schedule).join(Schedule.team).where(
+                (Schedule.date == today) &
+                (Team.workspace_id == workspace_id)
             ).options(joinedload(Schedule.team)).options(joinedload(Schedule.user))
             result = await db.execute(stmt)
             today_schedules = result.unique().scalars().all()
 
-            # Get upcoming shifts (next 7 days)
+            # Get upcoming shifts (next 7 days) - ONLY from this workspace
             start_date = today
             end_date = today + timedelta(days=7)
-            stmt = select(Shift).where(
+            stmt = select(Shift).join(Shift.team).where(
                 (Shift.date >= start_date) &
-                (Shift.date <= end_date)
+                (Shift.date <= end_date) &
+                (Team.workspace_id == workspace_id)
             ).options(joinedload(Shift.team)).options(joinedload(Shift.users))
             result = await db.execute(stmt)
             upcoming_shifts = result.unique().scalars().all()

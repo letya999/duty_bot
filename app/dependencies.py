@@ -12,6 +12,7 @@ from app.repositories import (
     AdminLogRepository,
     RotationConfigRepository,
     DutyStatsRepository,
+    IncidentRepository,
 )
 
 
@@ -66,3 +67,8 @@ async def get_rotation_config_repository(db: AsyncSession = Depends(get_db)) -> 
 async def get_duty_stats_repository(db: AsyncSession = Depends(get_db)) -> DutyStatsRepository:
     """Get duty stats repository."""
     return DutyStatsRepository(db)
+
+
+async def get_incident_repository(db: AsyncSession = Depends(get_db)) -> IncidentRepository:
+    """Get incident repository."""
+    return IncidentRepository(db)

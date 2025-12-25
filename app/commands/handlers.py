@@ -8,9 +8,12 @@ from app.services.shift_service import ShiftService
 from app.services.escalation_service import EscalationService
 from app.services.admin_service import AdminService
 from app.services.rotation_service import RotationService
+from app.services.incident_service import IncidentService
+from app.services.metrics_service import MetricsService
 from app.repositories import (
     UserRepository, TeamRepository, ScheduleRepository, ShiftRepository,
-    EscalationRepository, EscalationEventRepository, AdminLogRepository, RotationConfigRepository
+    EscalationRepository, EscalationEventRepository, AdminLogRepository, RotationConfigRepository,
+    IncidentRepository
 )
 from app.models import Team, User
 from app.config import get_settings
@@ -32,6 +35,7 @@ class CommandHandler:
         self.escalation_event_repo = EscalationEventRepository(db)
         self.admin_log_repo = AdminLogRepository(db)
         self.rotation_config_repo = RotationConfigRepository(db)
+        self.incident_repo = IncidentRepository(db)
 
         # Initialize services with repositories
         self.user_service = UserService(self.user_repo, self.admin_log_repo)
@@ -41,6 +45,8 @@ class CommandHandler:
         self.escalation_service = EscalationService(self.escalation_repo, self.escalation_event_repo)
         self.admin_service = AdminService(self.admin_log_repo, self.user_repo)
         self.rotation_service = RotationService(self.rotation_config_repo, self.schedule_repo, self.user_repo)
+        self.incident_service = IncidentService(self.incident_repo)
+        self.metrics_service = MetricsService(self.incident_repo)
         self.settings = get_settings()
 
     def _get_today(self, today: date = None) -> date:
@@ -766,3 +772,67 @@ Members: {members_str}"""
             return f"Rotation disabled for {team.display_name}"
         else:
             raise CommandError(f"No rotation configured for {team.display_name}")
+
+    # ===============================
+    # INCIDENT COMMANDS
+    # ===============================
+
+    async def incident_start(self, incident_name: str) -> str:
+        """Start new incident"""
+        if not incident_name:
+            raise CommandError("Please provide incident name")
+
+        incident = await self.incident_service.create_incident(self.workspace_id, incident_name)
+        return f"🚨 Incident started: *{incident.name}* at {incident.start_time.strftime('%H:%M:%S')}"
+
+    async def incident_stop(self) -> str:
+        """Stop active incident"""
+        active = await self.incident_service.get_active_incidents(self.workspace_id)
+        if not active:
+            raise CommandError("No active incidents")
+
+        # Stop the first (most recent) active incident
+        incident = active[0]
+        completed = await self.incident_service.complete_incident(incident.id)
+
+        if completed and completed.end_time:
+            duration = (completed.end_time - completed.start_time).total_seconds()
+            hours = int(duration // 3600)
+            minutes = int((duration % 3600) // 60)
+            duration_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+            return f"✅ Incident resolved: *{completed.name}* (Duration: {duration_str})"
+
+        raise CommandError("Failed to complete incident")
+
+    async def incident_list(self) -> str:
+        """List active incidents"""
+        active = await self.incident_service.get_active_incidents(self.workspace_id)
+        if not active:
+            return "No active incidents 😊"
+
+        lines = ["🚨 *Active Incidents:*", ""]
+        for inc in active:
+            duration = (date.today() - inc.start_time.date()).days if inc.start_time else 0
+            lines.append(f"• *{inc.name}* - started {inc.start_time.strftime('%d.%m %H:%M')}")
+
+        return "\n".join(lines)
+
+    async def incident_metrics(self, period: str = "week") -> str:
+        """Get incident metrics"""
+        if period not in ['week', 'month', 'quarter', 'year']:
+            period = 'week'
+
+        metrics = await self.metrics_service.calculate_metrics(self.workspace_id, period)
+
+        mtr_hours = metrics['mtr'] // 3600
+        mtr_minutes = (metrics['mtr'] % 3600) // 60
+        avg_hours = metrics['averageIncidentDuration'] // 3600
+        avg_minutes = (metrics['averageIncidentDuration'] % 3600) // 60
+
+        return (
+            f"📊 *Incident Metrics ({period.title()}):*\n"
+            f"• MTR: {mtr_hours}h {mtr_minutes}m\n"
+            f"• Days without incidents: {metrics['daysWithoutIncidents']}\n"
+            f"• Total incidents: {metrics['totalIncidents']}\n"
+            f"• Avg duration: {avg_hours}h {avg_minutes}m"
+        )

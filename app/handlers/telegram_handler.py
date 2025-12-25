@@ -91,6 +91,7 @@ class TelegramHandler:
         self.app.add_handler(CommandHandler("shift", self.shift_command))
         self.app.add_handler(CommandHandler("escalation", self.escalation_command))
         self.app.add_handler(CommandHandler("escalate", self.escalate_command))
+        self.app.add_handler(CommandHandler("incident", self.incident_command))
         self.app.add_handler(CommandHandler("admin", self.admin_command))
         self.app.add_handler(CommandHandler("help", self.help_command))
         self.app.add_handler(CommandHandler("start", self.help_command))
@@ -105,6 +106,7 @@ class TelegramHandler:
             BotCommand("shift", "Manage team shifts"),
             BotCommand("escalation", "Escalation settings"),
             BotCommand("escalate", "Escalate an issue"),
+            BotCommand("incident", "Manage incidents"),
             BotCommand("admin", "Manage admins (admins only)"),
             BotCommand("help", "Show full command list"),
         ]
@@ -584,6 +586,51 @@ class TelegramHandler:
             await update.effective_message.reply_text(f"❌ {str(e)}")
         except Exception as e:
             logger.exception(f"Error in escalate_command: {e}")
+            await update.effective_message.reply_text("❌ An error occurred")
+
+    async def incident_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /incident command"""
+        try:
+            async with get_db_with_retry() as db:
+                workspace_id, user = await self._get_workspace_and_user(update, db)
+                handler = BotCommandHandler(db, workspace_id)
+
+                args = context.args
+                if not args:
+                    # Show list of active incidents
+                    result = await handler.incident_list()
+                else:
+                    command = args[0].strip()
+
+                    if command == "start" and len(args) >= 2:
+                        incident_name = " ".join(args[1:])
+                        result = await handler.incident_start(incident_name)
+
+                    elif command == "stop":
+                        result = await handler.incident_stop()
+
+                    elif command == "metrics":
+                        period = args[1] if len(args) > 1 else "week"
+                        result = await handler.incident_metrics(period)
+
+                    elif command == "list":
+                        result = await handler.incident_list()
+
+                    else:
+                        result = (
+                            "Usage:\n"
+                            "/incident - List active incidents\n"
+                            "/incident start <name> - Start incident\n"
+                            "/incident stop - Stop active incident\n"
+                            "/incident metrics [week|month|quarter|year] - Show metrics"
+                        )
+
+                await update.effective_message.reply_text(result, parse_mode='Markdown')
+
+        except CommandError as e:
+            await update.effective_message.reply_text(f"❌ {str(e)}")
+        except Exception as e:
+            logger.exception(f"Error in incident_command: {e}")
             await update.effective_message.reply_text("❌ An error occurred")
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

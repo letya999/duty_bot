@@ -25,6 +25,7 @@ from app.routes.admin.schedules import router as schedules_router
 from app.routes.admin.settings import router as settings_router
 from app.routes.admin.reports import router as reports_router
 from app.routes.admin.api import router as web_api_router
+from app.routes.admin.incidents import router as incidents_router
 from app.exceptions import (
     ApplicationException,
     ValidationError,
@@ -240,6 +241,7 @@ app.include_router(schedules_router)
 app.include_router(settings_router)
 app.include_router(reports_router)
 app.include_router(web_api_router)
+app.include_router(incidents_router)
 
 # Register authentication API router
 from app.routes.admin.auth_api import router as auth_api_router

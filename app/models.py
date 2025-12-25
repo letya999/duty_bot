@@ -21,6 +21,7 @@ class Workspace(Base):
     users = relationship('User', back_populates='workspace', cascade='all, delete-orphan')
     teams = relationship('Team', back_populates='workspace', cascade='all, delete-orphan')
     admin_logs = relationship('AdminLog', back_populates='workspace', cascade='all, delete-orphan')
+    incidents = relationship('Incident', back_populates='workspace', cascade='all, delete-orphan')
 
     __table_args__ = (
         UniqueConstraint('workspace_type', 'external_id', name='workspace_type_external_id_unique'),
@@ -253,3 +254,20 @@ class DutyStats(Base):
     __table_args__ = (
         UniqueConstraint('workspace_id', 'team_id', 'user_id', 'year', 'month', name='duty_stats_workspace_team_user_year_month_unique'),
     )
+
+
+class Incident(Base):
+    """Incident tracking with start and end times"""
+    __tablename__ = 'incident'
+
+    id = Column(Integer, primary_key=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    status = Column(Enum('active', 'resolved', name='incident_status_enum'), default='active', nullable=False)
+    start_time = Column(DateTime, nullable=False, index=True)
+    end_time = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    workspace = relationship('Workspace')

@@ -55,13 +55,18 @@ class ScheduleService:
     async def check_user_schedule_conflict(
         self,
         user_id: int,
-        duty_date: date
+        duty_date: date,
+        workspace_id: int = None
     ) -> dict | None:
-        """Check if user is already scheduled for this date"""
+        """Check if user is already scheduled for this date (optionally filtered by workspace)"""
         stmt = select(Schedule).where(
             Schedule.user_id == user_id,
             Schedule.date == duty_date
         )
+
+        if workspace_id is not None:
+            stmt = stmt.join(Team).where(Team.workspace_id == workspace_id)
+
         result = await self.schedule_repo.execute(stmt)
         existing = result.scalars().first()
 

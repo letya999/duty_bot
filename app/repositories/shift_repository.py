@@ -5,7 +5,7 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from app.models import Shift
+from app.models import Shift, Team
 from app.repositories.base_repository import BaseRepository
 
 
@@ -40,14 +40,18 @@ class ShiftRepository(BaseRepository[Shift]):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def list_by_user_and_date_range(self, user_id: int, start_date: date, end_date: date) -> List[Shift]:
-        """Get shifts assigned to user in date range."""
-        from sqlalchemy import and_
-        stmt = select(Shift).join(Shift.users).where(
+    async def list_by_user_and_date_range(self, user_id: int, start_date: date, end_date: date, workspace_id: int = None) -> List[Shift]:
+        """Get shifts assigned to user in date range. If workspace_id provided, filters to that workspace only."""
+        stmt = select(Shift).join(Shift.users).join(Team).where(
             Shift.users.any(id=user_id),
             Shift.date >= start_date,
             Shift.date <= end_date
-        ).order_by(Shift.date)
+        )
+
+        if workspace_id is not None:
+            stmt = stmt.where(Team.workspace_id == workspace_id)
+
+        stmt = stmt.order_by(Shift.date)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

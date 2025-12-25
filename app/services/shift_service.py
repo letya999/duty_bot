@@ -59,14 +59,15 @@ class ShiftService:
     async def check_user_shift_conflict(
         self,
         user: User,
-        shift_date: date
+        shift_date: date,
+        workspace_id: int = None
     ) -> dict | None:
-        """Check if user is already assigned to a shift on this date
+        """Check if user is already assigned to a shift on this date (optionally filtered by workspace)
 
         Returns: dict with conflict info if conflict exists, None otherwise
         Example: {"user_id": 1, "date": "2024-01-15", "team_name": "Engineering"}
         """
-        shifts = await self.shift_repo.list_by_user_and_date_range(user.id, shift_date, shift_date)
+        shifts = await self.shift_repo.list_by_user_and_date_range(user.id, shift_date, shift_date, workspace_id)
 
         # Check all shifts on this date to see if user is already assigned
         for shift in shifts:

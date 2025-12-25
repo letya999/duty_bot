@@ -4,7 +4,8 @@ from datetime import date
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.models import Schedule
+from sqlalchemy import and_
+from app.models import Schedule, Team
 from app.repositories.base_repository import BaseRepository
 
 
@@ -33,19 +34,29 @@ class ScheduleRepository(BaseRepository[Schedule]):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def list_by_user_and_date_range(self, user_id: int, start_date: date, end_date: date) -> List[Schedule]:
-        """Get schedules assigned to user in date range."""
-        stmt = select(Schedule).where(
+    async def list_by_user_and_date_range(self, user_id: int, start_date: date, end_date: date, workspace_id: int = None) -> List[Schedule]:
+        """Get schedules assigned to user in date range. If workspace_id provided, filters to that workspace only."""
+        stmt = select(Schedule).join(Team).where(
             Schedule.user_id == user_id,
             Schedule.date >= start_date,
             Schedule.date <= end_date
-        ).order_by(Schedule.date)
+        )
+
+        if workspace_id is not None:
+            stmt = stmt.where(Team.workspace_id == workspace_id)
+
+        stmt = stmt.order_by(Schedule.date)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def list_by_date(self, duty_date: date) -> List[Schedule]:
-        """Get all schedules for a specific date."""
-        stmt = select(Schedule).where(Schedule.date == duty_date).order_by(Schedule.team_id)
+    async def list_by_date(self, duty_date: date, workspace_id: int = None) -> List[Schedule]:
+        """Get all schedules for a specific date. If workspace_id provided, filters to that workspace only."""
+        stmt = select(Schedule).join(Team).where(Schedule.date == duty_date)
+
+        if workspace_id is not None:
+            stmt = stmt.where(Team.workspace_id == workspace_id)
+
+        stmt = stmt.order_by(Schedule.team_id)
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

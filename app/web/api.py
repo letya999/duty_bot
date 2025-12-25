@@ -1376,7 +1376,7 @@ async def update_team(
             raise HTTPException(status_code=404, detail="Team not found")
 
         team = await team_service.update_team(
-            team=team,
+            team_id=team.id,
             name=name,
             display_name=display_name,
             has_shifts=has_shifts
@@ -1385,7 +1385,7 @@ async def update_team(
         if team_lead_id is not None:
             team_lead = await db.get(User, team_lead_id)
             if team_lead:
-                team = await team_service.set_team_lead(team, team_lead)
+                team = await team_service.set_team_lead(team.id, team_lead.id)
 
         return {
             "id": team.id,
@@ -1457,7 +1457,7 @@ async def add_team_member(
         if not member:
             raise HTTPException(status_code=404, detail="User not found")
 
-        await team_service.add_member(team, member)
+        await team_service.add_member(team.id, member)
 
         return {"status": "added"}
     except HTTPException:
@@ -1493,7 +1493,7 @@ async def remove_team_member(
         if not member:
             raise HTTPException(status_code=404, detail="User not found")
 
-        await team_service.remove_member(team, member)
+        await team_service.remove_member(team.id, member)
 
         return {"status": "removed"}
     except HTTPException:
@@ -1530,7 +1530,7 @@ async def import_team_member(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can manage team members")
 
-        team_service = TeamService(db)
+        team_service = TeamService(TeamRepository(db))
         team = await team_service.get_team(team_id, user.workspace_id)
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
@@ -1548,10 +1548,12 @@ async def import_team_member(
         }
 
         # Telegram detection
-        if clean_handle.startswith("https://t.me/") or clean_handle.startswith("@"):
+        if clean_handle.startswith("https://t.me/") or clean_handle.startswith("t.me/") or clean_handle.startswith("@"):
             source = "telegram"
             if clean_handle.startswith("https://t.me/"):
                 clean_handle = clean_handle.replace("https://t.me/", "")
+            if clean_handle.startswith("t.me/"):
+                clean_handle = clean_handle.replace("t.me/", "")
             if clean_handle.startswith("@"):
                 clean_handle = clean_handle[1:]
             
@@ -1600,16 +1602,19 @@ async def import_team_member(
                      logger.warning(f"Failed to fetch Slack info for {slack_user_id}: {e}")
 
         # Try to find existing user
-        user_service = UserService(db)
+        user_service = UserService(UserRepository(db))
         
         # Check by telegram username or slack id or internal username
+        conditions = [
+            (User.telegram_username == imported_info["username"]),
+            (User.username == imported_info["username"])
+        ]
+        if imported_info["slack_id"]:
+            conditions.append(User.slack_user_id == imported_info["slack_id"])
+            
         stmt = select(User).where(
             (User.workspace_id == user.workspace_id) & 
-            (
-                (User.telegram_username == imported_info["username"]) | 
-                (User.username == imported_info["username"]) |
-                (User.slack_id == imported_info["slack_id"])
-            )
+            or_(*conditions)
         )
         result = await db.execute(stmt)
         target_user = result.scalars().first()
@@ -1637,7 +1642,7 @@ async def import_team_member(
              raise HTTPException(status_code=500, detail="Failed to find or create user")
 
         # Add to team
-        await team_service.add_member(team, target_user)
+        await team_service.add_member(team.id, target_user)
 
         return {
             "status": "added",

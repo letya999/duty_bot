@@ -1,21 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 /* CSS Variables for Telegram Theme */
 :root {
   --tg-bg-color: #ffffff;
-  --tg-text-color: #000000;
-  --tg-hint-color: #999999;
-  --tg-link-color: #0088cc;
-  --tg-button-color: #0088cc;
+  --tg-text-color: #111827;
+  /* Gray-900 */
+  --tg-hint-color: #6b7280;
+  /* Gray-500 */
+  --tg-link-color: #2563eb;
+  /* Blue-600 */
+  --tg-button-color: #2563eb;
+  /* Blue-600 */
   --tg-button-text-color: #ffffff;
-  --tg-secondary-bg-color: #f5f5f5;
+  --tg-secondary-bg-color: #f9fafb;
+  /* Gray-50 */
 
-  /* Additional colors */
+  /* Semantic Colors */
   --primary: var(--tg-button-color);
   --primary-text: var(--tg-button-text-color);
+
+  --success: #10b981;
+  /* Emerald-500 */
+  --success-light: #d1fae5;
+  /* Emerald-100 */
+
+  --warning: #f59e0b;
+  /* Amber-500 */
+  --warning-light: #fef3c7;
+  /* Amber-100 */
+
+  --error: #ef4444;
+  /* Red-500 */
+  --error-light: #fee2e2;
+  /* Red-100 */
+
+  --info: #3b82f6;
+  /* Blue-500 */
+  --info-light: #dbeafe;
+  /* Blue-100 */
+
+  /* Base Vars */
   --bg: var(--tg-bg-color);
   --text: var(--tg-text-color);
   --hint: var(--tg-hint-color);
   --secondary-bg: var(--tg-secondary-bg-color);
-  --border-color: #e0e0e0;
+  --border-color: #e5e7eb;
+  /* Gray-200 */
 
   /* Spacing */
   --space-xs: 4px;
@@ -26,24 +56,41 @@
   --space-xxl: 32px;
 
   /* Border radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
 
   /* Font sizes */
-  --text-xs: 12px;
-  --text-sm: 14px;
-  --text-md: 16px;
-  --text-lg: 18px;
-  --text-xl: 20px;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
 }
 
 .dark-theme {
-  --tg-bg-color: #212121;
-  --tg-text-color: #ffffff;
-  --tg-hint-color: #888888;
-  --tg-secondary-bg-color: #2c2c2c;
-  --border-color: #3a3a3a;
+  --tg-bg-color: #1f2937;
+  /* Gray-800 */
+  --tg-text-color: #f9fafb;
+  /* Gray-50 */
+  --tg-hint-color: #9ca3af;
+  /* Gray-400 */
+  --tg-secondary-bg-color: #111827;
+  /* Gray-900 */
+  --border-color: #374151;
+  /* Gray-700 */
+
+  --success: #059669;
+  --success-light: #064e3b;
+
+  --warning: #d97706;
+  --warning-light: #78350f;
+
+  --error: #dc2626;
+  --error-light: #7f1d1d;
+
+  --info: #2563eb;
+  --info-light: #1e3a8a;
 }
 
 * {
@@ -59,7 +106,7 @@ body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   background-color: var(--bg);
   color: var(--text);

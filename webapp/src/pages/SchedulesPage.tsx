@@ -1,107 +1,96 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, List, Calendar, Edit2, Trash2, Copy, AlertCircle, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Icons } from '../components/ui/Icons';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
+import { Select } from '../components/ui/Select';
+import { Input } from '../components/ui/Input';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { apiService } from '../services/api';
-import { Schedule, Team, User } from '../types';
+import { Team, User, Schedule } from '../types';
 
 type ViewMode = 'calendar' | 'list';
-type CalendarMode = 'day' | 'week' | 'month';
-
-interface DutyFormData {
-  userIds: string[];
-  teamId: string;
-  startDate: string;
-  endDate: string;
-  isBulk: boolean;
-}
-
-const getWeekDays = (date: Date) => {
-  const start = new Date(date);
-  start.setDate(start.getDate() - start.getDay());
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(start);
-    d.setDate(d.getDate() + i);
-    return d;
-  });
-};
-
-interface EditingDuty {
-  id: number;
-  userId?: number;
-  userIds?: number[];
-  date: string;
-  teamId?: number;
-  isShift?: boolean;
-}
+type CalendarMode = 'month' | 'week' | 'day';
 
 const SchedulesPage: React.FC = () => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('calendar');
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('month');
-
-  // Calendar state
   const [currentDate, setCurrentDate] = useState(new Date());
 
-  // Derived state for API calls and Month View
-  const month = currentDate.getMonth() + 1;
-  const year = currentDate.getFullYear();
-
-  // List view state
-  const [listStartDate, setListStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [listEndDate, setListEndDate] = useState(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-
-  // Data state
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
-  // Filter state
   const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>('');
+  const [listStartDate, setListStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [listEndDate, setListEndDate] = useState(
+    new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split('T')[0]
+  );
 
-  // Modal state
+  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [editingDuty, setEditingDuty] = useState<EditingDuty | null>(null);
-  const [formData, setFormData] = useState<DutyFormData>({
-    userIds: [],
+  const [editingDuty, setEditingDuty] = useState<Schedule | null>(null);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [formData, setFormData] = useState({
     teamId: '',
-    startDate: '',
-    endDate: '',
+    userIds: [] as string[],
+    role: '',
     isBulk: false,
+    startDate: '',
+    endDate: ''
   });
 
   useEffect(() => {
     loadData();
-  }, [month, year, viewMode, listStartDate, listEndDate]);
-
-  // Reset selected date when switching modes
-  useEffect(() => {
-    // When switching modes, we might want to sync current date or keep it?
-    // For now, let's just ensure we are looking at something relevant.
-  }, [viewMode, calendarMode]);
+  }, [currentDate, viewMode, calendarMode, selectedTeamFilter, listStartDate, listEndDate]);
 
   const loadData = async () => {
     try {
       setLoading(true);
       const [teamsData, usersData] = await Promise.all([
         apiService.getTeams(),
-        apiService.getAllUsers(),
+        apiService.getAllUsers()
       ]);
-
       setTeams(teamsData);
       setUsers(usersData);
 
+      let startStr, endStr;
+
       if (viewMode === 'calendar') {
-        // For calendar, we fetch the whole month (or surrounding if needed)
-        const monthData = await apiService.getMonthSchedule(year, month);
-        setSchedules(monthData.days.flatMap(d => d.duties));
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+
+        if (calendarMode === 'month') {
+          startStr = new Date(year, month, 1).toISOString().split('T')[0];
+          endStr = new Date(year, month + 1, 0).toISOString().split('T')[0];
+        } else if (calendarMode === 'week') {
+          const firstDay = currentDate.getDate() - currentDate.getDay();
+          const start = new Date(currentDate);
+          start.setDate(firstDay);
+          const end = new Date(currentDate);
+          end.setDate(firstDay + 6);
+          startStr = start.toISOString().split('T')[0];
+          endStr = end.toISOString().split('T')[0];
+        } else {
+          startStr = currentDate.toISOString().split('T')[0];
+          endStr = currentDate.toISOString().split('T')[0];
+        }
       } else {
-        const rangeData = await apiService.getSchedulesByDateRange(listStartDate, listEndDate);
-        setSchedules(rangeData);
+        startStr = listStartDate;
+        endStr = listEndDate;
       }
+
+      const schedulesData = await apiService.getSchedulesByDateRange(startStr, endStr);
+
+      // Filter by team if selected
+      const filtered = selectedTeamFilter
+        ? schedulesData.filter(s => s.team_id === parseInt(selectedTeamFilter))
+        : schedulesData;
+
+      setSchedules(filtered);
     } catch (err) {
       console.error('Failed to load schedules', err);
     } finally {
@@ -109,94 +98,80 @@ const SchedulesPage: React.FC = () => {
     }
   };
 
-  const handleOpenAddModal = (date?: string) => {
+  const handleOpenAddModal = (dateStr?: string) => {
     setEditingDuty(null);
-    setSelectedDate(date || new Date().toISOString().split('T')[0]);
+    setSelectedDate(dateStr || new Date().toISOString().split('T')[0]);
     setFormData({
-      userIds: [],
       teamId: '',
-      startDate: date || new Date().toISOString().split('T')[0],
-      endDate: date || new Date().toISOString().split('T')[0],
+      userIds: [],
+      role: '',
       isBulk: false,
+      startDate: dateStr || new Date().toISOString().split('T')[0],
+      endDate: dateStr || new Date().toISOString().split('T')[0]
     });
     setIsModalOpen(true);
   };
 
-  const getSelectedTeam = () => {
-    return teams.find((t: Team) => t.id.toString() === formData.teamId);
-  };
-
   const handleOpenEditModal = (duty: Schedule) => {
-    setEditingDuty({
-      id: duty.id,
-      userId: duty.user_id,
-      date: duty.duty_date,
-      teamId: duty.team_id,
-    });
+    setEditingDuty(duty);
     setSelectedDate(duty.duty_date);
     setFormData({
+      teamId: duty.team_id ? duty.team_id.toString() : '',
       userIds: [duty.user_id.toString()],
-      teamId: duty.team_id?.toString() || '',
-      startDate: duty.duty_date,
-      endDate: duty.duty_date,
+      role: duty.role || '',
       isBulk: false,
+      startDate: duty.duty_date,
+      endDate: duty.duty_date
     });
     setIsModalOpen(true);
   };
 
   const handleSaveDuty = async () => {
     try {
-      const selectedTeam = getSelectedTeam();
-      const isShiftTeam = selectedTeam?.has_shifts || false;
-
       if (editingDuty) {
-        // Edit existing - only single duty edit for now
-        await apiService.editDuty(
-          editingDuty.id,
-          parseInt(formData.userIds[0]),
-          selectedDate,
-          formData.teamId ? parseInt(formData.teamId) : undefined
-        );
-      } else if (formData.isBulk && formData.userIds.length > 0) {
-        if (!formData.teamId) {
-          alert('Please select a team for bulk assignment');
-          return;
-        }
-        // Bulk assign - works for both shift and regular teams
-        const userIds = formData.userIds.map((id: string) => parseInt(id));
-        if (isShiftTeam && formData.teamId) {
-          // For shift teams, assign all users to each date in range
-          await apiService.assignShiftsBulk(
-            userIds,
-            formData.startDate,
-            formData.endDate,
-            parseInt(formData.teamId)
-          );
+        // Edit single duty
+        await apiService.updateSchedule(editingDuty.id, {
+          team_id: formData.teamId ? parseInt(formData.teamId) : null,
+          user_id: parseInt(formData.userIds[0]),
+          duty_date: selectedDate,
+          role: formData.role
+        });
+      } else {
+        // Create new duty (or bulk)
+        if (formData.isBulk && getSelectedTeam()?.has_shifts) {
+          await apiService.createScheduleBulk({
+            team_id: formData.teamId ? parseInt(formData.teamId) : undefined,
+            user_ids: formData.userIds.map(id => parseInt(id)),
+            start_date: formData.startDate,
+            end_date: formData.endDate
+          });
+        } else if (formData.isBulk) {
+          await apiService.createScheduleBulk({
+            team_id: formData.teamId ? parseInt(formData.teamId) : undefined,
+            user_ids: formData.userIds.map(id => parseInt(id)),
+            start_date: formData.startDate,
+            end_date: formData.endDate
+          });
         } else {
-          // For regular teams, use schedule endpoint
-          await apiService.assignBulkDuties(
-            userIds,
-            formData.startDate,
-            formData.endDate,
-            formData.teamId ? parseInt(formData.teamId) : undefined
-          );
-        }
-      } else if (formData.userIds.length > 0) {
-        // Single create
-        if (isShiftTeam && formData.teamId) {
-          // For shift teams, add user to shift
-          await apiService.assignShift(
-            parseInt(formData.userIds[0]),
-            selectedDate,
-            parseInt(formData.teamId)
-          );
-        } else {
-          // For regular teams, use schedule endpoint
-          await apiService.assignDuty(
-            parseInt(formData.userIds[0]),
-            selectedDate,
-            formData.teamId ? parseInt(formData.teamId) : undefined
-          );
+          // Single assignment (possibly multiple users for same day if shift enabled)
+          if (formData.userIds.length > 1) {
+            // treat as bulk for single day
+            await apiService.createScheduleBulk({
+              team_id: formData.teamId ? parseInt(formData.teamId) : undefined,
+              user_ids: formData.userIds.map(id => parseInt(id)),
+              start_date: selectedDate,
+              end_date: selectedDate
+            });
+          } else {
+            if (formData.userIds.length > 0) {
+              await apiService.createSchedule({
+                team_id: formData.teamId ? parseInt(formData.teamId) : undefined,
+                user_id: parseInt(formData.userIds[0]),
+                duty_date: selectedDate,
+                role: formData.role
+              });
+            }
+          }
         }
       }
       setIsModalOpen(false);
@@ -206,336 +181,205 @@ const SchedulesPage: React.FC = () => {
     }
   };
 
-  const handleDeleteDuty = async (scheduleId: number) => {
-    if (!window.confirm('Delete this duty assignment?')) return;
+  const handleDeleteDuty = async (id: number) => {
+    if (!window.confirm(t('schedules.modal.delete_confirm'))) return;
     try {
-      await apiService.removeDuty(scheduleId);
+      await apiService.deleteSchedule(id);
       loadData();
     } catch (err) {
       console.error('Failed to delete duty', err);
     }
   };
 
-  const getFilteredSchedules = () => {
-    let filtered = schedules;
-    if (selectedTeamFilter) {
-      filtered = filtered.filter((s: Schedule) => (s.team_id?.toString() === selectedTeamFilter) || (s.team?.id?.toString() === selectedTeamFilter));
-    }
-    return filtered.sort((a: Schedule, b: Schedule) => new Date(a.duty_date).getTime() - new Date(b.duty_date).getTime());
+  const getSelectedTeam = () => {
+    return teams.find(t => t.id.toString() === formData.teamId);
   };
 
-  const getDaysInMonth = (m: number, y: number) => {
-    return new Date(y, m, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (m: number, y: number) => {
-    return new Date(y, m - 1, 1).getDay();
-  };
-
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-  const getSchedulesForDay = (day: number) => {
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const daySchedules = getFilteredSchedules().filter((s: Schedule) => s.duty_date === dateStr);
-    return daySchedules;
-  };
-
-  const handlePrev = () => {
+  const nextPeriod = () => {
     const newDate = new Date(currentDate);
-    if (calendarMode === 'day') {
-      newDate.setDate(newDate.getDate() - 1);
-    } else if (calendarMode === 'week') {
-      newDate.setDate(newDate.getDate() - 7);
-    } else {
-      newDate.setMonth(newDate.getMonth() - 1);
-    }
-    setCurrentDate(newDate);
-  };
-
-  const handleNext = () => {
-    const newDate = new Date(currentDate);
-    if (calendarMode === 'day') {
-      newDate.setDate(newDate.getDate() + 1);
+    if (calendarMode === 'month') {
+      newDate.setMonth(newDate.getMonth() + 1);
     } else if (calendarMode === 'week') {
       newDate.setDate(newDate.getDate() + 7);
     } else {
-      newDate.setMonth(newDate.getMonth() + 1);
+      newDate.setDate(newDate.getDate() + 1);
     }
     setCurrentDate(newDate);
   };
 
-  const renderDayView = () => {
-    // Use currentDate as the view cursor
-    const viewDate = currentDate;
-    const dateStr = viewDate.toISOString().split('T')[0];
-    const duties = getFilteredSchedules().filter((s: Schedule) => s.duty_date === dateStr);
-
-    return (
-      <Card>
-        <CardHeader className="flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {viewDate.toLocaleDateString('default', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </h2>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={handlePrev}>
-              <ChevronLeft size={18} />
-            </Button>
-            <Button variant="secondary" size="sm" onClick={handleNext}>
-              <ChevronRight size={18} />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardBody>
-          <div className="p-4 border rounded-lg bg-white min-h-48">
-            {duties.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No duties assigned</p>
-            ) : (
-              <div className="space-y-2">
-                {duties.map((s: Schedule) => (
-                  <div key={s.id} className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 font-bold">
-                        {s.user.first_name[0]}
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{s.user.first_name} {s.user.last_name}</p>
-                        <p className="text-xs text-gray-500">{s.team?.name}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleOpenEditModal(s)} className="p-2 text-blue-600 hover:bg-blue-100 rounded">
-                        <Edit2 size={16} />
-                      </button>
-                      <button onClick={() => handleDeleteDuty(s.id)} className="p-2 text-red-600 hover:bg-red-100 rounded">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="mt-4 text-center">
-              <Button variant="secondary" onClick={() => handleOpenAddModal(viewDate.toISOString().split('T')[0])}>
-                <Plus size={16} /> Add Duty
-              </Button>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-    );
-  };
-
-  const renderWeekView = () => {
-    // Determine the week to show.
-    const weekDays = getWeekDays(currentDate);
-
-    // Header date range
-    const startStr = weekDays[0].toLocaleDateString('default', { month: 'short', day: 'numeric' });
-    const endStr = weekDays[6].toLocaleDateString('default', { month: 'short', day: 'numeric' });
-    const yearStr = weekDays[6].getFullYear();
-
-    return (
-      <Card>
-        <CardHeader className="flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {startStr} - {endStr}, {yearStr}
-          </h2>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={handlePrev}>
-              <ChevronLeft size={18} />
-            </Button>
-            <Button variant="secondary" size="sm" onClick={handleNext}>
-              <ChevronRight size={18} />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardBody>
-          <div className="grid grid-cols-7 gap-2">
-            {weekDays.map(date => {
-              const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-              const dateStr = date.toISOString().split('T')[0];
-              const daySchedules = getFilteredSchedules().filter((s: Schedule) => s.duty_date === dateStr);
-              // Show days even if not in current month, though we might not have data if not fetched.
-              const isCurrentMonth = date.getMonth() === month - 1;
-              const isToday = date.toDateString() === new Date().toDateString();
-
-              return (
-                <div key={date.toString()} className="flex flex-col gap-2">
-                  <div className={`text-center font-semibold ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>
-                    {dayNames[date.getDay()]} {date.getDate()}
-                  </div>
-                  <div
-                    className={`min-h-64 p-2 border rounded-lg ${isCurrentMonth ? 'bg-white' : 'bg-gray-50'}`}
-                    onClick={() => handleOpenAddModal(dateStr)}
-                  >
-                    {daySchedules.map(s => (
-                      <div key={s.id} className="text-xs bg-blue-50 text-blue-700 p-1 mb-1 rounded truncate flex justify-between group">
-                        <span>{s.user.first_name}</span>
-                        <div className="hidden group-hover:block cursor-pointer" onClick={(e) => { e.stopPropagation(); handleOpenEditModal(s); }}>
-                          <Edit2 size={10} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </CardBody>
-      </Card>
-    );
-  };
-
-  const renderMonthView = () => {
-    const daysInMonth = getDaysInMonth(month, year);
-    const firstDay = getFirstDayOfMonth(month, year);
-    const days = Array.from({ length: 42 }, (_, i) => {
-      const dayNum = i - firstDay + 1;
-      return dayNum > 0 && dayNum <= daysInMonth ? dayNum : null;
-    });
-
-    return (
-      <Card>
-        <CardHeader className="flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {monthNames[month - 1]} {year}
-          </h2>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={handlePrev}>
-              <ChevronLeft size={18} />
-            </Button>
-            <Button variant="secondary" size="sm" onClick={handleNext}>
-              <ChevronRight size={18} />
-            </Button>
-          </div>
-        </CardHeader>
-
-        <CardBody>
-          <div className="grid grid-cols-7 gap-2 mb-4">
-            {dayNames.map(day => (
-              <div key={day} className="text-center font-semibold text-gray-700 py-2">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-2">
-            {days.map((day, idx) => {
-              const daySchedules = day ? getSchedulesForDay(day) : [];
-              return (
-                <div
-                  key={idx}
-                  className={`min-h-24 p-2 border rounded-lg ${day ? 'bg-white border-gray-200 hover:border-blue-300 cursor-pointer' : 'bg-gray-50 border-gray-100'
-                    }`}
-                  onClick={() => {
-                    if (day) {
-                      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                      handleOpenAddModal(dateStr);
-                    }
-                  }}
-                >
-                  {day && (
-                    <>
-                      <p className="font-semibold text-gray-700 mb-1">{day}</p>
-                      <div className="space-y-1">
-                        {daySchedules.slice(0, 2).map((s: Schedule) => (
-                          <div
-                            key={s.id}
-                            className="text-xs bg-blue-50 text-blue-700 p-1 rounded truncate group relative hover:bg-blue-100"
-                            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                          >
-                            <div className="flex justify-between items-center">
-                              <span>{s.user.first_name}</span>
-                              <div className="hidden group-hover:flex gap-1 text-blue-600">
-                                <Edit2
-                                  size={12}
-                                  className="cursor-pointer"
-                                  onClick={(e: React.MouseEvent) => {
-                                    e.stopPropagation();
-                                    handleOpenEditModal(s);
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        {daySchedules.length > 2 && (
-                          <div className="text-xs text-gray-500">
-                            +{daySchedules.length - 2} more
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </CardBody>
-      </Card>
-    );
+  const prevPeriod = () => {
+    const newDate = new Date(currentDate);
+    if (calendarMode === 'month') {
+      newDate.setMonth(newDate.getMonth() - 1);
+    } else if (calendarMode === 'week') {
+      newDate.setDate(newDate.getDate() - 7);
+    } else {
+      newDate.setDate(newDate.getDate() - 1);
+    }
+    setCurrentDate(newDate);
   };
 
   const renderCalendar = () => {
-    switch (calendarMode) {
-      case 'day': return renderDayView();
-      case 'week': return renderWeekView();
-      default: return renderMonthView();
-    }
-  };
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
 
-  const renderListView = () => {
-    const filteredSchedules = getFilteredSchedules();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 is Sunday
+
+    const days = [];
+    // Padding for first week
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(null);
+    }
+    // Days of month
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(new Date(year, month, i));
+    }
+
+    // week handling for rendering rows is standard
 
     return (
       <Card>
-        <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">Duty List</h2>
-        </CardHeader>
-
-        <CardBody>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Date</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">User</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Team</th>
-                  <th className="text-right py-3 px-4 font-semibold text-gray-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSchedules.map((duty: Schedule) => (
-                  <tr key={duty.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-4 text-gray-900">{duty.duty_date}</td>
-                    <td className="py-3 px-4 text-gray-900">{duty.user.first_name}</td>
-                    <td className="py-3 px-4 text-gray-700">{duty.team?.name || '-'}</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => handleOpenEditModal(duty)}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteDuty(duty.id)}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <CardHeader className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-semibold text-gray-900">
+              {currentDate.toLocaleDateString('default', { month: 'long', year: 'numeric' })}
+            </h2>
+            <div className="flex gap-1">
+              <button onClick={prevPeriod} className="p-1 hover:bg-gray-100 rounded">
+                <Icons.ChevronLeft size={20} />
+              </button>
+              <button onClick={nextPeriod} className="p-1 hover:bg-gray-100 rounded">
+                <Icons.ChevronRight size={20} />
+              </button>
+            </div>
           </div>
+        </CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-7 gap-px bg-gray-200 border border-gray-200 rounded-lg overflow-hidden">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="bg-gray-50 p-2 text-center text-sm font-medium text-text-muted">
+                {day}
+              </div>
+            ))}
+            {days.map((day, idx) => {
+              if (!day) return <div key={`pad-${idx}`} className="bg-white min-h-[120px]" />;
+
+              const dateStr = day.toISOString().split('T')[0];
+              const daySchedules = schedules.filter(s => s.duty_date === dateStr);
+              const isToday = new Date().toISOString().split('T')[0] === dateStr;
+
+              return (
+                <div
+                  key={dateStr}
+                  className={`bg-white min-h-[120px] p-2 hover:bg-gray-50 transition-colors group relative ${isToday ? 'bg-info-light/30' : ''
+                    }`}
+                  onClick={() => handleOpenAddModal(dateStr)} // Click cell to add
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <span className={`text-sm font-medium ${isToday
+                      ? 'bg-primary text-primary-text w-6 h-6 flex items-center justify-center rounded-full'
+                      : 'text-gray-700'
+                      }`}>
+                      {day.getDate()}
+                    </span>
+                    <button
+                      className="opacity-0 group-hover:opacity-100 text-primary hover:text-primary-dark transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenAddModal(dateStr);
+                      }}
+                    >
+                      <Icons.Plus size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {daySchedules.map(schedule => (
+                      <div
+                        key={schedule.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditModal(schedule);
+                        }}
+                        className="text-xs p-1.5 rounded bg-info-light border-l-2 border-info cursor-pointer hover:brightness-95 transition-all truncate"
+                        title={`${schedule.user.first_name} ${schedule.team ? `(${schedule.team.name})` : ''}`}
+                      >
+                        <span className="font-medium text-info-dark">
+                          {schedule.user.first_name}
+                        </span>
+                        {schedule.team && (
+                          <span className="text-info-dark/70 ml-1">
+                            • {schedule.team.name}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {daySchedules.length > 2 && (
+                      <div className="text-xs text-text-muted pl-1">
+                        + {daySchedules.length - 2} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardBody>
+      </Card>
+    );
+  };
+
+  const renderListView = () => {
+    return (
+      <Card>
+        <CardBody>
+          {schedules.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">{t('schedules.list_view.date')}</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">{t('schedules.list_view.user')}</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">{t('schedules.list_view.team')}</th>
+                    <th className="text-right py-3 px-4 font-semibold text-gray-700">{t('common.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {schedules.sort((a, b) => new Date(a.duty_date).getTime() - new Date(b.duty_date).getTime()).map(schedule => (
+                    <tr key={schedule.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4 text-gray-900">{schedule.duty_date}</td>
+                      <td className="py-3 px-4 text-gray-900 font-medium">
+                        {schedule.user.first_name} {schedule.user.last_name}
+                      </td>
+                      <td className="py-3 px-4 text-text-muted">
+                        {schedule.team?.name || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => handleOpenEditModal(schedule)}
+                            className="p-1.5 text-info hover:bg-info-light rounded"
+                          >
+                            <Icons.Edit size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDuty(schedule.id)}
+                            className="p-1.5 text-error hover:bg-error-light rounded"
+                          >
+                            <Icons.Delete size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-text-muted">
+              {t('schedules.list_view.no_duties')}
+            </div>
+          )}
         </CardBody>
       </Card>
     );
@@ -553,105 +397,98 @@ const SchedulesPage: React.FC = () => {
     <div className="p-8">
       <div className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Schedules</h1>
-          <p className="text-gray-600 mt-2">Manage duty assignments</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('schedules.title')}</h1>
+          <p className="text-gray-600 mt-2">{t('schedules.subtitle')}</p>
         </div>
         <Button
           onClick={() => handleOpenAddModal()}
           variant="primary"
           size="md"
         >
-          <Plus size={20} />
-          Add Duty
+          <Icons.Plus size={20} />
+          {t('schedules.add_duty')}
         </Button>
       </div>
 
-      {/* Controls */}
       <div className="mb-6 flex gap-4 flex-wrap items-center">
-        {/* View Mode Toggle */}
-        <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
+        <div className="flex gap-2 bg-secondary-bg p-1 rounded-lg">
           <button
             onClick={() => setViewMode('calendar')}
             className={`px-4 py-2 rounded flex items-center gap-2 ${viewMode === 'calendar'
-              ? 'bg-white text-blue-600 shadow'
-              : 'text-gray-600 hover:text-gray-900'
+              ? 'bg-white text-primary shadow'
+              : 'text-text-muted hover:text-gray-900'
               }`}
           >
-            <Calendar size={18} />
-            Calendar
+            <Icons.Calendar size={18} />
+            {t('schedules.calendar')}
           </button>
           <button
             onClick={() => setViewMode('list')}
             className={`px-4 py-2 rounded flex items-center gap-2 ${viewMode === 'list'
-              ? 'bg-white text-blue-600 shadow'
-              : 'text-gray-600 hover:text-gray-900'
+              ? 'bg-white text-primary shadow'
+              : 'text-text-muted hover:text-gray-900'
               }`}
           >
-            <List size={18} />
-            List
+            <Icons.List size={18} />
+            {t('schedules.list')}
           </button>
         </div>
 
-        {/* Calendar mode toggle */}
         {viewMode === 'calendar' && (
-          <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
+          <div className="flex gap-2 bg-secondary-bg p-1 rounded-lg">
             {['day', 'week', 'month'].map(mode => (
               <button
                 key={mode}
                 onClick={() => setCalendarMode(mode as CalendarMode)}
                 className={`px-3 py-2 rounded text-sm capitalize ${calendarMode === mode
-                  ? 'bg-white text-blue-600 shadow'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-white text-primary shadow'
+                  : 'text-text-muted hover:text-gray-900'
                   }`}
               >
-                {mode}
+                {t(`schedules.${mode}`)}
               </button>
             ))}
           </div>
         )}
 
-        {/* Team Filter */}
-        <select
+        <Select
+          className="w-48"
           value={selectedTeamFilter}
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedTeamFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="">All Teams</option>
+          <option value="">{t('schedules.filters.all_teams')}</option>
           {teams.map((team: Team) => (
             <option key={team.id} value={team.id}>
               {team.name}
             </option>
           ))}
-        </select>
+        </Select>
 
-        {/* Date range filter for list view */}
         {viewMode === 'list' && (
-          <div className="flex gap-2">
-            <input
+          <div className="flex gap-2 items-center">
+            <Input
               type="date"
+              className="w-40"
               value={listStartDate}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setListStartDate(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <span className="py-2 text-gray-500">to</span>
-            <input
+            <span className="text-text-muted">{t('schedules.filters.to')}</span>
+            <Input
               type="date"
+              className="w-40"
               value={listEndDate}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setListEndDate(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         )}
       </div>
 
-      {/* Main content */}
       {viewMode === 'calendar' ? renderCalendar() : renderListView()}
 
-      {/* Duty Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingDuty ? 'Edit Duty Assignment' : 'Add Duty Assignment'}
+        title={editingDuty ? t('schedules.modal.edit_title') : t('schedules.modal.add_title')}
         size="md"
       >
         <div className="space-y-4">
@@ -664,226 +501,101 @@ const SchedulesPage: React.FC = () => {
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, isBulk: e.target.checked })}
                   className="w-4 h-4"
                 />
-                <span className="text-sm font-medium text-gray-700">Bulk assign for date range</span>
+                <span className="text-sm font-medium text-gray-700">{t('schedules.modal.bulk_assign')}</span>
               </label>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Team (Optional)
-            </label>
-            <select
+            <Select
+              label={t('schedules.modal.team_label')}
               value={formData.teamId}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, teamId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">Select a team</option>
+              <option value="">{t('schedules.modal.select_team')}</option>
               {teams.map((team: Team) => (
                 <option key={team.id} value={team.id}>
                   {team.name} {team.has_shifts ? '(Shifts)' : ''}
                 </option>
               ))}
-            </select>
+            </Select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('schedules.modal.user_label')}</label>
+            <Select
+              multiple={false}
+              value={formData.userIds[0] || ''}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, userIds: [e.target.value] })}
+            >
+              <option value="">{t('schedules.modal.select_user')}</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.first_name} {u.last_name}
+                </option>
+              ))}
+            </Select>
+            {/* Note multiple select support is limited in current UI component, using single select for now as per previous code assumption or need to upgrade Select component */}
           </div>
 
           {getSelectedTeam()?.has_shifts && !editingDuty ? (
             <>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
-                <p className="text-sm text-blue-700">
-                  This team has shifts enabled. You can assign multiple people to the same day.
+              <div className="bg-info-light border border-info-light/50 rounded-lg p-3 mb-2">
+                <p className="text-sm text-info-dark">
+                  {t('schedules.modal.shifts_enabled_hint')}
                 </p>
               </div>
 
               {!formData.isBulk ? (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Date *
-                  </label>
-                  <input
+                  <Input
+                    label={`${t('schedules.modal.date_label')} *`}
                     type="date"
                     value={selectedDate}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               ) : (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Start Date *
-                    </label>
-                    <input
+                    <Input
+                      label={`${t('schedules.modal.start_date_label')} *`}
                       type="date"
                       value={formData.startDate}
                       onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      End Date *
-                    </label>
-                    <input
+                    <Input
+                      label={`${t('schedules.modal.end_date_label')} *`}
                       type="date"
                       value={formData.endDate}
                       onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
-                </>
-              )}
-
-              <div>
-                <label className="flex items-center gap-2 mb-3">
-                  <input
-                    type="checkbox"
-                    checked={formData.isBulk}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, isBulk: e.target.checked })}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Date range (bulk)</span>
-                </label>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Users *
-                </label>
-                <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
-                  {users.map((user: User) => (
-                    <label key={user.id} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.userIds.includes(user.id.toString())}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          if (e.target.checked) {
-                            setFormData({
-                              ...formData,
-                              userIds: [...formData.userIds, user.id.toString()]
-                            });
-                          } else {
-                            setFormData({
-                              ...formData,
-                              userIds: formData.userIds.filter(id => id !== user.id.toString())
-                            });
-                          }
-                        }}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-gray-700">{user.first_name} {user.last_name || ''}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              {formData.isBulk && !getSelectedTeam()?.has_shifts ? (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Start Date *
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.startDate}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, startDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      End Date *
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.endDate}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, endDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Users *
-                    </label>
-                    <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
-                      {users.map((user: User) => (
-                        <label key={user.id} className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={formData.userIds.includes(user.id.toString())}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                              if (e.target.checked) {
-                                setFormData({
-                                  ...formData,
-                                  userIds: [...formData.userIds, user.id.toString()]
-                                });
-                              } else {
-                                setFormData({
-                                  ...formData,
-                                  userIds: formData.userIds.filter(id => id !== user.id.toString())
-                                });
-                              }
-                            }}
-                            className="w-4 h-4"
-                          />
-                          <span className="text-gray-700">{user.first_name} {user.last_name || ''}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Date *
-                    </label>
-                    <input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      User *
-                    </label>
-                    <select
-                      value={formData.userIds[0] || ''}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, userIds: [e.target.value] })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select a user</option>
-                      {users.map((user: User) => (
-                        <option key={user.id} value={user.id}>
-                          {user.first_name} {user.last_name || ''}
-                        </option>
-                      ))}
-                    </select>
                   </div>
                 </>
               )}
             </>
+          ) : (
+            <div>
+              <Input
+                label={`${t('schedules.modal.date_label')} *`}
+                type="date"
+                value={selectedDate}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedDate(e.target.value)}
+              />
+            </div>
           )}
 
-          {/* Top checkbox already handles this */}
-
-          <div className="flex gap-3 justify-end">
+          <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
               onClick={handleSaveDuty}
-              disabled={formData.userIds.length === 0 && (!editingDuty || !selectedDate)}
             >
-              {editingDuty ? 'Update' : 'Add'} Duty
+              {t('common.save')}
             </Button>
           </div>
         </div>

@@ -1,0 +1,106 @@
+{
+    "common": {
+        "loading": "Loading...",
+        "error": "Error",
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "edit": "Edit",
+        "add": "Add",
+        "actions": "Actions",
+        "yes": "Yes",
+        "no": "No",
+        "confirm": "Confirm"
+    },
+    "schedules": {
+        "title": "Schedules",
+        "subtitle": "Manage duty assignments",
+        "add_duty": "Add Duty",
+        "calendar": "Calendar",
+        "list": "List",
+        "day": "Day",
+        "week": "Week",
+        "month": "Month",
+        "filters": {
+            "all_teams": "All Teams",
+            "team": "Team",
+            "date_range": "Date Range",
+            "to": "to"
+        },
+        "modal": {
+            "add_title": "Add Duty Assignment",
+            "edit_title": "Edit Duty Assignment",
+            "team_label": "Team (Optional)",
+            "select_team": "Select a team",
+            "shifts_enabled_hint": "This team has shifts enabled. You can assign multiple people to the same day.",
+            "date_label": "Date",
+            "start_date_label": "Start Date",
+            "end_date_label": "End Date",
+            "bulk_assign": "Bulk assign for date range",
+            "users_label": "Users",
+            "delete_confirm": "Delete this duty assignment?",
+            "no_team_error": "Please select a team for bulk assignment"
+        },
+        "list_view": {
+            "date": "Date",
+            "user": "User",
+            "team": "Team",
+            "no_duties": "No duties assigned"
+        }
+    },
+    "dashboard": {
+        "title": "Dashboard",
+        "welcome": "Welcome to Duty Bot Admin Panel",
+        "stats": {
+            "total_users": "Total Users",
+            "teams": "Teams",
+            "upcoming_duties": "Upcoming Duties",
+            "admins": "Admins"
+        },
+        "upcoming": {
+            "title": "Upcoming Duties (Next 7 Days)",
+            "no_duties": "No upcoming duties scheduled"
+        },
+        "teams": {
+            "title": "Teams",
+            "members": "members",
+            "no_teams": "No teams created yet"
+        }
+    },
+    "teams": {
+        "title": "Teams",
+        "subtitle": "Manage teams and members",
+        "new_team": "New Team",
+        "no_description": "No description",
+        "members_count": "Members",
+        "more_members": "more",
+        "manage_members": "Manage Members",
+        "no_teams": "No teams yet",
+        "create_first": "Create First Team",
+        "delete_confirm": "Delete this team?",
+        "move_confirm": "Move member to another team?",
+        "import_error": "Failed to import member",
+        "modal": {
+            "create_title": "Create Team",
+            "edit_title": "Edit Team",
+            "name_label": "Team Name",
+            "name_placeholder": "e.g., Backend Team",
+            "display_name_label": "Display Name",
+            "display_name_placeholder": "e.g., Backend Team",
+            "lead_label": "Team Lead (Optional)",
+            "select_lead": "Select team lead",
+            "shift_mode": "Enable shift mode",
+            "shift_hint": "When enabled, multiple users can be assigned to the same day",
+            "update_btn": "Update Team",
+            "create_btn": "Create Team"
+        },
+        "members_modal": {
+            "title": "Manage Members",
+            "add_placeholder": "@username or t.me/link or Slack link",
+            "adding": "Adding...",
+            "add_btn": "Add Member",
+            "move_to": "Move to...",
+            "save_btn": "Save Members"
+        }
+    }
+}

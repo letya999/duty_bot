@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Edit2, Trash2, Users, X, Save } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Icons } from '../components/ui/Icons';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { apiService } from '../services/api';
 import { Team, User } from '../types';
@@ -19,6 +22,7 @@ interface EditingTeam extends Team {
 }
 
 const TeamsPage: React.FC = () => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -106,7 +110,7 @@ const TeamsPage: React.FC = () => {
   };
 
   const handleDeleteTeam = async (teamId: number) => {
-    if (!window.confirm('Delete this team?')) return;
+    if (!window.confirm(t('teams.delete_confirm'))) return;
     try {
       await apiService.deleteTeam(teamId);
       loadData();
@@ -175,7 +179,7 @@ const TeamsPage: React.FC = () => {
 
     } catch (err) {
       console.error('Failed to import member', err);
-      alert('Failed to import member');
+      alert(t('teams.import_error'));
     } finally {
       setIsImporting(false);
     }
@@ -184,7 +188,7 @@ const TeamsPage: React.FC = () => {
   const handleMoveMember = async (userId: number, toTeamId: number) => {
     if (!selectedTeamForMembers || !toTeamId) return;
 
-    if (!window.confirm('Move member to another team?')) return;
+    if (!window.confirm(t('teams.move_confirm'))) return;
 
     try {
       await apiService.moveTeamMember(userId, selectedTeamForMembers.id, toTeamId);
@@ -210,12 +214,12 @@ const TeamsPage: React.FC = () => {
     <div className="p-8">
       <div className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Teams</h1>
-          <p className="text-gray-600 mt-2">Manage teams and members</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('teams.title')}</h1>
+          <p className="text-gray-600 mt-2">{t('teams.subtitle')}</p>
         </div>
         <Button onClick={() => handleOpenModal()} variant="primary" size="md">
-          <Plus size={20} />
-          New Team
+          <Icons.Plus size={20} />
+          {t('teams.new_team')}
         </Button>
       </div>
 
@@ -225,20 +229,20 @@ const TeamsPage: React.FC = () => {
             <CardHeader className="flex justify-between items-start">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">{team.name}</h3>
-                <p className="text-sm text-gray-600 mt-1">{team.description || 'No description'}</p>
+                <p className="text-sm text-text-muted mt-1">{team.description || t('teams.no_description')}</p>
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleOpenModal(team)}
-                  className="p-2 text-blue-600 hover:bg-blue-50 rounded"
+                  className="p-2 text-info hover:bg-info-light rounded"
                 >
-                  <Edit2 size={18} />
+                  <Icons.Edit size={18} />
                 </button>
                 <button
                   onClick={() => handleDeleteTeam(team.id)}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded"
+                  className="p-2 text-error hover:bg-error-light rounded"
                 >
-                  <Trash2 size={18} />
+                  <Icons.Delete size={18} />
                 </button>
               </div>
             </CardHeader>
@@ -246,19 +250,19 @@ const TeamsPage: React.FC = () => {
             <CardBody>
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm text-gray-600 mb-2">Members ({team.members?.length || 0})</p>
+                  <p className="text-sm text-text-muted mb-2">{t('teams.members_count')} ({team.members?.length || 0})</p>
                   <div className="flex flex-wrap gap-2">
                     {team.members?.slice(0, 3).map(member => (
                       <span
                         key={member.id}
-                        className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded"
+                        className="text-xs bg-info-light text-info-dark px-2 py-1 rounded"
                       >
                         {member.first_name}
                       </span>
                     ))}
                     {(team.members?.length || 0) > 3 && (
-                      <span className="text-xs text-gray-600">
-                        +{(team.members?.length || 0) - 3} more
+                      <span className="text-xs text-text-muted">
+                        +{(team.members?.length || 0) - 3} {t('teams.more_members')}
                       </span>
                     )}
                   </div>
@@ -267,10 +271,10 @@ const TeamsPage: React.FC = () => {
                 <div className="flex gap-2 pt-3 border-t border-gray-200">
                   <button
                     onClick={() => handleOpenMembersModal(team)}
-                    className="flex-1 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded text-gray-700 font-medium flex items-center justify-center gap-2"
+                    className="flex-1 px-3 py-2 text-sm bg-secondary-bg hover:brightness-95 rounded text-gray-700 font-medium flex items-center justify-center gap-2"
                   >
-                    <Users size={16} />
-                    Manage Members
+                    <Icons.Users size={16} />
+                    {t('teams.manage_members')}
                   </button>
                 </div>
               </div>
@@ -281,9 +285,9 @@ const TeamsPage: React.FC = () => {
 
       {teams.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-600 mb-4">No teams yet</p>
+          <p className="text-gray-600 mb-4">{t('teams.no_teams')}</p>
           <Button onClick={() => handleOpenModal()} variant="primary">
-            Create First Team
+            {t('teams.create_first')}
           </Button>
         </div>
       )}
@@ -292,52 +296,41 @@ const TeamsPage: React.FC = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingTeam ? 'Edit Team' : 'Create Team'}
+        title={editingTeam ? t('teams.modal.edit_title') : t('teams.modal.create_title')}
         size="sm"
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Team Name *
-            </label>
-            <input
-              type="text"
+            <Input
+              label={`${t('teams.modal.name_label')} *`}
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g., Backend Team"
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, name: e.target.value })}
+              placeholder={t('teams.modal.name_placeholder')}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Display Name *
-            </label>
-            <input
-              type="text"
+            <Input
+              label={`${t('teams.modal.display_name_label')} *`}
               value={formData.displayName}
-              onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g., Backend Team"
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, displayName: e.target.value })}
+              placeholder={t('teams.modal.display_name_placeholder')}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Team Lead (Optional)
-            </label>
-            <select
+            <Select
+              label={t('teams.modal.lead_label')}
               value={formData.teamLeadId}
-              onChange={(e) => setFormData({ ...formData, teamLeadId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, teamLeadId: e.target.value })}
             >
-              <option value="">Select team lead</option>
+              <option value="">{t('teams.modal.select_lead')}</option>
               {users.map(user => (
                 <option key={user.id} value={user.id}>
                   {user.first_name} {user.last_name || ''}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div>
@@ -348,23 +341,23 @@ const TeamsPage: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, hasShifts: e.target.checked })}
                 className="w-4 h-4"
               />
-              <span className="text-sm font-medium text-gray-700">Enable shift mode</span>
+              <span className="text-sm font-medium text-gray-700">{t('teams.modal.shift_mode')}</span>
             </label>
-            <p className="text-xs text-gray-600 mt-1">
-              When enabled, multiple users can be assigned to the same day
+            <p className="text-xs text-text-muted mt-1">
+              {t('teams.modal.shift_hint')}
             </p>
           </div>
 
-          <div className="flex gap-3 justify-end pt-4 border-t">
+          <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
               onClick={handleSaveTeam}
               disabled={!formData.name || !formData.displayName}
             >
-              {editingTeam ? 'Update' : 'Create'} Team
+              {editingTeam ? t('teams.modal.update_btn') : t('teams.modal.create_btn')}
             </Button>
           </div>
         </div>
@@ -374,17 +367,17 @@ const TeamsPage: React.FC = () => {
       <Modal
         isOpen={memberModalOpen}
         onClose={() => setMemberModalOpen(false)}
-        title={`Manage Members - ${selectedTeamForMembers?.name}`}
+        title={`${t('teams.members_modal.title')} - ${selectedTeamForMembers?.name}`}
         size="md"
       >
         <div className="space-y-4">
           <div className="flex gap-2 mb-4">
-            <input
+            <input // Should be Input probably, but maybe too complex for simple field with side button? Let's use native input with same style or wrap. I'll use native for now but styled. Matches current Input style.
               type="text"
               value={importHandle}
               onChange={(e) => setImportHandle(e.target.value)}
-              placeholder="@username or t.me/link or Slack link"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              placeholder={t('teams.members_modal.add_placeholder')}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <Button
               size="sm"
@@ -392,7 +385,7 @@ const TeamsPage: React.FC = () => {
               onClick={handleImportMember}
               disabled={!importHandle || isImporting}
             >
-              {isImporting ? 'Adding...' : 'Add Member'}
+              {isImporting ? t('teams.members_modal.adding') : t('teams.members_modal.add_btn')}
             </Button>
           </div>
 
@@ -414,7 +407,7 @@ const TeamsPage: React.FC = () => {
                   />
                   <span className="text-gray-700">
                     {user.first_name} {user.last_name || ''}
-                    {user.username ? <span className="text-gray-400 text-xs ml-1">(@{user.username})</span> : ''}
+                    {user.username ? <span className="text-text-muted text-xs ml-1">(@{user.username})</span> : ''}
                   </span>
                 </label>
 
@@ -424,7 +417,7 @@ const TeamsPage: React.FC = () => {
                     onChange={(e) => handleMoveMember(user.id, parseInt(e.target.value))}
                     defaultValue=""
                   >
-                    <option value="" disabled>Move to...</option>
+                    <option value="" disabled>{t('teams.members_modal.move_to')}</option>
                     {teams.filter(t => t.id !== selectedTeamForMembers?.id).map(t => (
                       <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
@@ -434,13 +427,13 @@ const TeamsPage: React.FC = () => {
             ))}
           </div>
 
-          <div className="flex gap-3 justify-end pt-4 border-t">
+          <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
             <Button variant="secondary" onClick={() => setMemberModalOpen(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button variant="primary" onClick={handleSaveMembers}>
-              <Save size={18} />
-              Save Members
+              <Icons.Save size={18} />
+              {t('teams.members_modal.save_btn')}
             </Button>
           </div>
         </div>

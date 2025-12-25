@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Calendar, TrendingUp, AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Icons } from '../components/ui/Icons';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Alert } from '../components/ui/Alert';
@@ -7,6 +8,7 @@ import { apiService } from '../services/api';
 import { Team, User, Schedule } from '../types';
 
 const DashboardPage: React.FC = () => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -58,8 +60,8 @@ const DashboardPage: React.FC = () => {
     <div className="p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-2">Welcome to Duty Bot Admin Panel</p>
+        <h1 className="text-3xl font-bold text-gray-900">{t('dashboard.title')}</h1>
+        <p className="text-gray-600 mt-2">{t('dashboard.welcome')}</p>
       </div>
 
       {/* Error Alert */}
@@ -71,11 +73,11 @@ const DashboardPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <Card>
           <CardBody className="flex items-center gap-4">
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <Users className="text-blue-600" size={24} />
+            <div className="p-3 bg-info-light rounded-lg">
+              <Icons.Users className="text-info" size={24} />
             </div>
             <div>
-              <p className="text-gray-600 text-sm">Total Users</p>
+              <p className="text-text-muted text-sm">{t('dashboard.stats.total_users')}</p>
               <p className="text-2xl font-bold text-gray-900">{users.length}</p>
             </div>
           </CardBody>
@@ -83,11 +85,11 @@ const DashboardPage: React.FC = () => {
 
         <Card>
           <CardBody className="flex items-center gap-4">
-            <div className="p-3 bg-green-100 rounded-lg">
-              <Calendar className="text-green-600" size={24} />
+            <div className="p-3 bg-success-light rounded-lg">
+              <Icons.Calendar className="text-success" size={24} />
             </div>
             <div>
-              <p className="text-gray-600 text-sm">Teams</p>
+              <p className="text-text-muted text-sm">{t('dashboard.stats.teams')}</p>
               <p className="text-2xl font-bold text-gray-900">{teams.length}</p>
             </div>
           </CardBody>
@@ -95,11 +97,11 @@ const DashboardPage: React.FC = () => {
 
         <Card>
           <CardBody className="flex items-center gap-4">
-            <div className="p-3 bg-purple-100 rounded-lg">
-              <TrendingUp className="text-purple-600" size={24} />
+            <div className="p-3 bg-primary/10 rounded-lg">
+              <Icons.TrendingUp className="text-primary" size={24} />
             </div>
             <div>
-              <p className="text-gray-600 text-sm">Upcoming Duties</p>
+              <p className="text-text-muted text-sm">{t('dashboard.stats.upcoming_duties')}</p>
               <p className="text-2xl font-bold text-gray-900">{upcomingSchedules.length}</p>
             </div>
           </CardBody>
@@ -107,11 +109,11 @@ const DashboardPage: React.FC = () => {
 
         <Card>
           <CardBody className="flex items-center gap-4">
-            <div className="p-3 bg-orange-100 rounded-lg">
-              <AlertCircle className="text-orange-600" size={24} />
+            <div className="p-3 bg-warning-light rounded-lg">
+              <Icons.AlertCircle className="text-warning" size={24} />
             </div>
             <div>
-              <p className="text-gray-600 text-sm">Admins</p>
+              <p className="text-text-muted text-sm">{t('dashboard.stats.admins')}</p>
               <p className="text-2xl font-bold text-gray-900">{users.filter(u => u.is_admin).length}</p>
             </div>
           </CardBody>
@@ -121,7 +123,7 @@ const DashboardPage: React.FC = () => {
       {/* Upcoming Duties */}
       <Card className="mb-8">
         <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">Upcoming Duties (Next 7 Days)</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{t('dashboard.upcoming.title')}</h2>
         </CardHeader>
         <CardBody>
           {upcomingSchedules.length > 0 ? (
@@ -129,9 +131,9 @@ const DashboardPage: React.FC = () => {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">User</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Team</th>
-                    <th className="text-left py-3 px-4 font-semibold text-gray-700">Date</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">{t('dashboard.upcoming.user')}</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">{t('dashboard.upcoming.team')}</th>
+                    <th className="text-left py-3 px-4 font-semibold text-gray-700">{t('dashboard.upcoming.date')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -146,7 +148,7 @@ const DashboardPage: React.FC = () => {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500 text-center py-8">No upcoming duties scheduled</p>
+            <p className="text-gray-500 text-center py-8">{t('dashboard.upcoming.no_duties')}</p>
           )}
         </CardBody>
       </Card>
@@ -154,7 +156,7 @@ const DashboardPage: React.FC = () => {
       {/* Teams Overview */}
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">Teams</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{t('dashboard.teams.title')}</h2>
         </CardHeader>
         <CardBody>
           {teams.length > 0 ? (
@@ -164,13 +166,13 @@ const DashboardPage: React.FC = () => {
                   <h3 className="font-semibold text-gray-900 mb-2">{team.name}</h3>
                   <p className="text-sm text-gray-600 mb-3">{team.description}</p>
                   <p className="text-sm text-gray-500">
-                    <strong>{team.members?.length || 0}</strong> members
+                    <strong>{team.members?.length || 0}</strong> {t('dashboard.teams.members')}
                   </p>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-center py-8">No teams created yet</p>
+            <p className="text-gray-500 text-center py-8">{t('dashboard.teams.no_teams')}</p>
           )}
         </CardBody>
       </Card>

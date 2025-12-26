@@ -15,6 +15,7 @@ from app.dependencies import (
     get_rotation_config_repository,
     get_admin_log_repository,
     get_duty_stats_repository,
+    get_google_calendar_repository,
 )
 from app.models import User
 from app.auth import session_manager
@@ -34,8 +35,10 @@ from app.services.admin_service import AdminService
 from app.services.stats_service import StatsService
 from app.repositories import (
     UserRepository, TeamRepository, ScheduleRepository,
-    EscalationRepository, RotationConfigRepository, AdminLogRepository
+    EscalationRepository, RotationConfigRepository, AdminLogRepository,
+    GoogleCalendarRepository
 )
+
 from app.exceptions import (
     AuthenticationError,
     AuthorizationError,
@@ -58,9 +61,10 @@ async def get_team_service(team_repo: TeamRepository = Depends(get_team_reposito
     return TeamService(team_repo)
 
 
-async def get_schedule_service(schedule_repo: ScheduleRepository = Depends(get_schedule_repository)) -> ScheduleService:
+async def get_schedule_service(schedule_repo: ScheduleRepository = Depends(get_schedule_repository), google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)) -> ScheduleService:
     """Get schedule service with repositories"""
-    return ScheduleService(schedule_repo)
+    return ScheduleService(schedule_repo, google_calendar_repo)
+
 
 
 async def get_escalation_service(escalation_repo: EscalationRepository = Depends(get_escalation_repository)) -> EscalationService:
@@ -493,11 +497,9 @@ async def assign_shift(
     """Assign user to shift - for teams with shifts enabled"""
     try:
         from datetime import datetime as dt
-        from app.models import Team
 
-        shift_service = ShiftService(ShiftRepository(db))
+        schedule_service = ScheduleService(ScheduleRepository(db))
         team_service = TeamService(TeamRepository(db))
-        user_service = UserService(UserRepository(db))
 
         # Verify team belongs to user's workspace and has shifts enabled
         team = await team_service.get_team(team_id, current_user.workspace_id)
@@ -514,18 +516,18 @@ async def assign_shift(
         date_obj = dt.fromisoformat(shift_date).date()
 
         # Check for user conflicts (filtered to current workspace)
-        conflict = await shift_service.check_user_shift_conflict(target_user, date_obj, current_user.workspace_id)
+        conflict = await schedule_service.check_user_schedule_conflict(target_user.id, date_obj, current_user.workspace_id)
         if conflict:
             raise HTTPException(status_code=409, detail=f"User already assigned to {conflict['team_name']} on this date")
 
         # Add user to shift
-        shift = await shift_service.add_user_to_shift(team, date_obj, target_user)
+        shift = await schedule_service.set_duty(team.id, target_user.id, date_obj, is_shift=True)
 
         return {
             "status": "assigned",
             "shift_id": shift.id,
             "date": shift_date,
-            "user_count": len(shift.users)
+            "user_id": target_user.id
         }
     except HTTPException:
         raise
@@ -552,7 +554,7 @@ async def assign_shifts_bulk(
     try:
         from datetime import datetime as dt
 
-        shift_service = ShiftService(ShiftRepository(db))
+        schedule_service = ScheduleService(ScheduleRepository(db))
         team_service = TeamService(TeamRepository(db))
 
         # Verify team belongs to user's workspace and has shifts enabled
@@ -565,26 +567,24 @@ async def assign_shifts_bulk(
         start_date_obj = dt.fromisoformat(start_date).date()
         end_date_obj = dt.fromisoformat(end_date).date()
 
-        # Get all target users
-        users = []
-        for uid in user_ids:
-            user_obj = await db.get(User, uid)
-            if not user_obj or user_obj.workspace_id != current_user.workspace_id:
-                raise HTTPException(status_code=400, detail=f"User {uid} not found in workspace")
-            users.append(user_obj)
-
-        # Assign users to each date in range
+        # Assign each user to each date in range
         current_date = start_date_obj
         assignments = []
         while current_date <= end_date_obj:
-            # We use team.id directly to avoid potential reload issues if team object expires
-            # Passing commit=False to avoid immediate expiration of team/users objects
-            shift = await shift_service.create_shift(team, current_date, users, commit=False)
-            assignments.append({
-                "date": current_date.isoformat(),
-                "shift_id": shift.id,
-                "user_count": len(users) # Use the input list length to avoid lazy loading shift.users
-            })
+            for uid in user_ids:
+                # set_duty handles is_shift and avoids duplicates if user already assigned
+                schedule = await schedule_service.set_duty(
+                    team.id, 
+                    uid, 
+                    current_date, 
+                    is_shift=True, 
+                    commit=False
+                )
+                assignments.append({
+                    "date": current_date.isoformat(),
+                    "schedule_id": schedule.id,
+                    "user_id": uid
+                })
             current_date += timedelta(days=1)
 
         # Final commit for all days
@@ -592,7 +592,7 @@ async def assign_shifts_bulk(
 
         return {
             "status": "bulk_assigned",
-            "total_dates": len(assignments),
+            "total_assignments": len(assignments),
             "assignments": assignments
         }
     except HTTPException:
@@ -1627,3 +1627,158 @@ async def delete_escalation(
     except Exception as e:
         logger.error(f"Error deleting escalation: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete escalation")
+
+
+# Google Calendar Integration Endpoints
+
+from pydantic import BaseModel
+
+
+class ServiceAccountKeyRequest(BaseModel):
+    """Request model for service account key upload."""
+    service_account_key: dict
+
+
+async def get_google_calendar_service(
+    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
+) -> GoogleCalendarService:
+    """Get Google Calendar service."""
+    from app.services.google_calendar_service import GoogleCalendarService
+    return GoogleCalendarService(google_calendar_repo)
+
+
+@router.get("/settings/google-calendar/status")
+async def get_google_calendar_status(
+    authorization: str = Header(None),
+    user_repo: UserRepository = Depends(get_user_repository),
+    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
+) -> dict:
+    """Get Google Calendar integration status."""
+    try:
+        user = await get_user_from_token(authorization, user_repo)
+
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+
+        integration = await google_calendar_repo.get_by_workspace(user.workspace_id)
+
+        if not integration:
+            return {
+                "is_connected": False,
+                "status": "not_configured",
+                "workspace_id": user.workspace_id
+            }
+
+        return {
+            "is_connected": True,
+            "is_active": integration.is_active,
+            "public_calendar_url": integration.public_calendar_url,
+            "service_account_email": integration.service_account_email,
+            "last_sync_at": integration.last_sync_at.isoformat() if integration.last_sync_at else None,
+            "google_calendar_id": integration.google_calendar_id,
+            "workspace_id": user.workspace_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting Google Calendar status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get Google Calendar status")
+
+
+@router.post("/settings/google-calendar/setup")
+async def setup_google_calendar(
+    request: ServiceAccountKeyRequest,
+    authorization: str = Header(None),
+    user_repo: UserRepository = Depends(get_user_repository),
+    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
+) -> dict:
+    """Setup Google Calendar integration."""
+    try:
+        user = await get_user_from_token(authorization, user_repo)
+
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+
+        # Check if already configured
+        existing = await google_calendar_repo.get_by_workspace(user.workspace_id)
+        if existing:
+            await google_calendar_repo.delete(existing.id)
+
+        from app.services.google_calendar_service import GoogleCalendarService
+        google_service = GoogleCalendarService(google_calendar_repo)
+
+        integration = await google_service.setup_google_calendar(
+            user.workspace_id,
+            request.service_account_key
+        )
+
+        return {
+            "status": "success",
+            "public_calendar_url": integration.public_calendar_url,
+            "google_calendar_id": integration.google_calendar_id,
+            "service_account_email": integration.service_account_email
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting up Google Calendar: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/settings/google-calendar")
+async def disconnect_google_calendar(
+    authorization: str = Header(None),
+    user_repo: UserRepository = Depends(get_user_repository),
+    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
+) -> dict:
+    """Disconnect Google Calendar integration."""
+    try:
+        user = await get_user_from_token(authorization, user_repo)
+
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+
+        from app.services.google_calendar_service import GoogleCalendarService
+        google_service = GoogleCalendarService(google_calendar_repo)
+
+        success = await google_service.disconnect_google_calendar(user.workspace_id)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Google Calendar integration not found")
+
+        return {"status": "disconnected"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error disconnecting Google Calendar: {e}")
+        raise HTTPException(status_code=500, detail="Failed to disconnect Google Calendar")
+
+
+@router.get("/settings/google-calendar/url")
+async def get_public_calendar_url(
+    authorization: str = Header(None),
+    user_repo: UserRepository = Depends(get_user_repository),
+    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
+) -> dict:
+    """Get public Google Calendar URL."""
+    try:
+        user = await get_user_from_token(authorization, user_repo)
+
+        integration = await google_calendar_repo.get_by_workspace(user.workspace_id)
+
+        if not integration or not integration.is_active:
+            raise HTTPException(status_code=404, detail="Google Calendar not configured")
+
+        return {
+            "url": integration.public_calendar_url,
+            "calendar_id": integration.google_calendar_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting calendar URL: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get calendar URL")

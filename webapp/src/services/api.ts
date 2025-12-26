@@ -281,4 +281,27 @@ export const apiService = {
     });
     return response.data;
   },
+
+  // Google Calendar Integration
+  getGoogleCalendarStatus: async (): Promise<any> => {
+    const response = await api.get('/settings/google-calendar/status');
+    return response.data;
+  },
+
+  setupGoogleCalendar: async (serviceAccountKey: Record<string, any>): Promise<any> => {
+    const response = await api.post('/settings/google-calendar/setup', {
+      service_account_key: serviceAccountKey,
+    });
+    return response.data;
+  },
+
+  disconnectGoogleCalendar: async (): Promise<any> => {
+    const response = await api.delete('/settings/google-calendar');
+    return response.data;
+  },
+
+  getGoogleCalendarUrl: async (): Promise<any> => {
+    const response = await api.get('/settings/google-calendar/url');
+    return response.data;
+  },
 };

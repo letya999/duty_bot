@@ -14,14 +14,19 @@ def _get_cipher() -> Fernet:
     encryption_key = os.environ.get('ENCRYPTION_KEY') or settings.encryption_key
 
     if not encryption_key:
-        # Fallback: derive from secret key if available
-        secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')
-        encryption_key = base64.urlsafe_b64encode(secret_key.encode().ljust(32)[:32])
-    elif isinstance(encryption_key, str):
+        raise ValueError(
+            "ENCRYPTION_KEY is not configured. Please set the ENCRYPTION_KEY environment variable. "
+            "Generate a secure key with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+        )
+
+    if isinstance(encryption_key, str):
         encryption_key = encryption_key.encode()
 
-    # Ensure key is proper length (32 bytes base64 encoded)
+    # Ensure key is proper length (32 bytes base64 encoded = 44 characters)
     if len(encryption_key) < 44:
+        # Pad the key if it's too short, but log a warning
+        import logging
+        logging.warning("ENCRYPTION_KEY is shorter than recommended. Using padded key.")
         encryption_key = base64.urlsafe_b64encode(encryption_key.ljust(32)[:32])
 
     return Fernet(encryption_key)

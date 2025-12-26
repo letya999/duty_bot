@@ -10,7 +10,6 @@ from slack_sdk.web.async_client import AsyncWebClient
 from telegram import Bot
 from app.database import AsyncSessionLocal, get_db_with_retry
 from app.commands.handlers import CommandHandler as BotCommandHandler
-from app.services.escalation_service import EscalationService
 from app.services.stats_service import StatsService
 from app.models import Workspace
 from app.config import get_settings
@@ -167,6 +166,7 @@ class ScheduledTasks:
 
                 for workspace in workspaces:
                     try:
+                        from app.services.escalation_service import EscalationService
                         escalation_repo = EscalationRepository(db)
                         event_repo = EscalationEventRepository(db)
                         escalation_service = EscalationService(escalation_repo, event_repo)

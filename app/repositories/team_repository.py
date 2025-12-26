@@ -25,7 +25,7 @@ class TeamRepository(BaseRepository[Team]):
         stmt = select(Team).where(
             Team.workspace_id == workspace_id,
             Team.name == team_name
-        )
+        ).options(selectinload(Team.members), selectinload(Team.team_lead_user))
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 

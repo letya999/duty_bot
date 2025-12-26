@@ -33,6 +33,7 @@ from app.services.escalation_service import EscalationService
 from app.services.rotation_service import RotationService
 from app.services.admin_service import AdminService
 from app.services.stats_service import StatsService
+from app.services.google_calendar_service import GoogleCalendarService
 from app.repositories import (
     UserRepository, TeamRepository, ScheduleRepository,
     EscalationRepository, RotationConfigRepository, AdminLogRepository,
@@ -1643,7 +1644,6 @@ async def get_google_calendar_service(
     google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
 ) -> GoogleCalendarService:
     """Get Google Calendar service."""
-    from app.services.google_calendar_service import GoogleCalendarService
     return GoogleCalendarService(google_calendar_repo)
 
 
@@ -1691,7 +1691,9 @@ async def setup_google_calendar(
     request: ServiceAccountKeyRequest,
     authorization: str = Header(None),
     user_repo: UserRepository = Depends(get_user_repository),
-    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
+    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository),
+    schedule_repo: ScheduleRepository = Depends(get_schedule_repository),
+    team_repo: TeamRepository = Depends(get_team_repository)
 ) -> dict:
     """Setup Google Calendar integration."""
     try:
@@ -1705,7 +1707,6 @@ async def setup_google_calendar(
         if existing:
             await google_calendar_repo.delete(existing.id)
 
-        from app.services.google_calendar_service import GoogleCalendarService
         google_service = GoogleCalendarService(google_calendar_repo)
 
         integration = await google_service.setup_google_calendar(
@@ -1713,11 +1714,20 @@ async def setup_google_calendar(
             request.service_account_key
         )
 
+        # Trigger initial sync of existing/future schedules
+        synced_count = await google_service.sync_workspace_schedules(
+            user.workspace_id,
+            schedule_repo,
+            team_repo
+        )
+        logger.info(f"Initial sync after setup: {synced_count} schedules synced")
+
         return {
             "status": "success",
             "public_calendar_url": integration.public_calendar_url,
             "google_calendar_id": integration.google_calendar_id,
-            "service_account_email": integration.service_account_email
+            "service_account_email": integration.service_account_email,
+            "synced_count": synced_count
         }
 
     except HTTPException:
@@ -1740,7 +1750,6 @@ async def disconnect_google_calendar(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
 
-        from app.services.google_calendar_service import GoogleCalendarService
         google_service = GoogleCalendarService(google_calendar_repo)
 
         success = await google_service.disconnect_google_calendar(user.workspace_id)
@@ -1782,3 +1791,38 @@ async def get_public_calendar_url(
     except Exception as e:
         logger.error(f"Error getting calendar URL: {e}")
         raise HTTPException(status_code=500, detail="Failed to get calendar URL")
+
+
+@router.post("/settings/google-calendar/sync")
+async def sync_google_calendar(
+    authorization: str = Header(None),
+    user_repo: UserRepository = Depends(get_user_repository),
+    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository),
+    schedule_repo: ScheduleRepository = Depends(get_schedule_repository),
+    team_repo: TeamRepository = Depends(get_team_repository)
+) -> dict:
+    """Manually trigger Google Calendar sync."""
+    try:
+        user = await get_user_from_token(authorization, user_repo)
+
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+
+        google_service = GoogleCalendarService(google_calendar_repo)
+        
+        synced_count = await google_service.sync_workspace_schedules(
+            user.workspace_id,
+            schedule_repo,
+            team_repo
+        )
+
+        return {
+            "status": "success",
+            "synced_count": synced_count
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error syncing Google Calendar: {e}")
+        raise HTTPException(status_code=500, detail="Failed to sync Google Calendar")

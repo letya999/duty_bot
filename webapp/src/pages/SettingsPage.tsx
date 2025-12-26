@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Shield, ShieldOff, AlertCircle, Calendar, Copy, Check } from 'lucide-react';
-import { Shield, ShieldOff, Globe } from 'lucide-react';
+import { Shield, ShieldOff, AlertCircle, Calendar, Copy, Check, Globe } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -24,6 +23,7 @@ const SettingsPage: React.FC = () => {
   const [googleCalUploading, setGoogleCalUploading] = useState(false);
   const [showGoogleCalInstructions, setShowGoogleCalInstructions] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [googleCalSyncing, setGoogleCalSyncing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -102,11 +102,11 @@ const SettingsPage: React.FC = () => {
       const serviceAccountKey = JSON.parse(content);
 
       const result = await apiService.setupGoogleCalendar(serviceAccountKey);
-      setSuccess('Google Calendar connected successfully!');
+      setSuccess(t('settings.google_calendar.setup_success'));
       await loadGoogleCalendarStatus();
       setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
-      setError('Failed to setup Google Calendar');
+    } catch (err: any) {
+      setError(err?.response?.data?.message || t('settings.google_calendar.setup_error'));
       console.error(err);
     } finally {
       setGoogleCalUploading(false);
@@ -114,15 +114,15 @@ const SettingsPage: React.FC = () => {
   };
 
   const handleGoogleCalendarDisconnect = async () => {
-    if (!window.confirm('Disconnect Google Calendar?')) return;
+    if (!window.confirm(t('settings.google_calendar.disconnect_confirm'))) return;
 
     try {
       await apiService.disconnectGoogleCalendar();
-      setSuccess('Google Calendar disconnected');
+      setSuccess(t('settings.google_calendar.disconnect_success'));
       await loadGoogleCalendarStatus();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError('Failed to disconnect Google Calendar');
+      setError(t('settings.save_error'));
       console.error(err);
     }
   };
@@ -133,6 +133,23 @@ const SettingsPage: React.FC = () => {
       setCopiedUrl(true);
       setTimeout(() => setCopiedUrl(false), 2000);
     }
+  };
+
+  const handleGoogleCalendarSync = async () => {
+    try {
+      setGoogleCalSyncing(true);
+      const result = await apiService.syncGoogleCalendar();
+      setSuccess(`${t('settings.google_calendar.sync_success')} (${result.synced_count} ${t('schedules.title').toLowerCase()})`);
+      await loadGoogleCalendarStatus();
+      setTimeout(() => setSuccess(null), 5000);
+    } catch (err) {
+      setError(t('settings.google_calendar.sync_error'));
+      console.error(err);
+    } finally {
+      setGoogleCalSyncing(false);
+    }
+  };
+
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng);
   };
@@ -287,70 +304,60 @@ const SettingsPage: React.FC = () => {
 
       {/* Google Calendar Integration */}
       <Card className="mb-8">
-        <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Calendar size={20} className="text-blue-600" />
-            Google Calendar Integration
-          </h2>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-blue-600" />
+            <h2 className="text-lg font-semibold text-gray-900">{t('settings.google_calendar.title')}</h2>
+          </div>
+          {googleCalLoading && <LoadingSpinner size="sm" />}
         </CardHeader>
         <CardBody>
-          {googleCalLoading ? (
-            <div className="flex justify-center py-8">
-              <LoadingSpinner />
-            </div>
-          ) : googleCalStatus?.is_connected ? (
+          {googleCalStatus && googleCalStatus.is_active ? (
             <>
               <Alert
                 type="success"
-                message="✓ Connected to Google Calendar"
+                message={t('settings.google_calendar.connected')}
               />
 
-              <div className="space-y-4 mt-6">
+              <div className="mt-6 space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Public Calendar URL
+                    {t('settings.google_calendar.public_url')}
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      value={googleCalStatus.public_calendar_url}
                       readOnly
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
+                      value={googleCalStatus.public_calendar_url}
+                      className="flex-1 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-600 outline-none"
                     />
                     <Button
+                      variant="ghost"
                       size="sm"
-                      variant="secondary"
+                      className="border border-gray-300"
                       onClick={handleCopyCalendarUrl}
                     >
-                      {copiedUrl ? (
-                        <>
-                          <Check size={16} />
-                          Copied!
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={16} />
-                          Copy
-                        </>
-                      )}
+                      {copiedUrl ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                     </Button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Share this URL with team members to subscribe to your duty schedule
+                  <p className="mt-1 text-xs text-gray-500">
+                    {t('settings.google_calendar.public_url_hint')}
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Service Account Email
+                    {t('settings.google_calendar.service_email')}
                   </label>
-                  <p className="text-sm text-gray-600">{googleCalStatus.service_account_email}</p>
+                  <p className="text-sm font-mono text-gray-600 bg-gray-50 p-2 rounded border border-gray-200">
+                    {googleCalStatus.service_account_email}
+                  </p>
                 </div>
 
                 {googleCalStatus.last_sync_at && (
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Last Sync
+                      {t('settings.google_calendar.last_sync')}
                     </label>
                     <p className="text-sm text-gray-600">
                       {new Date(googleCalStatus.last_sync_at).toLocaleString()}
@@ -358,20 +365,30 @@ const SettingsPage: React.FC = () => {
                   </div>
                 )}
 
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={handleGoogleCalendarDisconnect}
-                >
-                  Disconnect Google Calendar
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleGoogleCalendarSync}
+                    disabled={googleCalSyncing}
+                  >
+                    {googleCalSyncing ? t('settings.google_calendar.syncing') : t('settings.google_calendar.sync_now')}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={handleGoogleCalendarDisconnect}
+                  >
+                    {t('settings.google_calendar.disconnect')}
+                  </Button>
+                </div>
               </div>
             </>
           ) : (
             <>
               <Alert
                 type="info"
-                message="Not connected. Connect Google Calendar to share your duty schedule with your team."
+                message={t('settings.google_calendar.not_connected')}
               />
 
               <div className="mt-6 space-y-4">
@@ -379,44 +396,37 @@ const SettingsPage: React.FC = () => {
                   onClick={() => setShowGoogleCalInstructions(!showGoogleCalInstructions)}
                   className="text-blue-600 hover:text-blue-800 font-semibold text-sm flex items-center gap-2"
                 >
-                  {showGoogleCalInstructions ? '▼' : '▶'} 📘 Setup Instructions
+                  {showGoogleCalInstructions ? '▼' : '▶'} 📘 {t('settings.google_calendar.setup_instructions')}
                 </button>
 
                 {showGoogleCalInstructions && (
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2 text-sm text-gray-700">
                     <ol className="list-decimal list-inside space-y-2">
-                      <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Google Cloud Console</a></li>
-                      <li>Create a new project named "Duty Bot"</li>
-                      <li>Enable Google Calendar API:
+                      <li>{t('settings.google_calendar.step_1')} <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{t('settings.google_calendar.step_1_link')}</a></li>
+                      <li>{t('settings.google_calendar.step_2')}</li>
+                      <li>{t('settings.google_calendar.step_3')}</li>
+                      <li>{t('settings.google_calendar.step_4')}
                         <ul className="list-disc list-inside ml-4 mt-1">
-                          <li>Search for "Calendar API"</li>
-                          <li>Click "Enable"</li>
+                          <li>{t('settings.google_calendar.step_4_1')}</li>
+                          <li>{t('settings.google_calendar.step_4_2')}</li>
                         </ul>
                       </li>
-                      <li>Create Service Account:
+                      <li>{t('settings.google_calendar.step_5')}
                         <ul className="list-disc list-inside ml-4 mt-1">
-                          <li>Go to "Service Accounts" in the left menu</li>
-                          <li>Click "Create Service Account"</li>
-                          <li>Name: "duty-bot" and complete the form</li>
+                          <li>{t('settings.google_calendar.step_5_1')}</li>
+                          <li>{t('settings.google_calendar.step_5_2')}</li>
+                          <li>{t('settings.google_calendar.step_5_3')}</li>
+                          <li>{t('settings.google_calendar.step_5_4')}</li>
                         </ul>
                       </li>
-                      <li>Create JSON Key:
-                        <ul className="list-disc list-inside ml-4 mt-1">
-                          <li>Click on the service account you created</li>
-                          <li>Go to "Keys" tab</li>
-                          <li>Click "Add Key" → "Create new key"</li>
-                          <li>Select "JSON" and download the file</li>
-                        </ul>
-                      </li>
-                      <li>Upload the JSON file below</li>
-                      <li>Share the Calendar URL with your team members</li>
+                      <li>{t('settings.google_calendar.step_6')}</li>
                     </ol>
                   </div>
                 )}
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Upload Service Account Key (JSON)
+                    {t('settings.google_calendar.upload_label')}
                   </label>
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                     <input
@@ -432,10 +442,10 @@ const SettingsPage: React.FC = () => {
                       className="cursor-pointer"
                     >
                       <p className="text-sm text-gray-600 mb-2">
-                        Click to upload or drag and drop
+                        {t('settings.google_calendar.upload_hint')}
                       </p>
                       <p className="text-xs text-gray-500">
-                        JSON files only
+                        {t('settings.google_calendar.json_only')}
                       </p>
                       {googleCalUploading && (
                         <div className="mt-2 flex justify-center">

@@ -56,26 +56,32 @@ const SchedulesPage: React.FC = () => {
       setTeams(teamsData);
       setUsers(usersData);
 
-      let startStr, endStr;
+      let startStr: string, endStr: string;
+      const formatDate = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
 
       if (viewMode === 'calendar') {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
 
         if (calendarMode === 'month') {
-          startStr = new Date(year, month, 1).toISOString().split('T')[0];
-          endStr = new Date(year, month + 1, 0).toISOString().split('T')[0];
+          startStr = formatDate(new Date(year, month, 1));
+          endStr = formatDate(new Date(year, month + 1, 0));
         } else if (calendarMode === 'week') {
           const firstDay = currentDate.getDate() - currentDate.getDay();
           const start = new Date(currentDate);
           start.setDate(firstDay);
           const end = new Date(currentDate);
           end.setDate(firstDay + 6);
-          startStr = start.toISOString().split('T')[0];
-          endStr = end.toISOString().split('T')[0];
+          startStr = formatDate(start);
+          endStr = formatDate(end);
         } else {
-          startStr = currentDate.toISOString().split('T')[0];
-          endStr = currentDate.toISOString().split('T')[0];
+          startStr = formatDate(currentDate);
+          endStr = formatDate(currentDate);
         }
       } else {
         startStr = listStartDate;

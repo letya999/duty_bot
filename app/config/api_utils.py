@@ -25,12 +25,14 @@ async def get_workspace_by_user(db: AsyncSession, user: User) -> Workspace:
 
 
 async def get_month_dates(year: int, month: int) -> tuple:
-    """Get start and end dates for a month"""
+    """Get start and end dates for a month (inclusive)"""
     start_date = datetime(year, month, 1).date()
     if month == 12:
-        end_date = datetime(year + 1, 1, 1).date()
+        next_month_first = datetime(year + 1, 1, 1).date()
     else:
-        end_date = datetime(year, month + 1, 1).date()
+        next_month_first = datetime(year, month + 1, 1).date()
+    
+    end_date = next_month_first - timedelta(days=1)
     return start_date, end_date
 
 
@@ -40,11 +42,11 @@ async def get_schedules_for_period(
     start_date,
     end_date
 ) -> list[Schedule]:
-    """Get all schedules for a date period for user's workspace"""
+    """Get all schedules for a date period for user's workspace (both dates inclusive)"""
     stmt = select(Schedule).join(Team).where(
         and_(
             Schedule.date >= start_date,
-            Schedule.date < end_date,
+            Schedule.date <= end_date,
             Team.workspace_id == user.workspace_id
         )
     ).options(joinedload(Schedule.user), joinedload(Schedule.team))
@@ -72,7 +74,7 @@ async def build_days_array(
     days = []
     current_date = start_date
 
-    while current_date < end_date:
+    while current_date <= end_date:
         date_key = current_date.isoformat()
         users_list = []
         notes = None

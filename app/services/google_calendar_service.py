@@ -9,8 +9,10 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from app.models import GoogleCalendarIntegration, Schedule, Shift, Team, User
+from app.models import GoogleCalendarIntegration, Schedule, Team, User
 from app.repositories.google_calendar_repository import GoogleCalendarRepository
+from app.repositories.schedule_repository import ScheduleRepository
+from app.repositories.team_repository import TeamRepository
 from app.utils.encryption import encrypt_string, decrypt_string
 from app.exceptions import ValidationError
 
@@ -41,7 +43,7 @@ class GoogleCalendarService:
                 service_account_key,
                 scopes=SCOPES
             )
-            return build('calendar', 'v3', credentials=credentials)
+            return build('calendar', 'v3', credentials=credentials, cache_discovery=False)
         except Exception as e:
             logger.error(f"Failed to create Google Calendar service: {e}")
             raise ValidationError("Failed to authenticate with Google Calendar")
@@ -54,8 +56,13 @@ class GoogleCalendarService:
         """Setup Google Calendar integration for workspace."""
         try:
             # Validate service account key
+            if not isinstance(service_account_key, dict):
+                logger.error(f"Service account key is not a dictionary: {type(service_account_key)}")
+                raise ValidationError(f"Invalid service account key format: expected JSON object, got {type(service_account_key).__name__}")
+
             if 'client_email' not in service_account_key:
-                raise ValidationError("Invalid service account key format")
+                logger.error(f"Service account key missing client_email. Available keys: {list(service_account_key.keys())}")
+                raise ValidationError(f"Invalid service account key format: missing 'client_email'. Found keys: {', '.join(service_account_key.keys())}")
 
             service = self._get_calendar_service(service_account_key)
 
@@ -83,19 +90,16 @@ class GoogleCalendarService:
             encrypted_key = encrypt_string(json.dumps(service_account_key))
 
             # Create integration record
-            integration = GoogleCalendarIntegration(
-                workspace_id=workspace_id,
-                service_account_key_encrypted=encrypted_key,
-                google_calendar_id=calendar_id,
-                public_calendar_url=public_url,
-                service_account_email=service_account_key['client_email'],
-                is_active=True
-            )
+            integration_data = {
+                "workspace_id": workspace_id,
+                "service_account_key_encrypted": encrypted_key,
+                "google_calendar_id": calendar_id,
+                "public_calendar_url": public_url,
+                "service_account_email": service_account_key['client_email'],
+                "is_active": True
+            }
 
-            await self.repo.create(integration)
-            logger.info(f"Google Calendar setup complete for workspace {workspace_id}")
-
-            return integration
+            return await self.repo.create(integration_data)
 
         except HttpError as e:
             logger.error(f"Google API error: {e}")
@@ -146,54 +150,6 @@ class GoogleCalendarService:
             logger.error(f"Google API error while syncing schedule: {e}")
         except Exception as e:
             logger.error(f"Error syncing schedule to calendar: {e}")
-
-        return None
-
-    async def sync_shift_to_calendar(
-        self,
-        integration: GoogleCalendarIntegration,
-        team: Team,
-        shift: Shift
-    ) -> Optional[str]:
-        """Sync shift to Google Calendar. Returns event ID."""
-        try:
-            service_account_key = self._decrypt_service_account_key(
-                integration.service_account_key_encrypted
-            )
-            service = self._get_calendar_service(service_account_key)
-
-            # Get user names
-            user_names = ', '.join([u.first_name or u.username for u in shift.users])
-
-            # Create event body
-            end_date = shift.date + timedelta(days=1)
-            event_body = {
-                'summary': f"👥 {team.display_name} - {user_names}",
-                'description': f"Shift for {team.display_name}: {user_names}",
-                'start': {
-                    'date': shift.date.isoformat()
-                },
-                'end': {
-                    'date': end_date.isoformat()
-                },
-                'colorId': str(self._get_team_color(team.id))
-            }
-
-            # Create event
-            event = service.events().insert(
-                calendarId=integration.google_calendar_id,
-                body=event_body
-            ).execute()
-
-            event_id = event['id']
-            logger.info(f"Created calendar event {event_id} for shift {shift.id}")
-
-            return event_id
-
-        except HttpError as e:
-            logger.error(f"Google API error while syncing shift: {e}")
-        except Exception as e:
-            logger.error(f"Error syncing shift to calendar: {e}")
 
         return None
 
@@ -254,6 +210,57 @@ class GoogleCalendarService:
             logger.error(f"Error disconnecting Google Calendar: {e}")
             return False
 
+    async def sync_workspace_schedules(
+        self,
+        workspace_id: int,
+        schedule_repo: ScheduleRepository,
+        team_repo: TeamRepository
+    ) -> int:
+        """Sync all future schedules for a workspace to Google Calendar. Returns count of synced events."""
+        try:
+            integration = await self.repo.get_by_workspace(workspace_id)
+            if not integration or not integration.is_active:
+                logger.warning(f"No active Google Calendar integration for workspace {workspace_id}")
+                return 0
+
+            # Get all teams for workspace
+            teams = await team_repo.list_by_workspace(workspace_id)
+            
+            # Define range for initial sync: 1 day ago to 90 days in future
+            start_date = date_type.today() - timedelta(days=1)
+            end_date = date_type.today() + timedelta(days=90)
+
+            synced_count = 0
+            for team in teams:
+                # Use a more efficient way to get schedules with users
+                from sqlalchemy import select
+                from sqlalchemy.orm import joinedload
+                
+                stmt = select(Schedule).options(
+                    joinedload(Schedule.user)
+                ).where(
+                    Schedule.team_id == team.id,
+                    Schedule.date >= start_date,
+                    Schedule.date <= end_date
+                )
+                
+                result = await schedule_repo.execute(stmt)
+                schedules = result.scalars().all()
+                
+                for schedule in schedules:
+                    if schedule.user:
+                        event_id = await self.sync_schedule_to_calendar(integration, team, schedule)
+                        if event_id:
+                            synced_count += 1
+            
+            await self.update_last_sync(workspace_id)
+            logger.info(f"Bulk sync completed: {synced_count} events synced for workspace {workspace_id}")
+            return synced_count
+
+        except Exception as e:
+            logger.error(f"Error during bulk sync for workspace {workspace_id}: {e}")
+            return 0
+
     def _get_team_color(self, team_id: int) -> int:
         """Get consistent color for team based on ID."""
         colors = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]  # Available calendar colors
@@ -263,5 +270,4 @@ class GoogleCalendarService:
         """Update last sync timestamp."""
         integration = await self.repo.get_by_workspace(workspace_id)
         if integration:
-            integration.last_sync_at = datetime.utcnow()
-            await self.repo.update(integration)
+            await self.repo.update(integration.id, {"last_sync_at": datetime.utcnow()})

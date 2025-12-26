@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # Security
+    encryption_key: Optional[str] = None
+
     def get_admin_ids(self, platform: str) -> list[str]:
         """Parse admin IDs from config"""
         if platform == 'telegram':

@@ -4,6 +4,11 @@ from app.commands.parser import CommandParser, DateParser, CommandError, DateRan
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
+from app.services.escalation_service import EscalationService
+from app.services.admin_service import AdminService
+from app.services.rotation_service import RotationService
+from app.services.incident_service import IncidentService
+from app.services.metrics_service import MetricsService
 from app.repositories import (
     UserRepository, TeamRepository, ScheduleRepository,
     EscalationRepository, EscalationEventRepository, AdminLogRepository, RotationConfigRepository,
@@ -215,7 +220,7 @@ Members: {members_str}"""
         if existing and existing.id != team.id:
             raise CommandError(f"Team already exists: {new_name}")
 
-        team = await self.team_service.update_team(team, name=new_name)
+        team = await self.team_service.update_team(team.id, name=new_name)
         return f"Team renamed to: {new_name}"
 
     async def team_edit_display(self, team_name: str, new_display: str) -> str:
@@ -224,7 +229,7 @@ Members: {members_str}"""
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        team = await self.team_service.update_team(team, display_name=new_display)
+        team = await self.team_service.update_team(team.id, display_name=new_display)
         return f"Display name changed to: {new_display}"
 
     async def team_edit_shifts(self, team_name: str, enabled: bool) -> str:
@@ -233,7 +238,7 @@ Members: {members_str}"""
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        team = await self.team_service.update_team(team, has_shifts=enabled)
+        team = await self.team_service.update_team(team.id, has_shifts=enabled)
         mode = "enabled" if enabled else "disabled"
         return f"Shift mode {mode} for {team.display_name}"
 
@@ -243,7 +248,7 @@ Members: {members_str}"""
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        team = await self.team_service.set_team_lead(team, user)
+        team = await self.team_service.set_team_lead(team.id, user.id)
         return f"Team lead set to {user.display_name} for {team.display_name}"
 
     async def team_add_member(self, team_name: str, user: User) -> str:
@@ -252,7 +257,7 @@ Members: {members_str}"""
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        team = await self.team_service.add_member(team, user)
+        team = await self.team_service.add_member(team.id, user)
         return f"{user.display_name} added to {team.display_name}"
 
     async def team_remove_member(self, team_name: str, user: User) -> str:
@@ -264,7 +269,7 @@ Members: {members_str}"""
         if user not in team.members:
             raise CommandError(f"{user.display_name} is not in {team.display_name}")
 
-        team = await self.team_service.remove_member(team, user)
+        team = await self.team_service.remove_member(team.id, user)
         return f"{user.display_name} removed from {team.display_name}"
 
     async def team_move_member(
@@ -285,8 +290,8 @@ Members: {members_str}"""
         if user not in from_team.members:
             raise CommandError(f"{user.display_name} is not in {from_team.display_name}")
 
-        await self.team_service.remove_member(from_team, user)
-        await self.team_service.add_member(to_team, user)
+        await self.team_service.remove_member(from_team.id, user)
+        await self.team_service.add_member(to_team.id, user)
 
         return f"{user.display_name} moved from {from_team.display_name} to {to_team.display_name}"
 
@@ -296,7 +301,7 @@ Members: {members_str}"""
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        await self.team_service.delete_team(team)
+        await self.team_service.delete_team(team.id)
         return f"Team {team.display_name} deleted"
 
     # ==================== Schedule Commands ====================

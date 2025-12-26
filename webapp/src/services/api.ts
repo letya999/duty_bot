@@ -304,4 +304,9 @@ export const apiService = {
     const response = await api.get('/settings/google-calendar/url');
     return response.data;
   },
+
+  syncGoogleCalendar: async (): Promise<any> => {
+    const response = await api.post('/settings/google-calendar/sync');
+    return response.data;
+  },
 };

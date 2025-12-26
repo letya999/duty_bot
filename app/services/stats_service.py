@@ -24,66 +24,49 @@ class StatsService:
 
         Returns list of DutyStats records created/updated.
         """
-        # Get all teams in workspace
-        teams_result = await self.db.execute(
-            select(Team).where(Team.workspace_id == workspace_id)
-        )
-        teams = teams_result.scalars().all()
-
         # Calculate date range for the month
         start_date = date(year, month, 1)
         end_date = (start_date + relativedelta(months=1)) - relativedelta(days=1)
 
-        stats_list = []
-
-        for team in teams:
-            # Get all users in the team
-            team_with_members = await self.db.execute(
-                select(Team)
-                .where(Team.id == team.id)
-                .options(selectinload(Team.members))
+        # Single aggregated query: GROUP BY team_id, user_id, is_shift
+        # This replaces 1000+ individual queries with 1 efficient query
+        result = await self.db.execute(
+            select(
+                Schedule.team_id,
+                Schedule.user_id,
+                Schedule.is_shift,
+                func.count(Schedule.id).label("count")
             )
-            team = team_with_members.scalar_one()
-
-            for user in team.members:
-                # Count regular duty days (Schedule where is_shift=False)
-                duty_count_stmt = select(func.count(Schedule.id)).where(
-                    and_(
-                        Schedule.team_id == team.id,
-                        Schedule.user_id == user.id,
-                        Schedule.date >= start_date,
-                        Schedule.date <= end_date,
-                        Schedule.is_shift == False
-                    )
+            .where(
+                and_(
+                    Schedule.date >= start_date,
+                    Schedule.date <= end_date,
+                    Team.workspace_id == workspace_id
                 )
-                duty_count_result = await self.db.execute(duty_count_stmt)
-                duty_days = duty_count_result.scalar() or 0
+            )
+            .join(Team, Schedule.team_id == Team.id)
+            .group_by(Schedule.team_id, Schedule.user_id, Schedule.is_shift)
+        )
 
-                # Count shift days (Schedule where is_shift=True)
-                shift_count_stmt = select(func.count(Schedule.id)).where(
-                    and_(
-                        Schedule.team_id == team.id,
-                        Schedule.user_id == user.id,
-                        Schedule.date >= start_date,
-                        Schedule.date <= end_date,
-                        Schedule.is_shift == True
-                    )
-                )
-                shift_count_result = await self.db.execute(shift_count_stmt)
-                shift_days = shift_count_result.scalar() or 0
+        # Build stats dictionary: {(team_id, user_id): {'duty_days': X, 'shift_days': Y}}
+        stats_data = {}
+        for row in result.all():
+            team_id, user_id, is_shift, count = row
+            key = (team_id, user_id)
+            if key not in stats_data:
+                stats_data[key] = {'team_id': team_id, 'user_id': user_id, 'duty_days': 0, 'shift_days': 0}
 
-                # Create or update DutyStats record through repository
-                stat = await self.stats_repo.get_or_create(
-                    workspace_id, team.id, user.id, year, month
-                )
-                stat.duty_days = duty_days
-                stat.shift_days = shift_days
-                stat.updated_at = datetime.utcnow()
-                await self.db.commit()
+            if is_shift:
+                stats_data[key]['shift_days'] = count
+            else:
+                stats_data[key]['duty_days'] = count
 
-                stats_list.append(stat)
+        # Convert to list and batch update all records
+        stats_list = list(stats_data.values())
+        await self.stats_repo.batch_update_stats(workspace_id, year, month, stats_list)
 
-        return stats_list
+        # Fetch and return updated records
+        return await self.stats_repo.get_workspace_monthly_stats(workspace_id, year, month)
 
     async def get_user_monthly_stats(
         self, workspace_id: int, user_id: int, year: int, month: int

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, BarChart3 } from 'lucide-react';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
@@ -69,15 +69,18 @@ const ReportsPage: React.FC = () => {
     window.location.href = `/api/reports/generate?${params.toString()}`;
   };
 
-  const calculateStats = (): ReportStats => {
+  // Memoize stats calculation with O(1) user lookup using Map
+  const stats = useMemo((): ReportStats => {
+    const userMap = new Map(users.map(u => [u.id, u]));
     const userStatsMap = new Map<number, number>();
+
     schedules.forEach(s => {
       userStatsMap.set(s.user_id, (userStatsMap.get(s.user_id) || 0) + 1);
     });
 
     const topUsers = Array.from(userStatsMap.entries())
       .map(([userId, count]) => ({
-        user: users.find(u => u.id === userId),
+        user: userMap.get(userId),
         count,
       }))
       .filter(s => s.user)
@@ -94,9 +97,7 @@ const ReportsPage: React.FC = () => {
       avgDutiesPerUser,
       topUsers,
     };
-  };
-
-  const stats = calculateStats();
+  }, [schedules, users]);
 
   if (loading) {
     return (

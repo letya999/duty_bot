@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icons } from '../components/ui/Icons';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
@@ -192,6 +192,19 @@ const SchedulesPage: React.FC = () => {
     return teams.find(t => t.id.toString() === formData.teamId);
   };
 
+  // Memoize schedules grouped by date for O(1) lookup instead of O(n) filter per cell
+  const schedulesByDate = useMemo(() => {
+    const map = new Map<string, Schedule[]>();
+    schedules.forEach(schedule => {
+      const date = schedule.duty_date;
+      if (!map.has(date)) {
+        map.set(date, []);
+      }
+      map.get(date)!.push(schedule);
+    });
+    return map;
+  }, [schedules]);
+
   const nextPeriod = () => {
     const newDate = new Date(currentDate);
     if (calendarMode === 'month') {
@@ -301,7 +314,8 @@ const SchedulesPage: React.FC = () => {
               if (!day) return <div key={`pad-${idx}`} className="bg-white min-h-[120px]" />;
 
               const dateStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-              const daySchedules = schedules.filter(s => s.duty_date === dateStr);
+              // Use O(1) map lookup instead of O(n) filter
+              const daySchedules = schedulesByDate.get(dateStr) || [];
               const isToday = new Date().toISOString().split('T')[0] === dateStr;
 
               return (

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardBody } from '../components/ui/Card';
@@ -100,8 +100,11 @@ const EscalationsPage: React.FC = () => {
     );
   }
 
-  const globalEscalations = escalations.filter(e => !e.team_id);
-  const teamEscalations = escalations.filter(e => e.team_id);
+  // Memoize escalations filtering to avoid recalculation on every render
+  const { globalEscalations, teamEscalations } = useMemo(() => ({
+    globalEscalations: escalations.filter(e => !e.team_id),
+    teamEscalations: escalations.filter(e => e.team_id),
+  }), [escalations]);
 
   return (
     <div className="p-8">

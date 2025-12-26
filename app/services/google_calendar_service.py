@@ -2,6 +2,7 @@
 
 import logging
 import json
+import asyncio
 from datetime import datetime, date as date_type, timedelta
 from typing import Optional, Dict, Any
 from google.oauth2.service_account import Credentials
@@ -66,22 +67,26 @@ class GoogleCalendarService:
 
             service = self._get_calendar_service(service_account_key)
 
-            # Create a new calendar
+            # Create a new calendar in thread pool to avoid blocking event loop
             calendar_body = {
                 'summary': f'Duty Schedule',
                 'description': 'Team duty rotation schedule',
                 'timeZone': 'UTC'
             }
 
-            calendar = service.calendars().insert(body=calendar_body).execute()
+            calendar = await asyncio.to_thread(
+                service.calendars().insert(body=calendar_body).execute
+            )
             calendar_id = calendar['id']
 
-            # Make calendar public
+            # Make calendar public in thread pool
             rule = {
                 'scope': {'type': 'default'},
                 'role': 'reader'
             }
-            service.acl().insert(calendarId=calendar_id, body=rule).execute()
+            await asyncio.to_thread(
+                service.acl().insert(calendarId=calendar_id, body=rule).execute
+            )
 
             # Get public calendar URL
             public_url = f"https://calendar.google.com/calendar/u/0?cid={calendar_id}"
@@ -135,11 +140,13 @@ class GoogleCalendarService:
                 'colorId': str(self._get_team_color(team.id))
             }
 
-            # Create event
-            event = service.events().insert(
-                calendarId=integration.google_calendar_id,
-                body=event_body
-            ).execute()
+            # Create event in thread pool to avoid blocking event loop
+            event = await asyncio.to_thread(
+                service.events().insert(
+                    calendarId=integration.google_calendar_id,
+                    body=event_body
+                ).execute
+            )
 
             event_id = event['id']
             logger.info(f"Created calendar event {event_id} for schedule {schedule.id}")
@@ -165,10 +172,13 @@ class GoogleCalendarService:
             )
             service = self._get_calendar_service(service_account_key)
 
-            service.events().delete(
-                calendarId=integration.google_calendar_id,
-                eventId=event_id
-            ).execute()
+            # Delete event in thread pool to avoid blocking event loop
+            await asyncio.to_thread(
+                service.events().delete(
+                    calendarId=integration.google_calendar_id,
+                    eventId=event_id
+                ).execute
+            )
 
             logger.info(f"Deleted calendar event {event_id}")
             return True
@@ -192,11 +202,13 @@ class GoogleCalendarService:
             )
             service = self._get_calendar_service(service_account_key)
 
-            # Delete the calendar
+            # Delete the calendar in thread pool to avoid blocking event loop
             try:
-                service.calendars().delete(
-                    calendarId=integration.google_calendar_id
-                ).execute()
+                await asyncio.to_thread(
+                    service.calendars().delete(
+                        calendarId=integration.google_calendar_id
+                    ).execute
+                )
             except HttpError as e:
                 logger.warning(f"Could not delete calendar from Google: {e}")
 

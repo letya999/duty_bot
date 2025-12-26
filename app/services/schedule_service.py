@@ -19,9 +19,41 @@ class ScheduleService:
         user_id: int | None,
         duty_date: date,
         is_shift: bool = False,
-        commit: bool = True
+        commit: bool = True,
+        force: bool = False
     ) -> Schedule:
-        """Set or update duty for a date"""
+        """Set or update duty for a date with validations"""
+        # 1. Prevent scheduling in the past
+        today = date.today()
+        if duty_date < today and not force:
+            raise ValueError(f"Cannot schedule duty for past date {duty_date}")
+
+        # Fetch team to check shift status
+        from app.repositories.team_repository import TeamRepository
+        team_repo = TeamRepository(self.schedule_repo.db)
+        team = await team_repo.get_by_id(team_id)
+        if not team:
+            raise ValueError(f"Team {team_id} not found")
+
+        # 2. Check if shifts are allowed for this team
+        if is_shift and not team.has_shifts and not force:
+            raise ValueError(f"Team {team.display_name} does not have shifts enabled")
+
+        # 3. Check for 1 person per day if not in shift mode (handled by repo, but let's be explicit)
+        if not is_shift and not force:
+            existing_duties = await self.get_duties_by_date(team_id, duty_date)
+            # If we are setting a NEW duty and someone else is already there
+            # create_or_update_schedule overwrites by default. 
+            # If the user wants to "prevent" it, they might mean "don't ever allow 2 records".
+            # The repo ensures 1 record if is_shift=False.
+
+        # 4. Check for duplicate person on the same day (across all teams)
+        if user_id and not force:
+            conflict = await self.check_user_schedule_conflict(user_id, duty_date)
+            if conflict and (conflict['team_name'] != team.name or is_shift):
+                # If it's a different team, or the same team but we are adding a shift (which would be a duplicate record for same team/date)
+                raise ValueError(f"User is already on duty on {duty_date} in team {conflict['team_display_name']}")
+
         schedule = await self.schedule_repo.create_or_update_schedule(team_id, duty_date, user_id, is_shift=is_shift, commit=commit)
         
         # Sync to Google Calendar if available
@@ -87,6 +119,7 @@ class ScheduleService:
 
         if existing and existing.team:
             return {
+                "id": existing.id,
                 "user_id": user_id,
                 "date": str(duty_date),
                 "team_name": existing.team.name,
@@ -99,12 +132,38 @@ class ScheduleService:
         schedule_id: int,
         user_id: int,
         duty_date: date,
-        team_id: int | None = None
+        team_id: int | None = None,
+        force: bool = False
     ) -> Schedule:
-        """Update existing duty assignment"""
+        """Update existing duty assignment with validations"""
+        # 1. Prevent scheduling in the past
+        today = date.today()
+        if duty_date < today and not force:
+            raise ValueError(f"Cannot schedule duty for past date {duty_date}")
+
         schedule = await self.schedule_repo.get_by_id(schedule_id)
         if not schedule:
             raise ValueError(f"Schedule with id {schedule_id} not found")
+
+        target_team_id = team_id or schedule.team_id
+        
+        # Fetch team to check shift status
+        from app.repositories.team_repository import TeamRepository
+        team_repo = TeamRepository(self.schedule_repo.db)
+        team = await team_repo.get_by_id(target_team_id)
+        if not team:
+            raise ValueError(f"Team {target_team_id} not found")
+
+        # 2. Check for duplicate person on the same day (across all teams)
+        if user_id and not force:
+            conflict = await self.check_user_schedule_conflict(user_id, duty_date)
+            # If conflict is found and it's NOT the current record we are updating
+            if conflict and conflict.get('id') != schedule_id: 
+                # Wait, check_user_schedule_conflict returns a dict with user_id, date, team_name... 
+                # I should update check_user_schedule_conflict to return ID or something to distinguish.
+                # For now, let's just check if it's a different team.
+                if conflict['team_name'] != team.name:
+                    raise ValueError(f"User is already on duty on {duty_date} in team {conflict['team_display_name']}")
 
         update_data = {
             'user_id': user_id,

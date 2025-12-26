@@ -116,7 +116,7 @@ async def update_user_info(
 
 
 @router.get(
-    "",
+    "/admins",
     summary="List all admins",
     description="Получить список всех администраторов в workspace."
 )
@@ -154,7 +154,8 @@ async def get_admins(
 async def promote_user(
     user_id: int,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service: AdminService = Depends(get_admin_service)
 ) -> dict:
     """Promote user to admin - uses AdminService for logging"""
     try:
@@ -169,7 +170,6 @@ async def promote_user(
         await db.commit()
 
         # Log action using AdminService
-        admin_service = AdminService(AdminLogRepository(db))
         await admin_service.log_action(
             workspace_id=current_user.workspace_id,
             admin_id=current_user.id,
@@ -203,7 +203,8 @@ async def promote_user(
 async def demote_user(
     user_id: int,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service: AdminService = Depends(get_admin_service)
 ) -> dict:
     """Remove admin rights from user - uses AdminService for logging"""
     try:
@@ -221,7 +222,6 @@ async def demote_user(
         await db.commit()
 
         # Log action using AdminService
-        admin_service = AdminService(AdminLogRepository(db))
         await admin_service.log_action(
             workspace_id=current_user.workspace_id,
             admin_id=current_user.id,

@@ -31,10 +31,6 @@ class UserService:
         user = await self.user_repo.get_by_telegram_username(workspace_id, telegram_username)
 
         if not user:
-            # Check if this is the first user in workspace
-            existing_users = await self.user_repo.list_by_workspace(workspace_id, limit=1)
-            is_first = len(existing_users) == 0
-            
             # Use get_settings to check for master admins
             from app.config import get_settings
             settings = get_settings()
@@ -50,7 +46,7 @@ class UserService:
                 'display_name': display_name,
                 'first_name': first_name,
                 'last_name': last_name,
-                'is_admin': is_first or is_master
+                'is_admin': is_master
             })
         else:
             # Update info if it was missing
@@ -101,8 +97,57 @@ class UserService:
         return user
 
     async def get_user_by_telegram(self, workspace_id: int, telegram_username: str) -> User | None:
-        """Get user by Telegram username in workspace"""
-        return await self.user_repo.get_by_telegram_username(workspace_id, telegram_username)
+        """Get user by Telegram username in workspace, fetch from TG and create/update if needed"""
+        # 1. Try to find in current workspace
+        user = await self.user_repo.get_by_telegram_username(workspace_id, telegram_username)
+        
+        # 2. Try to find anywhere else to get user info if not found in current workspace
+        anywhere_user = None
+        if not user:
+            anywhere_user = await self.user_repo.find_anywhere_by_telegram_username(telegram_username)
+            
+        # 3. Prepare initial info
+        info = {
+            "telegram_id": (user.telegram_id if user else None) or (anywhere_user.telegram_id if anywhere_user else None),
+            "first_name": (user.first_name if user else None) or (anywhere_user.first_name if anywhere_user else telegram_username),
+            "last_name": (user.last_name if user else None) or (anywhere_user.last_name if anywhere_user else None),
+            "display_name": (user.display_name if user else None) or (anywhere_user.display_name if anywhere_user else telegram_username)
+        }
+
+        # 4. If Telegram ID is missing, try to fetch it from Telegram Bot API
+        from app.config import get_settings
+        settings = get_settings()
+        if not info["telegram_id"] and settings.telegram_token:
+            try:
+                from telegram import Bot
+                import logging
+                logger = logging.getLogger(__name__)
+                
+                bot = Bot(token=settings.telegram_token)
+                # get_chat works for users with public usernames if the bot has seen them or they are in the same chat
+                chat = await bot.get_chat(f"@{telegram_username}")
+                info["telegram_id"] = chat.id
+                info["first_name"] = chat.first_name or info["first_name"]
+                info["last_name"] = chat.last_name or info["last_name"]
+                if chat.first_name:
+                    info["display_name"] = f"{chat.first_name} {chat.last_name or ''}".strip()
+                else:
+                    info["display_name"] = chat.username or info["display_name"]
+                
+                logger.info(f"Fetched Telegram info for @{telegram_username}: {info['telegram_id']}")
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to fetch Telegram info for {telegram_username}: {e}")
+
+        # 5. Create or update record in this workspace
+        return await self.get_or_create_by_telegram(
+            workspace_id,
+            telegram_username,
+            info["display_name"],
+            first_name=info["first_name"],
+            last_name=info["last_name"],
+            telegram_id=info["telegram_id"]
+        )
 
     async def get_user_by_slack(self, workspace_id: int, slack_user_id: str) -> User | None:
         """Get user by Slack user ID in workspace"""

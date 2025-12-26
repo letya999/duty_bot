@@ -439,6 +439,7 @@ const SchedulesPage: React.FC = () => {
           onClick={() => handleOpenAddModal()}
           variant="primary"
           size="md"
+          className="mt-6 shadow-lg transform hover:scale-105 transition-all"
         >
           <Icons.Plus size={20} />
           {t('schedules.add_duty')}
@@ -646,6 +647,19 @@ const SchedulesPage: React.FC = () => {
           )}
 
           <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
+            {editingDuty && (
+              <Button
+                variant="danger"
+                className="mr-auto"
+                onClick={async () => {
+                  await handleDeleteDuty(editingDuty.id);
+                  setIsModalOpen(false);
+                }}
+              >
+                <Icons.Delete size={18} />
+                {t('common.delete')}
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
               {t('common.cancel')}
             </Button>

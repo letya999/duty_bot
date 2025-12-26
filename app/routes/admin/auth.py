@@ -18,7 +18,7 @@ from app.database import AsyncSessionLocal
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-router = APIRouter(prefix="/web/auth", tags=["web-auth"])
+router = APIRouter(tags=["web-auth"])
 
 # OAuth providers
 telegram_oauth = TelegramOAuth()
@@ -48,7 +48,7 @@ def get_session_from_cookie(request: Request) -> dict:
     return session
 
 
-@router.get("/login")
+@router.get("/web/auth/login")
 async def login_page(request: Request):
     """Login page with provider options"""
     html = """
@@ -137,7 +137,7 @@ async def login_page(request: Request):
     return HTMLResponse(content=html)
 
 
-@router.get("/telegram-login")
+@router.get("/web/auth/telegram-login")
 async def telegram_login(request: Request):
     """Telegram login redirect"""
     # In production, would use TG Login Widget or manual validation
@@ -206,7 +206,7 @@ async def telegram_login(request: Request):
     return HTMLResponse(content=html)
 
 
-@router.post("/telegram-callback")
+@router.post("/web/auth/telegram-callback")
 async def telegram_callback(request: Request):
     """Handle Telegram OAuth callback"""
     try:
@@ -337,7 +337,7 @@ async def telegram_callback(request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/telegram-widget-callback")
+@router.post("/web/auth/telegram-widget-callback")
 async def telegram_widget_callback(request: Request):
     """Handle Telegram Login Widget callback (for web admin panel)"""
     try:
@@ -438,7 +438,7 @@ async def telegram_widget_callback(request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/slack-login")
+@router.get("/web/auth/slack-login")
 async def slack_login(request: Request):
     """Slack login redirect"""
     state = secrets.token_urlsafe(32)
@@ -450,7 +450,7 @@ async def slack_login(request: Request):
     return RedirectResponse(url=auth_url)
 
 
-@router.get("/slack-callback")
+@router.get("/api/admin/auth/slack/callback")
 async def slack_callback(code: str = None, state: str = None):
     """Handle Slack OAuth callback"""
     try:
@@ -577,7 +577,7 @@ async def slack_callback(code: str = None, state: str = None):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/logout")
+@router.get("/web/auth/logout")
 async def logout(request: Request):
     """Logout user"""
     token = request.cookies.get('session_token')
@@ -589,7 +589,7 @@ async def logout(request: Request):
     return response
 
 
-@router.get("/workspaces")
+@router.get("/web/auth/workspaces")
 async def list_workspaces(request: Request, session: dict = Depends(get_session_from_cookie)):
     """Get list of available workspaces for current user.
 
@@ -664,7 +664,7 @@ async def list_workspaces(request: Request, session: dict = Depends(get_session_
         raise HTTPException(status_code=500, detail="Failed to list workspaces")
 
 
-@router.post("/switch-workspace")
+@router.post("/web/auth/switch-workspace")
 async def switch_workspace(request: Request, session: dict = Depends(get_session_from_cookie)):
     """Switch to a different workspace.
 

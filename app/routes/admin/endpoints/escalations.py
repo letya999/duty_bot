@@ -2,6 +2,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db, get_current_user
@@ -29,6 +30,7 @@ async def get_escalations(
         else:
             stmt = select(Escalation)
 
+        stmt = stmt.options(selectinload(Escalation.team), selectinload(Escalation.cto_user))
         result = await db.execute(stmt)
         escalations = result.scalars().all()
 

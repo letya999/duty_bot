@@ -72,7 +72,7 @@ const EscalationsPage: React.FC = () => {
 
     try {
       await apiService.createEscalation({
-        team_id: formData.isGlobal ? null : (formData.teamId ? parseInt(formData.teamId) : null),
+        team_id: formData.isGlobal ? undefined : (formData.teamId ? parseInt(formData.teamId) : undefined),
         cto_id: parseInt(formData.ctoId),
       });
       setIsModalOpen(false);
@@ -235,7 +235,7 @@ const EscalationsPage: React.FC = () => {
               <option value="">{t('escalations.modal.select_user')}</option>
               {users.map(user => (
                 <option key={user.id} value={user.id}>
-                  {user.first_name} {user.last_name || ''}
+                  {user.display_name || `${user.first_name} ${user.last_name || ''}`.trim() || user.username}
                 </option>
               ))}
             </select>

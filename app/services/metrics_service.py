@@ -90,26 +90,19 @@ class MetricsService:
         start_time: datetime,
         end_time: datetime
     ) -> int:
-        """Calculate number of days without any incidents."""
-        # Get all dates in period that have incidents
-        incident_dates = set()
-        for incident in incidents:
-            # For each day the incident spans
-            current_date = incident.start_time.date()
-            end_date = (incident.end_time or end_time).date()
+        """Calculate number of days without any incidents since the last one in the period."""
+        # 1. Check for active incidents
+        active_incidents = [i for i in incidents if i.status == 'active' or i.end_time is None]
+        if active_incidents:
+            return 0
 
-            while current_date <= end_date:
-                incident_dates.add(current_date)
-                current_date += timedelta(days=1)
+        # 2. If no incidents in the period, return total days in period
+        if not incidents:
+            return (end_time - start_time).days
 
-        # Count days without incidents
-        days_without = 0
-        current_date = start_time.date()
-        end_date = end_time.date()
-
-        while current_date <= end_date:
-            if current_date not in incident_dates:
-                days_without += 1
-            current_date += timedelta(days=1)
-
-        return days_without
+        # 3. Find the latest end_time among incidents in the period
+        latest_end = max(i.end_time for i in incidents if i.end_time)
+        
+        # 4. Calculate days from latest incident end to the end of period
+        days_since = (end_time - latest_end).days
+        return max(0, days_since)

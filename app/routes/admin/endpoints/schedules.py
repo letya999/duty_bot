@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db, get_current_user
@@ -150,7 +151,11 @@ async def remove_duty(
 ) -> dict:
     """Remove duty assignment"""
     try:
-        schedule_obj = await db.get(Schedule, schedule_id)
+        # Use select with selectinload to avoid lazy-loading error
+        stmt = select(Schedule).where(Schedule.id == schedule_id).options(selectinload(Schedule.team))
+        result = await db.execute(stmt)
+        schedule_obj = result.scalar_one_or_none()
+        
         if not schedule_obj:
             raise NotFoundError("Schedule")
 

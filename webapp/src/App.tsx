@@ -1,6 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { User } from './types';
 import './index.css';
 
 // Pages
@@ -62,7 +61,7 @@ function App() {
                 <div className="fixed top-4 right-4 z-[60]">
                   <LanguageSwitcher />
                 </div>
-                <main className="flex-1 overflow-auto">
+                <main className="flex-1 overflow-auto pt-20">
                   <Routes>
                     <Route path="/" element={<DashboardPage />} />
                     <Route path="/schedules" element={<SchedulesPage />} />

@@ -21,13 +21,30 @@ class IncidentService:
             'start_time': datetime.utcnow(),
         })
 
-    async def complete_incident(self, incident_id: int) -> Optional[Incident]:
-        """Complete incident and set end time."""
-        return await self.incident_repo.complete_incident(incident_id, datetime.utcnow())
+    async def complete_incident(self, incident_id: int | None = None, name: str | None = None, workspace_id: int | None = None) -> Optional[Incident]:
+        """Complete incident and set end time. Can be identified by ID or name."""
+        if incident_id:
+            return await self.incident_repo.complete_incident(incident_id, datetime.utcnow())
+        
+        if name and workspace_id:
+            active = await self.get_active_incidents(workspace_id)
+            for inc in active:
+                if inc.name.lower() == name.lower():
+                    return await self.incident_repo.complete_incident(inc.id, datetime.utcnow())
+        
+        return None
 
     async def get_active_incidents(self, workspace_id: int) -> List[Incident]:
         """Get all active incidents for workspace."""
         return await self.incident_repo.get_active_incidents(workspace_id)
+
+    async def get_active_incident_by_name(self, workspace_id: int, name: str) -> Optional[Incident]:
+        """Get active incident by name."""
+        active = await self.get_active_incidents(workspace_id)
+        for inc in active:
+            if inc.name.lower() == name.lower():
+                return inc
+        return None
 
     async def get_incident(self, incident_id: int) -> Optional[Incident]:
         """Get incident by ID."""

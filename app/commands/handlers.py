@@ -401,10 +401,8 @@ Members: {members_str}"""
                 }
             )
 
-        current = date_range.start
-        count = 0
         while current <= date_range.end:
-            await self.schedule_service.set_duty(team.id, user.id, current)
+            await self.schedule_service.set_duty(team.id, user.id, current, force=force)
             count += 1
             current += timedelta(days=1)
 
@@ -512,7 +510,7 @@ Members: {members_str}"""
             await self.schedule_repo.delete_by_team_and_date(team.id, current)
             
             for user in users:
-                await self.schedule_service.set_duty(team.id, user.id, current, is_shift=True)
+                await self.schedule_service.set_duty(team.id, user.id, current, is_shift=True, force=force)
             count += 1
             current += timedelta(days=1)
 
@@ -536,7 +534,7 @@ Members: {members_str}"""
 
         shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
         
-        await self.schedule_service.set_duty(team.id, user.id, shift_date, is_shift=True)
+        await self.schedule_service.set_duty(team.id, user.id, shift_date, is_shift=True, force=force)
 
         return f"{user.display_name} added to shift on {shift_date}"
 
@@ -730,15 +728,26 @@ Members: {members_str}"""
         incident = await self.incident_service.create_incident(self.workspace_id, incident_name)
         return f"🚨 Incident started: *{incident.name}* at {incident.start_time.strftime('%H:%M:%S')}"
 
-    async def incident_stop(self) -> str:
+    async def incident_stop(self, name: str | None = None) -> str:
         """Stop active incident"""
         active = await self.incident_service.get_active_incidents(self.workspace_id)
         if not active:
             raise CommandError("No active incidents")
 
-        # Stop the first (most recent) active incident
-        incident = active[0]
-        completed = await self.incident_service.complete_incident(incident.id)
+        if name:
+            # Try to stop by name
+            completed = await self.incident_service.complete_incident(name=name, workspace_id=self.workspace_id)
+            if not completed:
+                raise CommandError(f"Active incident with name '{name}' not found")
+            incident = completed
+        elif len(active) == 1:
+            # Only one active incident, stop it
+            incident = active[0]
+            completed = await self.incident_service.complete_incident(incident.id)
+        else:
+            # Multiple active incidents, ask to choose
+            names = "\n".join([f"• `{inc.name}`" for inc in active])
+            return f"There are multiple active incidents. Please specify which one to stop:\n{names}\n\nUsage: `/incident stop <name>`"
 
         if completed and completed.end_time:
             duration = (completed.end_time - completed.start_time).total_seconds()

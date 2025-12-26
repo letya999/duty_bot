@@ -23,7 +23,7 @@ from app.routes.admin.auth import router as auth_router
 from app.routes.admin.dashboard import router as dashboard_router
 from app.routes.admin.schedules import router as schedules_router
 from app.routes.admin.settings import router as settings_router
-from app.routes.admin.reports import router as reports_router
+from app.routes.admin.reports import router as reports_router, api_router as reports_api_router
 from app.routes.admin.api import router as web_api_router
 from app.routes.admin.incidents import router as incidents_router
 from app.exceptions import (
@@ -199,12 +199,24 @@ app.add_exception_handler(ApplicationException, application_exception_handler)
 # Add CORS middleware for web panel API
 # SECURITY: Configurable CORS origins. Use specific origins in production.
 # Set CORS_ORIGINS environment variable with comma-separated list of allowed origins
-cors_origins_env = os.environ.get('CORS_ORIGINS', '')
+cors_origins_env = os.environ.get('CORS_ORIGINS', '').strip()
 if cors_origins_env:
     # Production: use specific allowed origins
-    allowed_origins = [origin.strip() for origin in cors_origins_env.split(',')]
+    # Strip any trailing slashes from the origins to ensure matching works correctly
+    allowed_origins = []
+    for origin in cors_origins_env.split(','):
+        clean_origin = origin.strip()
+        if clean_origin:
+            allowed_origins.append(clean_origin)
+            # Add version without trailing slash if it has one
+            if clean_origin.endswith('/'):
+                allowed_origins.append(clean_origin.rstrip('/'))
+            # Also add version WITH trailing slash if it doesn't have one (for completeness)
+            else:
+                allowed_origins.append(f"{clean_origin}/")
+    
     allow_credentials = True
-    logger.info(f"CORS enabled for specific origins: {allowed_origins}")
+    logger.info(f"CORS enabled for specific origins: {list(set(allowed_origins))}")
 else:
     # Development fallback: allow all origins but disable credentials for security
     allowed_origins = ["*"]
@@ -254,6 +266,7 @@ app.include_router(dashboard_router)
 app.include_router(schedules_router)
 app.include_router(settings_router)
 app.include_router(reports_router)
+app.include_router(reports_api_router)
 app.include_router(web_api_router)
 app.include_router(incidents_router)
 

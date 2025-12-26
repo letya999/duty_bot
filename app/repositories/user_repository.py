@@ -15,13 +15,23 @@ class UserRepository(BaseRepository[User]):
         super().__init__(db, User)
 
     async def get_by_telegram_username(self, workspace_id: int, telegram_username: str) -> Optional[User]:
-        """Get user by Telegram username in workspace."""
+        """Get user by Telegram username in workspace (case-insensitive)."""
+        from sqlalchemy import func
         stmt = select(User).where(
             User.workspace_id == workspace_id,
-            User.telegram_username == telegram_username
+            func.lower(User.telegram_username) == telegram_username.lower()
         )
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        return result.scalars().first()
+
+    async def find_anywhere_by_telegram_username(self, telegram_username: str) -> Optional[User]:
+        """Find user by Telegram username across all workspaces (case-insensitive)."""
+        from sqlalchemy import func
+        stmt = select(User).where(
+            func.lower(User.telegram_username) == telegram_username.lower()
+        ).limit(1)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
     async def get_by_telegram_id(self, workspace_id: int, telegram_id: int) -> Optional[User]:
         """Get user by Telegram ID in workspace."""

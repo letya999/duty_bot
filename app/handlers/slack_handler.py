@@ -507,7 +507,8 @@ class SlackHandler:
                         result = await handler.incident_start(incident_name)
 
                     elif cmd == "stop":
-                        result = await handler.incident_stop()
+                        incident_name = " ".join(parts[1:]) if len(parts) > 1 else None
+                        result = await handler.incident_stop(incident_name)
 
                     elif cmd == "metrics":
                         period = parts[1] if len(parts) > 1 else "week"

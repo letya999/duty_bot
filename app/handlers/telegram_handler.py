@@ -606,7 +606,8 @@ class TelegramHandler:
                         result = await handler.incident_start(incident_name)
 
                     elif command == "stop":
-                        result = await handler.incident_stop()
+                        incident_name = " ".join(args[1:]) if len(args) > 1 else None
+                        result = await handler.incident_stop(incident_name)
 
                     elif command == "metrics":
                         period = args[1] if len(args) > 1 else "week"

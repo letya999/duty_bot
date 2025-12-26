@@ -31,10 +31,10 @@ class IncidentResponse(BaseModel):
     id: int
     name: str
     status: str
-    start_time: str
-    end_time: str | None
-    created_at: str
-    updated_at: str
+    start_time: datetime
+    end_time: datetime | None
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
@@ -135,7 +135,7 @@ async def complete_incident(
     user: User = Depends(get_current_user),
     incident_service: IncidentService = Depends(get_incident_service),
 ) -> IncidentResponse:
-    """Complete incident."""
+    """Complete incident by ID."""
     if user.workspace_id != workspace_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -143,7 +143,29 @@ async def complete_incident(
     if not incident or incident.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Incident not found")
 
-    completed = await incident_service.complete_incident(incident_id)
+    completed = await incident_service.complete_incident(incident_id=incident_id)
+    return IncidentResponse.model_validate(completed)
+
+
+class IncidentStopRequest(BaseModel):
+    name: str
+
+
+@router.patch("/{workspace_id}/incidents/stop", response_model=IncidentResponse)
+async def stop_incident_by_name(
+    workspace_id: int,
+    request: IncidentStopRequest,
+    user: User = Depends(get_current_user),
+    incident_service: IncidentService = Depends(get_incident_service),
+) -> IncidentResponse:
+    """Stop incident by name."""
+    if user.workspace_id != workspace_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    completed = await incident_service.complete_incident(name=request.name, workspace_id=workspace_id)
+    if not completed:
+        raise HTTPException(status_code=404, detail=f"Active incident with name '{request.name}' not found")
+        
     return IncidentResponse.model_validate(completed)
 
 

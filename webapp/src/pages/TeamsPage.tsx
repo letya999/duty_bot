@@ -254,7 +254,7 @@ const TeamsPage: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900">{t('teams.title')}</h1>
           <p className="text-gray-600 mt-2">{t('teams.subtitle')}</p>
         </div>
-        <Button onClick={() => handleOpenModal()} variant="primary" size="md">
+        <Button onClick={() => handleOpenModal()} variant="primary" size="md" className="mt-6 shadow-lg transform hover:scale-105 transition-all">
           <Icons.Plus size={20} />
           {t('teams.new_team')}
         </Button>

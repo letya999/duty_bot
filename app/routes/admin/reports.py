@@ -17,11 +17,19 @@ from app.auth import session_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/web/reports", tags=["reports"])
+api_router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
 def get_session_from_cookie(request: Request):
-    """Extract and validate session from cookies"""
+    """Extract and validate session from cookies or Authorization header"""
     token = request.cookies.get('session_token')
+    
+    # Also check Authorization header for flexibility (used by React app)
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -347,6 +355,7 @@ async def reports_page(request: Request, session: dict = Depends(get_session_fro
 
 
 @router.get("/generate")
+@api_router.get("/generate")
 async def generate_report(
     request: Request,
     start_date: str,
@@ -364,7 +373,8 @@ async def generate_report(
             end = datetime.fromisoformat(end_date).date()
 
             # Get schedules for date range
-            stmt = select(Schedule).where(
+            stmt = select(Schedule).join(Schedule.team).where(
+                (Team.workspace_id == workspace_id) &
                 (Schedule.date >= start) &
                 (Schedule.date <= end)
             ).options(joinedload(Schedule.user), joinedload(Schedule.team))
@@ -468,6 +478,7 @@ async def generate_report(
 
 
 @router.get("/stats")
+@api_router.get("/stats")
 async def generate_stats_report(
     request: Request,
     year: int,

@@ -39,7 +39,8 @@ class DateParser:
         """
         Parse date from string formats:
         - DD.MM (assumes current or next year)
-        - DD.MM.YYYY
+        - DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY
+        - DD.MM.YY or DD/MM/YY or DD-MM-YY
         - Month name (Russian or English)
         """
         if today is None:
@@ -49,22 +50,34 @@ class DateParser:
 
         date_str = date_str.strip().lower()
 
+        # Replace separators with dots for consistent parsing if they are likely date separators
+        original_date_str = date_str
+        date_str = date_str.replace('/', '.').replace('-', '.')
+
         # Try DD.MM or DD.MM.YYYY format
         if '.' in date_str:
             parts = date_str.split('.')
             if len(parts) == 2:
                 try:
                     day, month = int(parts[0]), int(parts[1])
+                    year = today.today().year
+                    # Fix for today argument if passed
                     year = today.year
-                    result = date(year, month, day)
+                    
+                    # Try to create date for current year
+                    try:
+                        result = date(year, month, day)
+                    except ValueError:
+                         raise CommandError(f"Invalid date: {original_date_str}")
 
-                    # If date has passed, use next year
-                    if result < today:
+                    # If date has passed (more than 1 month ago), use next year
+                    # We allow 1 month in the past for manual corrections, but generally assume future
+                    if result < today - timedelta(days=30):
                         result = date(year + 1, month, day)
 
                     return result
                 except ValueError as e:
-                    raise CommandError(f"Invalid date format: {date_str}") from e
+                    raise CommandError(f"Invalid date format: {original_date_str}") from e
 
             elif len(parts) == 3:
                 try:
@@ -74,22 +87,29 @@ class DateParser:
                         year += 2000
                     return date(year, month, day)
                 except ValueError as e:
-                    raise CommandError(f"Invalid date format: {date_str}") from e
+                    raise CommandError(f"Invalid date format: {original_date_str}") from e
 
         # Try month name
         for month_name, month_num in DateParser.MONTH_NAMES_RU.items():
-            if month_name in date_str:
+            if month_name == date_str:
                 year = today.year
                 first_day = date(year, month_num, 1)
 
                 # If month has passed, use next year
-                if first_day < today:
+                if (first_day.year == today.year and first_day.month < today.month):
                     year += 1
                     first_day = date(year, month_num, 1)
 
                 return first_day
 
-        raise CommandError(f"Could not parse date: {date_str}")
+        # Last resort: try dateutil parser
+        try:
+            parsed = parse_date(original_date_str, dayfirst=True).date()
+            return parsed
+        except:
+            pass
+
+        raise CommandError(f"Could not parse date: {original_date_str}")
 
     @staticmethod
     def parse_date_range(range_str: str, today: date = None, timezone_str: str = "UTC") -> DateRange:

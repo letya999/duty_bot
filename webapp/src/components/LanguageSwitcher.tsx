@@ -33,9 +33,9 @@ const LanguageSwitcher: React.FC = () => {
         <div className="relative" ref={dropdownRef}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white transition-all duration-200 group"
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 backdrop-blur-md border border-indigo-500/30 text-white transition-all duration-200 group"
             >
-                <Globe size={18} className="text-emerald-400 group-hover:rotate-12 transition-transform" />
+                <Globe size={18} className="text-indigo-500 group-hover:rotate-12 transition-transform" />
                 <span className="text-sm font-medium">{currentLanguage.name}</span>
                 <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -47,8 +47,8 @@ const LanguageSwitcher: React.FC = () => {
                             key={lang.code}
                             onClick={() => handleLanguageChange(lang.code)}
                             className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${i18n.language === lang.code
-                                    ? 'text-emerald-400 bg-white/5'
-                                    : 'text-gray-300 hover:text-white hover:bg-white/5'
+                                ? 'text-indigo-500 bg-white/5'
+                                : 'text-gray-300 hover:text-white hover:bg-white/5'
                                 }`}
                         >
                             <div className="flex items-center gap-3">

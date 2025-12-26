@@ -257,7 +257,118 @@ Once the bot is running:
 
 ---
 
-### Step 5: Application Settings
+### Step 5: Security Setup (REQUIRED)
+
+**🔐 Security is critical for protecting your data.** This step generates cryptographic keys required for secure operation.
+
+#### Why Security Keys Are Required
+
+The application uses encryption to protect sensitive data:
+- **Google Calendar credentials** stored in the database
+- **Session cookies** for user authentication
+- **API tokens** for secure access
+
+Without proper encryption keys, your sensitive data could be compromised.
+
+#### Generate Security Keys
+
+Use the provided script to generate all required keys:
+
+```bash
+# Generate all security keys
+python scripts/generate_security_keys.py
+
+# Or save to a file
+python scripts/generate_security_keys.py --output .env.security
+```
+
+The script will generate:
+- `ENCRYPTION_KEY` - For encrypting database secrets (REQUIRED)
+- `SECRET_KEY` - For general application security (RECOMMENDED)
+- `SESSION_SECRET` - For signing session cookies (RECOMMENDED)
+
+**Example output:**
+```
+🔐 SECURITY KEYS GENERATED
+================================================================================
+
+ADD THESE TO YOUR .env FILE:
+
+--------------------------------------------------------------------------------
+
+# Used to encrypt sensitive data (Google Calendar credentials)
+# CRITICAL: Keep this secret and secure. Loss means data cannot be decrypted.
+ENCRYPTION_KEY=vQ7xN8mP2kR5tW9yB3cF6hJ8lM0nQ4sV7xZ1aD4gH6jK9m=
+
+# General-purpose secret for application security
+# Used for session signing and other cryptographic operations.
+SECRET_KEY=aB3cD5eF7gH9iJ1kL3mN5oP7qR9sT1uV3wX5yZ7aB9cD5eF7gH9iJ1kL3mN5oP7qR9sT1uV3wX5yZ7=
+
+# Secret for signing session cookies
+# Ensures session cookies cannot be tampered with.
+SESSION_SECRET=mN5oP7qR9sT1uV3wX5yZ7aB9cD5eF7gH9iJ1kL3=
+```
+
+#### Add Keys to .env File
+
+Copy the generated keys to your `.env` file:
+
+```bash
+# Option 1: Copy from terminal output
+# Paste the keys manually into your .env file
+
+# Option 2: If you saved to .env.security
+cat .env.security >> .env
+
+# Then securely delete the temporary file
+shred -u .env.security  # Linux
+# or
+rm -P .env.security     # macOS
+```
+
+#### Manual Key Generation (Alternative)
+
+If you prefer to generate keys manually:
+
+```bash
+# Generate encryption key (for ENCRYPTION_KEY)
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# Generate secret key (for SECRET_KEY or SESSION_SECRET)
+python -c "import secrets; print(secrets.token_urlsafe(64))"
+```
+
+#### Production Security Checklist
+
+- ✅ Use different keys for development and production
+- ✅ Never commit keys to version control (add `.env*` to `.gitignore`)
+- ✅ Store production keys in a password manager or secrets vault
+- ✅ Set `ENVIRONMENT=production` in production
+- ✅ Set `CORS_ORIGINS` to specific domains (not `*`)
+- ✅ Use HTTPS in production
+- ✅ Rotate keys every 6-12 months
+- ✅ Keep encrypted backups of production keys
+
+#### Environment-Specific Settings
+
+For production deployment, also configure:
+
+```env
+# REQUIRED: Set to 'production' to enable security features
+ENVIRONMENT=production
+
+# REQUIRED: Comma-separated list of allowed origins (no wildcards in production)
+CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+
+# RECOMMENDED: Enable secure cookies over HTTPS
+# (Automatically enabled when ENVIRONMENT=production)
+```
+
+For more details, see [scripts/README.md](scripts/README.md)
+
+---
+
+### Step 6: Application Settings
 
 Configure these environment variables for your deployment:
 
@@ -310,9 +421,9 @@ VITE_API_BACKEND=http://app:8000
 
 ---
 
-### Step 6: Create `.env` File
+### Step 7: Create `.env` File
 
-Create a `.env` file in the project root with all the configurations from steps 1-5:
+Create a `.env` file in the project root with all the configurations from steps 1-6:
 
 ```bash
 # Complete .env file example
@@ -326,9 +437,10 @@ The `.env` file should contain:
 - Telegram token and chat ID
 - Slack credentials (if using Slack)
 - Google service account key (if using Google Calendar)
+- **Security keys (ENCRYPTION_KEY, SECRET_KEY) - REQUIRED**
+- **Environment settings (ENVIRONMENT, CORS_ORIGINS) - REQUIRED for production**
 - Timezone and scheduling settings
 - Server configuration
-- Encryption key
 
 ---
 
@@ -486,7 +598,11 @@ Here's a complete list of all environment variables:
 | `HOST` | No | Server host | `0.0.0.0` |
 | `PORT` | No | Server port | `8000` |
 | `LOG_LEVEL` | No | Logging level | `INFO`, `DEBUG` |
-| `ENCRYPTION_KEY` | Yes | For encrypting secrets | 32+ character random string |
+| **`ENCRYPTION_KEY`** | **Yes** | **Encrypts sensitive data in DB** | **Generate with security script** |
+| `SECRET_KEY` | Recommended | General app security | Generate with security script |
+| `SESSION_SECRET` | Recommended | Signs session cookies | Generate with security script |
+| **`ENVIRONMENT`** | **Yes (production)** | **Environment mode** | **`production` or `development`** |
+| **`CORS_ORIGINS`** | **Yes (production)** | **Allowed CORS origins** | **`https://example.com,https://app.example.com`** |
 | `ADMIN_TELEGRAM_IDS` | No | Admin Telegram IDs | `123,456,789` |
 | `ADMIN_SLACK_IDS` | No | Admin Slack IDs | `U123,U456` |
 | `VITE_API_URL` | No | Frontend API URL | `http://localhost:8000/api/admin` |

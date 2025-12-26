@@ -56,6 +56,14 @@ class ScheduledTasks:
             name='Recalculate monthly statistics'
         )
 
+        # Sync Google Calendar every 4 hours
+        self.scheduler.add_job(
+            self.sync_google_calendars,
+            IntervalTrigger(hours=4),
+            id='sync_google_calendars',
+            name='Sync Google Calendar schedules'
+        )
+
     async def start(self):
         """Start scheduler"""
         self.setup()
@@ -261,3 +269,37 @@ class ScheduledTasks:
 
         except Exception as e:
             logger.exception(f"Error in recalculate_monthly_stats: {e}")
+
+    async def sync_google_calendars(self):
+        """Sync Google Calendar schedules for all workspaces"""
+        try:
+            async with get_db_with_retry() as db:
+                workspaces = await self.get_all_workspaces(db)
+
+                for workspace in workspaces:
+                    try:
+                        from app.services.google_calendar_service import GoogleCalendarService
+                        from app.repositories.google_calendar_repository import GoogleCalendarRepository
+                        from app.repositories.schedule_repository import ScheduleRepository
+                        from app.repositories.team_repository import TeamRepository
+
+                        google_calendar_repo = GoogleCalendarRepository(db)
+                        schedule_repo = ScheduleRepository(db)
+                        team_repo = TeamRepository(db)
+                        google_calendar_service = GoogleCalendarService(google_calendar_repo)
+
+                        synced_count = await google_calendar_service.sync_workspace_schedules(
+                            workspace.id,
+                            schedule_repo,
+                            team_repo
+                        )
+
+                        logger.info(f"Google Calendar sync completed for workspace {workspace.id}: {synced_count} events synced")
+
+                    except Exception as e:
+                        logger.warning(f"Error syncing Google Calendar for workspace {workspace.id}: {e}")
+
+                logger.info("Google Calendar sync completed for all workspaces")
+
+        except Exception as e:
+            logger.exception(f"Error in sync_google_calendars: {e}")

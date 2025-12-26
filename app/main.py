@@ -307,6 +307,20 @@ async def test_check_escalations():
         return {"error": str(e), "status": "failed"}
 
 
+@app.post("/test/sync-google-calendars")
+async def test_sync_google_calendars():
+    """Manually trigger Google Calendar sync"""
+    if not scheduled_tasks:
+        return {"error": "Scheduled tasks not initialized"}
+
+    try:
+        await scheduled_tasks.sync_google_calendars()
+        return {"status": "success", "message": "Google Calendar sync triggered"}
+    except Exception as e:
+        logger.exception(f"Error triggering Google Calendar sync: {e}")
+        return {"error": str(e), "status": "failed"}
+
+
 @app.get("/test/scheduler-status")
 async def test_scheduler_status():
     """Get scheduler status"""

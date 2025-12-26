@@ -159,5 +159,96 @@
             "sync_success": "Календарь успешно синхронизирован!",
             "sync_error": "Ошибка при синхронизации календаря"
         }
+    },
+    "incidents": {
+        "title": "Управление инцидентами",
+        "start_new": "Начать новый инцидент",
+        "name_placeholder": "Название инцидента...",
+        "start_btn": "Начать инцидент",
+        "mtr": "Среднее время разрешения",
+        "days_without": "Дней без инцидентов",
+        "total_incidents": "Всего инцидентов",
+        "avg_duration": "Средняя продолжительность",
+        "active_incidents": "Активные инциденты",
+        "all_incidents": "Все инциденты",
+        "no_incidents": "Инцидентов пока нет",
+        "complete_btn": "Завершить",
+        "table": {
+            "name": "Название",
+            "status": "Статус",
+            "duration": "Длительность",
+            "started": "Начат",
+            "ended": "Завершен",
+            "active": "Активен",
+            "resolved": "Решен"
+        },
+        "errors": {
+            "load_failed": "Не удалось загрузить инциденты",
+            "name_required": "Пожалуйста, введите название инцидента",
+            "create_failed": "Не удалось создать инцидент",
+            "complete_failed": "Не удалось завершить инцидент",
+            "no_workspace": "Рабочая область не определена"
+        }
+    },
+    "escalations": {
+        "title": "Эскалации",
+        "subtitle": "Управление назначением CTO и путями эскалации",
+        "add_btn": "Добавить эскалацию",
+        "global_cto": "Глобальный CTO",
+        "global_cto_hint": "Глобальный CTO (для всех команд)",
+        "no_global": "Глобальный CTO не назначен",
+        "team_escalations": "Эскалации команд",
+        "no_team_esc": "Эскалаций команд пока нет",
+        "not_assigned": "Эскалация не назначена",
+        "role_cto": "Chief Technical Officer",
+        "delete_confirm": "Удалить эту эскалацию?",
+        "modal": {
+            "title": "Добавить эскалацию",
+            "team_label": "Команда *",
+            "user_label": "CTO Пользователь *",
+            "select_team": "Выберите команду",
+            "select_user": "Выберите пользователя",
+            "create_btn": "Создать эскалацию"
+        }
+    },
+    "reports": {
+        "title": "Отчеты и Аналитика",
+        "subtitle": "Создание и экспорт отчетов по дежурствам",
+        "generate_title": "Создать отчет",
+        "start_date": "Дата начала",
+        "end_date": "Дата окончания",
+        "format": "Формат",
+        "generate_btn": "Создать отчет",
+        "stats": {
+            "total_users": "Всего пользователей",
+            "total_duties": "Всего дежурств",
+            "avg_per_user": "Среднее на пользователя"
+        },
+        "top_users": "Топ пользователей по дежурствам",
+        "no_data": "Нет данных по дежурствам",
+        "duties_count": "дежурств"
+    },
+    "login": {
+        "title": "Duty Bot",
+        "workspace_admin": "Админ-панель",
+        "continue_telegram": "Войти через Telegram",
+        "continue_slack": "Войти через Slack",
+        "fast_secure": "Быстро и Безопасно",
+        "workplace_auth": "Корпоративная авторизация",
+        "or": "ИЛИ",
+        "redirect_hint": "Вы будете перенаправлены для авторизации на выбранной платформе. Обратитесь к администратору, если вам нужен доступ.",
+        "telegram_script_error": "Скрипт Telegram еще не загружен. Пожалуйста, подождите.",
+        "footer": "Duty Bot System • Все права защищены"
+    },
+    "navigation": {
+        "dashboard": "Дашборд",
+        "schedules": "Расписания",
+        "incidents": "Инциденты",
+        "teams": "Команды",
+        "escalations": "Эскалации",
+        "reports": "Отчеты",
+        "settings": "Настройки",
+        "logout": "Выйти",
+        "workspace": "Воркспейс"
     }
 }

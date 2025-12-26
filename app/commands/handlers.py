@@ -111,6 +111,12 @@ class CommandHandler:
 • `/escalate level2` - Escalate to CTO
 • `/escalate ack` - Acknowledge escalation
 
+*🚨 Incidents*
+• `/incident` - List active incidents
+• `/incident start <name>` - Start new incident
+• `/incident stop` - Resolve current incident
+• `/incident metrics <period>` - Show metrics (week/month)
+
 *Date Format:*
 • `DD.MM`, `DD.MM.YYYY`
 • Month name (e.g., `december`)

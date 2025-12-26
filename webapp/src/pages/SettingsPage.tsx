@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Shield, ShieldOff, AlertCircle, Calendar, Copy, Check, Globe } from 'lucide-react';
+import { Shield, ShieldOff, AlertCircle, Calendar, Copy, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -9,7 +9,7 @@ import { apiService } from '../services/api';
 import { User } from '../types';
 
 const SettingsPage: React.FC = () => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -150,9 +150,6 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const changeLanguage = (lng: string) => {
-    i18n.changeLanguage(lng);
-  };
 
   if (!currentUser?.is_admin) {
     return (
@@ -193,33 +190,6 @@ const SettingsPage: React.FC = () => {
         <Alert type="error" message={error} onClose={() => setError(null)} />
       )}
 
-      {/* Language Settings */}
-      <Card className="mb-8">
-        <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Globe size={20} className="text-blue-600" />
-            {t('settings.language')}
-          </h2>
-        </CardHeader>
-        <CardBody>
-          <div className="flex gap-4">
-            <Button
-              variant={i18n.language === 'en' ? 'primary' : 'secondary'}
-              onClick={() => changeLanguage('en')}
-              className="flex-1"
-            >
-              English
-            </Button>
-            <Button
-              variant={i18n.language === 'ru' ? 'primary' : 'secondary'}
-              onClick={() => changeLanguage('ru')}
-              className="flex-1"
-            >
-              Русский
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
 
       {/* Admin Management */}
       <Card className="mb-8">

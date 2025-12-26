@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -28,7 +29,7 @@ interface Metrics {
 }
 
 const IncidentsPage: React.FC = () => {
-  // const { t } = useTranslation();
+  const { t } = useTranslation();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,7 +83,7 @@ const IncidentsPage: React.FC = () => {
       setMetrics(metricsData);
       setActiveIncidents(activeData);
     } catch (err) {
-      setError('Failed to load incidents');
+      setError(t('incidents.errors.load_failed'));
       console.error(err);
     } finally {
       setLoading(false);
@@ -91,7 +92,7 @@ const IncidentsPage: React.FC = () => {
 
   const handleCreateIncident = async () => {
     if (!incidentName.trim()) {
-      setError('Please enter incident name');
+      setError(t('incidents.errors.name_required'));
       return;
     }
 
@@ -100,7 +101,7 @@ const IncidentsPage: React.FC = () => {
       const workspaceId = user.workspace_id;
 
       if (!workspaceId) {
-        setError('Working workspace not identified. Please try logging in again.');
+        setError(t('incidents.errors.no_workspace'));
         return;
       }
 
@@ -109,10 +110,11 @@ const IncidentsPage: React.FC = () => {
       setError(null);
       await loadData();
     } catch (err) {
-      setError('Failed to create incident');
+      setError(t('incidents.errors.create_failed'));
       console.error(err);
     }
   };
+
 
   const handleCompleteIncident = async (incidentId: number) => {
     try {
@@ -120,14 +122,14 @@ const IncidentsPage: React.FC = () => {
       const workspaceId = user.workspace_id;
 
       if (!workspaceId) {
-        setError('Working workspace not identified.');
+        setError(t('incidents.errors.no_workspace'));
         return;
       }
 
       await apiService.completeIncident(workspaceId, incidentId);
       await loadData();
     } catch (err) {
-      setError('Failed to complete incident');
+      setError(t('incidents.errors.complete_failed'));
       console.error(err);
     }
   };
@@ -170,27 +172,27 @@ const IncidentsPage: React.FC = () => {
 
   return (
     <div className="p-8">
-      <h1 className="text-3xl font-bold mb-8">Incident Management</h1>
+      <h1 className="text-3xl font-bold mb-8">{t('incidents.title')}</h1>
 
       {error && <Alert type="error" message={error} />}
 
       {/* Quick Start Section */}
       <Card className="mb-8">
         <CardHeader>
-          <h2 className="text-xl font-semibold">Start New Incident</h2>
+          <h2 className="text-xl font-semibold">{t('incidents.start_new')}</h2>
         </CardHeader>
         <CardBody>
           <div className="flex gap-4">
             <Input
               type="text"
-              placeholder="Incident name..."
+              placeholder={t('incidents.name_placeholder')}
               value={incidentName}
               onChange={(e) => setIncidentName(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleCreateIncident()}
             />
             <Button onClick={handleCreateIncident} variant="primary">
               <Icons.Plus size={20} className="mr-2" />
-              Start Incident
+              {t('incidents.start_btn')}
             </Button>
           </div>
         </CardBody>
@@ -206,7 +208,7 @@ const IncidentsPage: React.FC = () => {
                 onClick={() => setPeriod(p)}
                 variant={period === p ? 'primary' : 'secondary'}
               >
-                {p.charAt(0).toUpperCase() + p.slice(1)}
+                {t(`schedules.${p}`, { defaultValue: p.charAt(0).toUpperCase() + p.slice(1) })}
               </Button>
             ))}
           </div>
@@ -214,25 +216,25 @@ const IncidentsPage: React.FC = () => {
           <div className="grid grid-cols-4 gap-4">
             <Card>
               <CardBody>
-                <div className="text-gray-600 text-sm mb-2">Mean Time to Resolution</div>
+                <div className="text-gray-600 text-sm mb-2">{t('incidents.mtr')}</div>
                 <div className="text-2xl font-bold">{formatMetricTime(metrics.mtr)}</div>
               </CardBody>
             </Card>
             <Card>
               <CardBody>
-                <div className="text-gray-600 text-sm mb-2">Days Without Incidents</div>
+                <div className="text-gray-600 text-sm mb-2">{t('incidents.days_without')}</div>
                 <div className="text-2xl font-bold">{metrics.daysWithoutIncidents}</div>
               </CardBody>
             </Card>
             <Card>
               <CardBody>
-                <div className="text-gray-600 text-sm mb-2">Total Incidents</div>
+                <div className="text-gray-600 text-sm mb-2">{t('incidents.total_incidents')}</div>
                 <div className="text-2xl font-bold">{metrics.totalIncidents}</div>
               </CardBody>
             </Card>
             <Card>
               <CardBody>
-                <div className="text-gray-600 text-sm mb-2">Average Duration</div>
+                <div className="text-gray-600 text-sm mb-2">{t('incidents.avg_duration')}</div>
                 <div className="text-2xl font-bold">{formatMetricTime(metrics.averageIncidentDuration)}</div>
               </CardBody>
             </Card>
@@ -245,7 +247,7 @@ const IncidentsPage: React.FC = () => {
         <Card className="mb-8">
           <CardHeader>
             <h2 className="text-xl font-semibold">
-              Active Incidents ({activeIncidents.length})
+              {t('incidents.active_incidents')} ({activeIncidents.length})
             </h2>
           </CardHeader>
           <CardBody>
@@ -264,7 +266,7 @@ const IncidentsPage: React.FC = () => {
                     variant="primary"
                   >
                     <Icons.Check size={20} className="mr-2" />
-                    Complete
+                    {t('incidents.complete_btn')}
                   </Button>
                 </div>
               ))}
@@ -276,23 +278,23 @@ const IncidentsPage: React.FC = () => {
       {/* All Incidents */}
       <Card>
         <CardHeader>
-          <h2 className="text-xl font-semibold">All Incidents</h2>
+          <h2 className="text-xl font-semibold">{t('incidents.all_incidents')}</h2>
         </CardHeader>
         <CardBody>
           {incidents.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              No incidents yet
+              {t('incidents.no_incidents')}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-semibold">Name</th>
-                    <th className="text-left py-3 px-4 font-semibold">Status</th>
-                    <th className="text-left py-3 px-4 font-semibold">Duration</th>
-                    <th className="text-left py-3 px-4 font-semibold">Started</th>
-                    <th className="text-left py-3 px-4 font-semibold">Ended</th>
+                    <th className="text-left py-3 px-4 font-semibold">{t('incidents.table.name')}</th>
+                    <th className="text-left py-3 px-4 font-semibold">{t('incidents.table.status')}</th>
+                    <th className="text-left py-3 px-4 font-semibold">{t('incidents.table.duration')}</th>
+                    <th className="text-left py-3 px-4 font-semibold">{t('incidents.table.started')}</th>
+                    <th className="text-left py-3 px-4 font-semibold">{t('incidents.table.ended')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -304,7 +306,7 @@ const IncidentsPage: React.FC = () => {
                           ? 'bg-red-100 text-red-800'
                           : 'bg-green-100 text-green-800'
                           }`}>
-                          {incident.status === 'active' ? 'Active' : 'Resolved'}
+                          {incident.status === 'active' ? t('incidents.table.active') : t('incidents.table.resolved')}
                         </span>
                       </td>
                       <td className="py-3 px-4">

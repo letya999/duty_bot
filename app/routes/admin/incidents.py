@@ -10,9 +10,9 @@ from app.dependencies import (
     get_db,
     get_incident_repository,
     get_user_repository,
+    get_current_user,
 )
 from app.models import User
-from app.auth import session_manager
 from app.services.incident_service import IncidentService
 from app.services.metrics_service import MetricsService
 from app.repositories import IncidentRepository
@@ -65,26 +65,12 @@ async def get_metrics_service(
     return MetricsService(incident_repo)
 
 
-async def get_user_from_token(
-    authorization: str = Header(None),
-    user_repo = Depends(get_user_repository)
-) -> User:
-    """Get user from token."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
-
-    user = await session_manager.get_user_from_token(authorization, user_repo)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return user
-
-
 # Routes
 @router.post("/{workspace_id}/incidents", response_model=IncidentResponse)
 async def create_incident(
     workspace_id: int,
     request: IncidentCreateRequest,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     incident_service: IncidentService = Depends(get_incident_service),
 ) -> IncidentResponse:
     """Create new incident."""
@@ -99,7 +85,7 @@ async def create_incident(
 async def list_incidents(
     workspace_id: int,
     status: str = None,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     incident_service: IncidentService = Depends(get_incident_service),
     db: AsyncSession = Depends(get_db),
 ) -> list[IncidentResponse]:
@@ -128,7 +114,7 @@ async def list_incidents(
 async def get_incident(
     workspace_id: int,
     incident_id: int,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     incident_service: IncidentService = Depends(get_incident_service),
 ) -> IncidentResponse:
     """Get incident details."""
@@ -146,7 +132,7 @@ async def get_incident(
 async def complete_incident(
     workspace_id: int,
     incident_id: int,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     incident_service: IncidentService = Depends(get_incident_service),
 ) -> IncidentResponse:
     """Complete incident."""
@@ -165,7 +151,7 @@ async def complete_incident(
 async def delete_incident(
     workspace_id: int,
     incident_id: int,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     incident_service: IncidentService = Depends(get_incident_service),
 ) -> dict:
     """Delete incident."""
@@ -184,7 +170,7 @@ async def delete_incident(
 async def get_metrics(
     workspace_id: int,
     period: str = "week",
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     metrics_service: MetricsService = Depends(get_metrics_service),
 ) -> MetricsResponse:
     """Get incident metrics for workspace."""

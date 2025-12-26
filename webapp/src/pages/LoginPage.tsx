@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Loader, HelpCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Alert } from '../components/ui/Alert';
 import TelegramLoginWidget from '../components/TelegramLoginWidget';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 // Import logos
 import telegramLogo from '../assets/telegram-logo.png';
 import slackLogo from '../assets/slack-logo.png';
 
 const LoginPage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +57,7 @@ const LoginPage: React.FC = () => {
 
   const handleProgrammaticLogin = () => {
     if (!window.Telegram?.Login) {
-      setError("Telegram script not loaded yet. Please wait a moment.");
+      setError(t('login.telegram_script_error'));
       return;
     }
 
@@ -71,6 +74,11 @@ const LoginPage: React.FC = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center px-4 bg-[#0f172a]">
+      {/* Language Switcher */}
+      <div className="fixed top-4 right-4 z-[60]">
+        <LanguageSwitcher />
+      </div>
+
       {/* Background Decorative Elements */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-500/20 rounded-full blur-[120px]" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px]" />
@@ -85,8 +93,8 @@ const LoginPage: React.FC = () => {
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-tr from-emerald-400 to-teal-600 rounded-2xl shadow-lg mb-4 transform hover:rotate-12 transition-transform duration-300">
               <span className="text-3xl">🎯</span>
             </div>
-            <h1 className="text-3xl font-extrabold text-white tracking-tight">Duty Bot</h1>
-            <p className="text-emerald-400 font-medium tracking-wide uppercase text-xs mt-1">Workspace Admin</p>
+            <h1 className="text-3xl font-extrabold text-white tracking-tight">{t('login.title')}</h1>
+            <p className="text-emerald-400 font-medium tracking-wide uppercase text-xs mt-1">{t('login.workspace_admin')}</p>
           </div>
 
           {/* Error Alert */}
@@ -111,8 +119,8 @@ const LoginPage: React.FC = () => {
               <div className="flex items-center">
                 <img src={telegramLogo} alt="Telegram" className="w-8 h-8 mr-4 group-hover:scale-110 transition-transform" />
                 <div className="text-left">
-                  <p className="leading-tight">Continue with Telegram</p>
-                  <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Fast & Secure</p>
+                  <p className="leading-tight">{t('login.continue_telegram')}</p>
+                  <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">{t('login.fast_secure')}</p>
                 </div>
               </div>
               {loading ? (
@@ -125,7 +133,7 @@ const LoginPage: React.FC = () => {
             {/* Divider */}
             <div className="flex items-center py-4">
               <div className="flex-grow border-t border-white/10" />
-              <span className="px-4 text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">OR</span>
+              <span className="px-4 text-[10px] font-bold text-white/40 uppercase tracking-[0.2em]">{t('login.or')}</span>
               <div className="flex-grow border-t border-white/10" />
             </div>
 
@@ -138,8 +146,8 @@ const LoginPage: React.FC = () => {
               <div className="flex items-center">
                 <img src={slackLogo} alt="Slack" className="w-8 h-8 mr-4 group-hover:scale-110 transition-transform object-contain" />
                 <div className="text-left">
-                  <p className="leading-tight">Continue with Slack</p>
-                  <p className="text-[10px] text-white/40 font-medium uppercase tracking-wider">Workplace Auth</p>
+                  <p className="leading-tight">{t('login.continue_slack')}</p>
+                  <p className="text-[10px] text-white/40 font-medium uppercase tracking-wider">{t('login.workplace_auth')}</p>
                 </div>
               </div>
               <div className="w-2 h-2 rounded-full bg-purple-500 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -160,15 +168,14 @@ const LoginPage: React.FC = () => {
           <div className="mt-10 flex items-start gap-4 p-4 bg-white/5 rounded-2xl border border-white/5 animate-fade-in-up delay-300">
             <HelpCircle className="text-emerald-400 shrink-0" size={18} />
             <p className="text-xs text-white/60 leading-relaxed">
-              You will be redirected to authenticate with your chosen platform.
-              Contact your administrator if you need access.
+              {t('login.redirect_hint')}
             </p>
           </div>
         </div>
 
         {/* Bottom Credits */}
         <p className="mt-8 text-center text-white/30 text-[10px] font-medium tracking-widest uppercase animate-fade-in delay-300">
-          &copy; 2024 Duty Bot System &bull; All Rights Reserved
+          &copy; 2024 {t('login.footer')}
         </p>
       </div>
     </div>

@@ -62,6 +62,7 @@ class SlackHandler:
         self.app.command("/shift")(self.shift_command)
         self.app.command("/escalation")(self.escalation_command)
         self.app.command("/escalate")(self.escalate_command)
+        self.app.command("/incident")(self.incident_command)
         self.app.command("/help")(self.help_command)
 
     async def duty_command(self, ack, command, body):
@@ -479,6 +480,63 @@ class SlackHandler:
             )
         except Exception as e:
             logger.exception(f"Error in escalate_command: {e}")
+            await self.client.chat_postMessage(
+                channel=command["channel_id"],
+                text="❌ An error occurred"
+            )
+
+    async def incident_command(self, ack, command, body):
+        """Handle /incident command"""
+        await ack()
+
+        try:
+            async with get_db_with_retry() as db:
+                workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
+                handler = BotCommandHandler(db, workspace_id)
+
+                text = command.get("text", "").strip()
+                if not text:
+                    # Show list of active incidents
+                    result = await handler.incident_list()
+                else:
+                    parts = text.split()
+                    cmd = parts[0].strip()
+
+                    if cmd == "start" and len(parts) >= 2:
+                        incident_name = " ".join(parts[1:])
+                        result = await handler.incident_start(incident_name)
+
+                    elif cmd == "stop":
+                        result = await handler.incident_stop()
+
+                    elif cmd == "metrics":
+                        period = parts[1] if len(parts) > 1 else "week"
+                        result = await handler.incident_metrics(period)
+
+                    elif cmd == "list":
+                        result = await handler.incident_list()
+
+                    else:
+                        result = (
+                            "Usage:\n"
+                            "/incident - List active incidents\n"
+                            "/incident start <name> - Start incident\n"
+                            "/incident stop - Stop active incident\n"
+                            "/incident metrics [week|month|quarter|year] - Show metrics"
+                        )
+
+                await self.client.chat_postMessage(
+                    channel=command["channel_id"],
+                    text=result
+                )
+
+        except CommandError as e:
+            await self.client.chat_postMessage(
+                channel=command["channel_id"],
+                text=f"❌ {str(e)}"
+            )
+        except Exception as e:
+            logger.exception(f"Error in incident_command: {e}")
             await self.client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"

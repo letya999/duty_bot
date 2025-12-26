@@ -159,5 +159,96 @@
             "sync_success": "Calendar synced successfully!",
             "sync_error": "Failed to sync calendar"
         }
+    },
+    "incidents": {
+        "title": "Incident Management",
+        "start_new": "Start New Incident",
+        "name_placeholder": "Incident name...",
+        "start_btn": "Start Incident",
+        "mtr": "Mean Time to Resolution",
+        "days_without": "Days Without Incidents",
+        "total_incidents": "Total Incidents",
+        "avg_duration": "Average Duration",
+        "active_incidents": "Active Incidents",
+        "all_incidents": "All Incidents",
+        "no_incidents": "No incidents yet",
+        "complete_btn": "Complete",
+        "table": {
+            "name": "Name",
+            "status": "Status",
+            "duration": "Duration",
+            "started": "Started",
+            "ended": "Ended",
+            "active": "Active",
+            "resolved": "Resolved"
+        },
+        "errors": {
+            "load_failed": "Failed to load incidents",
+            "name_required": "Please enter incident name",
+            "create_failed": "Failed to create incident",
+            "complete_failed": "Failed to complete incident",
+            "no_workspace": "Working workspace not identified"
+        }
+    },
+    "escalations": {
+        "title": "Escalations",
+        "subtitle": "Manage CTO assignments and escalation paths",
+        "add_btn": "Add Escalation",
+        "global_cto": "Global CTO",
+        "global_cto_hint": "Global CTO (for all teams)",
+        "no_global": "No global CTO assigned",
+        "team_escalations": "Team Escalations",
+        "no_team_esc": "No team-specific escalations yet",
+        "not_assigned": "No escalation assigned",
+        "role_cto": "Chief Technical Officer",
+        "delete_confirm": "Delete this escalation?",
+        "modal": {
+            "title": "Add Escalation",
+            "team_label": "Team *",
+            "user_label": "CTO User *",
+            "select_team": "Select a team",
+            "select_user": "Select a user",
+            "create_btn": "Create Escalation"
+        }
+    },
+    "reports": {
+        "title": "Reports & Analytics",
+        "subtitle": "Generate and export duty reports",
+        "generate_title": "Generate Report",
+        "start_date": "Start Date",
+        "end_date": "End Date",
+        "format": "Format",
+        "generate_btn": "Generate Report",
+        "stats": {
+            "total_users": "Total Users",
+            "total_duties": "Total Duties",
+            "avg_per_user": "Avg Duties per User"
+        },
+        "top_users": "Top Users by Duty Count",
+        "no_data": "No duty data available",
+        "duties_count": "duties"
+    },
+    "login": {
+        "title": "Duty Bot",
+        "workspace_admin": "Workspace Admin",
+        "continue_telegram": "Continue with Telegram",
+        "continue_slack": "Continue with Slack",
+        "fast_secure": "Fast & Secure",
+        "workplace_auth": "Workplace Auth",
+        "or": "OR",
+        "redirect_hint": "You will be redirected to authenticate with your chosen platform. Contact your administrator if you need access.",
+        "telegram_script_error": "Telegram script not loaded yet. Please wait a moment.",
+        "footer": "Duty Bot System • All Rights Reserved"
+    },
+    "navigation": {
+        "dashboard": "Dashboard",
+        "schedules": "Schedules",
+        "incidents": "Incidents",
+        "teams": "Teams",
+        "escalations": "Escalations",
+        "reports": "Reports",
+        "settings": "Settings",
+        "logout": "Logout",
+        "workspace": "Workspace"
     }
 }

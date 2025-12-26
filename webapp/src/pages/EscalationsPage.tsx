@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
-import { Card, CardHeader, CardBody } from '../components/ui/Card';
+import { Plus, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
@@ -22,6 +23,7 @@ interface EscalationFormData {
 }
 
 const EscalationsPage: React.FC = () => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [escalations, setEscalations] = useState<Escalation[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -81,7 +83,7 @@ const EscalationsPage: React.FC = () => {
   };
 
   const handleDeleteEscalation = async (escalationId: number) => {
-    if (!window.confirm('Delete this escalation?')) return;
+    if (!window.confirm(t('escalations.delete_confirm'))) return;
     try {
       await apiService.deleteEscalation(escalationId);
       loadData();
@@ -105,25 +107,25 @@ const EscalationsPage: React.FC = () => {
     <div className="p-8">
       <div className="mb-8 flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Escalations</h1>
-          <p className="text-gray-600 mt-2">Manage CTO assignments and escalation paths</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('escalations.title')}</h1>
+          <p className="text-gray-600 mt-2">{t('escalations.subtitle')}</p>
         </div>
         <Button onClick={handleOpenModal} variant="primary" size="md">
           <Plus size={20} />
-          Add Escalation
+          {t('escalations.add_btn')}
         </Button>
       </div>
 
       {/* Global Escalations */}
       <div className="mb-8">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Global CTO</h2>
+        <h2 className="text-xl font-bold text-gray-900 mb-4">{t('escalations.global_cto')}</h2>
         {globalEscalations.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {globalEscalations.map(escalation => (
               <Card key={escalation.id}>
                 <CardBody className="flex justify-between items-center">
                   <div>
-                    <p className="text-sm text-gray-600">Chief Technical Officer</p>
+                    <p className="text-sm text-gray-600">{t('escalations.role_cto')}</p>
                     <p className="text-lg font-semibold text-gray-900 mt-1">
                       {escalation.cto_user?.first_name} {escalation.cto_user?.last_name}
                     </p>
@@ -139,13 +141,13 @@ const EscalationsPage: React.FC = () => {
             ))}
           </div>
         ) : (
-          <p className="text-gray-600">No global CTO assigned</p>
+          <p className="text-gray-600">{t('escalations.no_global')}</p>
         )}
       </div>
 
       {/* Team-specific Escalations */}
       <div>
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Team Escalations</h2>
+        <h2 className="text-xl font-bold text-gray-900 mb-4">{t('escalations.team_escalations')}</h2>
         {teamEscalations.length > 0 ? (
           <div className="space-y-4">
             {teams.map(team => {
@@ -160,7 +162,7 @@ const EscalationsPage: React.FC = () => {
                           {teamEsc.cto_user?.first_name} {teamEsc.cto_user?.last_name}
                         </p>
                       ) : (
-                        <p className="text-gray-500 mt-1">No escalation assigned</p>
+                        <p className="text-gray-500 mt-1">{t('escalations.not_assigned')}</p>
                       )}
                     </div>
                     {teamEsc && (
@@ -177,7 +179,7 @@ const EscalationsPage: React.FC = () => {
             })}
           </div>
         ) : (
-          <p className="text-gray-600">No team-specific escalations yet</p>
+          <p className="text-gray-600">{t('escalations.no_team_esc')}</p>
         )}
       </div>
 
@@ -185,7 +187,7 @@ const EscalationsPage: React.FC = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Add Escalation"
+        title={t('escalations.modal.title')}
         size="sm"
       >
         <div className="space-y-4">
@@ -197,21 +199,21 @@ const EscalationsPage: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, isGlobal: e.target.checked })}
                 className="w-4 h-4"
               />
-              <span className="text-sm font-medium text-gray-700">Global CTO (for all teams)</span>
+              <span className="text-sm font-medium text-gray-700">{t('escalations.global_cto_hint')}</span>
             </label>
           </div>
 
           {!formData.isGlobal && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Team *
+                {t('escalations.modal.team_label')}
               </label>
               <select
                 value={formData.teamId}
                 onChange={(e) => setFormData({ ...formData, teamId: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">Select a team</option>
+                <option value="">{t('escalations.modal.select_team')}</option>
                 {teams.map(team => (
                   <option key={team.id} value={team.id}>
                     {team.name}
@@ -223,14 +225,14 @@ const EscalationsPage: React.FC = () => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              CTO User *
+              {t('escalations.modal.user_label')}
             </label>
             <select
               value={formData.ctoId}
               onChange={(e) => setFormData({ ...formData, ctoId: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">Select a user</option>
+              <option value="">{t('escalations.modal.select_user')}</option>
               {users.map(user => (
                 <option key={user.id} value={user.id}>
                   {user.first_name} {user.last_name || ''}
@@ -241,14 +243,14 @@ const EscalationsPage: React.FC = () => {
 
           <div className="flex gap-3 justify-end pt-4 border-t">
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
               onClick={handleCreateEscalation}
               disabled={!formData.ctoId || (!formData.isGlobal && !formData.teamId)}
             >
-              Create Escalation
+              {t('escalations.modal.create_btn')}
             </Button>
           </div>
         </div>

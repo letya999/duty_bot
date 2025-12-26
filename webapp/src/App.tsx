@@ -15,22 +15,17 @@ import IncidentsPage from './pages/IncidentsPage';
 
 // Components
 import Navigation from './components/Navigation';
+import LanguageSwitcher from './components/LanguageSwitcher';
 import { LoadingSpinner } from './components/ui/LoadingSpinner';
 
 // Check if user is authenticated
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     const sessionToken = localStorage.getItem('session_token');
     if (sessionToken) {
       setIsAuthenticated(true);
-      // Load user from localStorage
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        setUser(JSON.parse(userData));
-      }
     } else {
       setIsAuthenticated(false);
     }
@@ -62,8 +57,11 @@ function App() {
           path="/*"
           element={
             <ProtectedRoute>
-              <div className="flex h-screen bg-gray-50">
+              <div className="flex h-screen bg-gray-50 relative">
                 <Navigation />
+                <div className="fixed top-4 right-4 z-[60]">
+                  <LanguageSwitcher />
+                </div>
                 <main className="flex-1 overflow-auto">
                   <Routes>
                     <Route path="/" element={<DashboardPage />} />

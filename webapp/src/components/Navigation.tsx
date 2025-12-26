@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, Calendar, Home, LogOut, Menu, Settings, X, Users, AlertCircle, ChevronDown, Zap } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { User } from '../types';
 
 interface Workspace {
@@ -13,6 +14,7 @@ interface Workspace {
 }
 
 const Navigation: React.FC = () => {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
@@ -84,15 +86,15 @@ const Navigation: React.FC = () => {
   };
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: <Home size={20} /> },
-    { path: '/schedules', label: 'Schedules', icon: <Calendar size={20} /> },
-    { path: '/incidents', label: 'Incidents', icon: <Zap size={20} /> },
+    { path: '/', label: t('navigation.dashboard'), icon: <Home size={20} /> },
+    { path: '/schedules', label: t('navigation.schedules'), icon: <Calendar size={20} /> },
+    { path: '/incidents', label: t('navigation.incidents'), icon: <Zap size={20} /> },
     ...(user?.is_admin ? [
-      { path: '/teams', label: 'Teams', icon: <Users size={20} /> },
-      { path: '/escalations', label: 'Escalations', icon: <AlertCircle size={20} /> },
+      { path: '/teams', label: t('navigation.teams'), icon: <Users size={20} /> },
+      { path: '/escalations', label: t('navigation.escalations'), icon: <AlertCircle size={20} /> },
     ] : []),
-    { path: '/reports', label: 'Reports', icon: <BarChart3 size={20} /> },
-    ...(user?.is_admin ? [{ path: '/settings', label: 'Settings', icon: <Settings size={20} /> }] : []),
+    { path: '/reports', label: t('navigation.reports'), icon: <BarChart3 size={20} /> },
+    ...(user?.is_admin ? [{ path: '/settings', label: t('navigation.settings'), icon: <Settings size={20} /> }] : []),
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -148,7 +150,7 @@ const Navigation: React.FC = () => {
               <p className="text-xs text-gray-500">@{user.username}</p>
               {user.is_admin && (
                 <span className="inline-block mt-2 px-2 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded">
-                  Admin
+                  {t('dashboard.stats.admins').slice(0, -1)} {/* Crude but usually works for "Admin" vs "Admins" if not separately translated */}
                 </span>
               )}
             </div>
@@ -162,7 +164,7 @@ const Navigation: React.FC = () => {
                     className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors text-xs font-medium border border-gray-200"
                   >
                     <span className="truncate">
-                      {currentWorkspace?.name || 'Workspace'}
+                      {currentWorkspace?.name || t('navigation.workspace')}
                     </span>
                     <ChevronDown size={14} />
                   </button>
@@ -202,7 +204,7 @@ const Navigation: React.FC = () => {
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors text-sm font-medium"
             >
               <LogOut size={18} />
-              Logout
+              {t('navigation.logout')}
             </button>
           </div>
         )}

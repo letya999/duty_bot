@@ -266,7 +266,6 @@ const TeamsPage: React.FC = () => {
             <CardHeader className="flex justify-between items-start">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">{team.name}</h3>
-                <p className="text-sm text-text-muted mt-1">{team.description || t('teams.no_description')}</p>
               </div>
               <div className="flex gap-2">
                 <button

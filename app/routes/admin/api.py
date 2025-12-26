@@ -16,6 +16,7 @@ from app.dependencies import (
     get_admin_log_repository,
     get_duty_stats_repository,
     get_google_calendar_repository,
+    get_current_user,
 )
 from app.models import User
 from app.auth import session_manager
@@ -88,44 +89,6 @@ async def get_stats_service(db: AsyncSession = Depends(get_db)) -> StatsService:
     return StatsService(db)
 
 
-from app.config import get_settings
-
-async def get_user_from_token(
-    authorization: str = Header(None),
-    user_repo: UserRepository = Depends(get_user_repository)
-) -> User:
-    """Extract and verify user from Bearer token"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise AuthenticationError("Missing or invalid authorization header")
-
-    token = authorization.split(" ", 1)[1]
-    session = session_manager.validate_session(token)
-
-    if not session:
-        raise AuthenticationError("Invalid or expired token")
-
-    # Get user from repository
-    user = await user_repo.get_by_id(session['user_id'])
-    if not user:
-        raise AuthenticationError("User not found")
-
-    # Check if user is a master admin - always grant admin status in any workspace
-    settings = get_settings()
-    is_master = False
-    if user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram'):
-        is_master = True
-    if user.slack_user_id and user.slack_user_id in settings.get_admin_ids('slack'):
-        is_master = True
-    
-    if is_master and not user.is_admin:
-        # We can temporarily set it for this request context
-        user.is_admin = True
-        # Optional: update in DB for future requests
-        await user_repo.update(user.id, {"is_admin": True})
-
-    return user
-
-
 class UserUpdateRequest(BaseModel):
     display_name: str | None = None
     first_name: str | None = None
@@ -139,7 +102,7 @@ class UserUpdateRequest(BaseModel):
     summary="Get current user information",
     description="Получить информацию о текущем авторизованном пользователе. Требует валидный Bearer token."
 )
-async def get_user_info(user: User = Depends(get_user_from_token)) -> dict:
+async def get_user_info(user: User = Depends(get_current_user)) -> dict:
     """Get current user info - returns authenticated user details"""
     return {
         "id": user.id,
@@ -158,7 +121,7 @@ async def get_user_info(user: User = Depends(get_user_from_token)) -> dict:
     description="Получить список всех пользователей в workspace."
 )
 async def get_all_users(
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     user_service: UserService = Depends(get_user_service)
 ) -> list:
     """Get all users in workspace - uses UserService"""
@@ -195,7 +158,7 @@ async def get_all_users(
 async def update_user_info(
     user_id: int,
     data: UserUpdateRequest,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     user_service: UserService = Depends(get_user_service)
 ) -> dict:
     """Update user info"""
@@ -239,7 +202,7 @@ async def update_user_info(
     description="Получить список всех команд в workspace с информацией о членах."
 )
 async def get_teams(
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     team_service: TeamService = Depends(get_team_service)
 ) -> list:
     """Get all teams in workspace - uses TeamService"""
@@ -277,7 +240,7 @@ async def get_teams(
 @router.get("/teams/{team_id}/members")
 async def get_team_members(
     team_id: int,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     team_service: TeamService = Depends(get_team_service)
 ) -> list:
     """Get all members of a team - uses TeamService"""
@@ -322,7 +285,7 @@ async def get_team_members(
 async def get_month_schedule(
     year: int,
     month: int,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     schedule_service: ScheduleService = Depends(get_schedule_service),
     team_service: TeamService = Depends(get_team_service),
     db: AsyncSession = Depends(get_db)
@@ -361,7 +324,7 @@ async def get_month_schedule(
 )
 async def get_daily_schedule(
     date: str,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     schedule_service: ScheduleService = Depends(get_schedule_service),
     team_service: TeamService = Depends(get_team_service),
     db: AsyncSession = Depends(get_db)
@@ -398,7 +361,7 @@ async def assign_duty(
     user_id: int = Body(..., embed=True),
     duty_date: str = Body(..., embed=True),
     team_id: int = Body(..., embed=True),
-    current_user: User = Depends(get_user_from_token),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Assign duty to a user - uses ScheduleService"""
@@ -450,7 +413,7 @@ async def assign_duty(
 )
 async def remove_duty(
     schedule_id: int,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Remove duty assignment - uses ScheduleService"""
@@ -492,7 +455,7 @@ async def assign_shift(
     user_id: int = Body(..., embed=True),
     shift_date: str = Body(..., embed=True),
     team_id: int = Body(..., embed=True),
-    current_user: User = Depends(get_user_from_token),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Assign user to shift - for teams with shifts enabled"""
@@ -548,7 +511,7 @@ async def assign_shifts_bulk(
     start_date: str = Body(..., embed=True),
     end_date: str = Body(..., embed=True),
     team_id: int = Body(..., embed=True),
-    current_user: User = Depends(get_user_from_token),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Bulk assign users to shifts for date range"""
@@ -615,7 +578,7 @@ async def assign_shifts_bulk(
     description="Получить список всех администраторов в workspace."
 )
 async def get_admins(
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Get list of all admins in workspace - uses UserService"""
@@ -648,7 +611,7 @@ async def get_admins(
 )
 async def promote_user(
     user_id: int,
-    current_user: User = Depends(get_user_from_token),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Promote user to admin - uses AdminService for logging"""
@@ -698,7 +661,7 @@ async def promote_user(
 )
 async def demote_user(
     user_id: int,
-    current_user: User = Depends(get_user_from_token),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Remove admin rights from user - uses AdminService for logging"""
@@ -753,7 +716,7 @@ async def demote_user(
 )
 async def get_admin_logs(
     limit: int = 50,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Get recent admin action logs - uses AdminService"""
@@ -793,7 +756,7 @@ async def get_admin_logs(
 async def get_schedules_by_date_range(
     start_date: str,
     end_date: str,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     schedule_service: ScheduleService = Depends(get_schedule_service),
     team_service: TeamService = Depends(get_team_service),
     db: AsyncSession = Depends(get_db)
@@ -850,7 +813,7 @@ async def get_schedules_by_date_range(
 async def get_schedule_statistics(
     start_date: str = None,
     end_date: str = None,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     stats_service: StatsService = Depends(get_stats_service),
     schedule_service: ScheduleService = Depends(get_schedule_service),
     team_service: TeamService = Depends(get_team_service)
@@ -920,7 +883,7 @@ async def update_duty(
     user_id: int = Body(..., embed=False),
     duty_date: str = Body(..., embed=False),
     team_id: int | None = Body(None, embed=False),
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Update existing duty assignment"""
@@ -959,7 +922,7 @@ async def assign_bulk_duties(
     start_date: str = Body(..., embed=False),
     end_date: str = Body(..., embed=False),
     team_id: int | None = Body(None, embed=False),
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Assign multiple users to dates in range"""
@@ -1019,7 +982,7 @@ async def assign_bulk_duties(
 async def move_duty(
     schedule_id: int,
     new_date: str = Body(..., embed=True),
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Move duty to different date"""
@@ -1061,7 +1024,7 @@ async def move_duty(
 async def replace_duty_user(
     schedule_id: int,
     user_id: int = Body(..., embed=True),
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Replace person in duty with different user"""
@@ -1104,7 +1067,7 @@ async def create_team(
     display_name: str = Body(..., embed=False),
     has_shifts: bool = Body(False, embed=False),
     team_lead_id: int | None = Body(None, embed=False),
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Create new team"""
@@ -1144,7 +1107,7 @@ async def update_team(
     display_name: str | None = Body(None, embed=False),
     has_shifts: bool | None = Body(None, embed=False),
     team_lead_id: int | None = Body(None, embed=False),
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Update team"""
@@ -1190,7 +1153,7 @@ async def update_team(
 )
 async def delete_team(
     team_id: int,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Delete team"""
@@ -1222,7 +1185,7 @@ async def delete_team(
 async def add_team_member(
     team_id: int,
     user_id: int = Body(..., embed=True),
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Add member to team"""
@@ -1258,7 +1221,7 @@ async def add_team_member(
 async def remove_team_member(
     team_id: int,
     member_id: int,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Remove member from team"""
@@ -1296,7 +1259,7 @@ async def remove_team_member(
 async def import_team_member(
     team_id: int,
     handle: str = Body(..., embed=True),
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Import member by handle"""
@@ -1479,7 +1442,7 @@ async def move_team_member(
     user_id: int = Body(..., embed=True),
     from_team_id: int = Body(..., embed=True),
     to_team_id: int = Body(..., embed=True),
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Move member between teams"""
@@ -1522,7 +1485,7 @@ async def move_team_member(
 )
 async def get_escalations(
     team_id: int | None = None,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> list:
     """Get escalations"""
@@ -1566,7 +1529,7 @@ async def get_escalations(
 async def create_escalation(
     team_id: int | None = Body(None, embed=False),
     cto_id: int = Body(..., embed=False),
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Create escalation"""
@@ -1601,7 +1564,7 @@ async def create_escalation(
 )
 async def delete_escalation(
     escalation_id: int,
-    user: User = Depends(get_user_from_token),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Delete escalation"""
@@ -1649,13 +1612,11 @@ async def get_google_calendar_service(
 
 @router.get("/settings/google-calendar/status")
 async def get_google_calendar_status(
-    authorization: str = Header(None),
-    user_repo: UserRepository = Depends(get_user_repository),
+    user: User = Depends(get_current_user),
     google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
 ) -> dict:
     """Get Google Calendar integration status."""
     try:
-        user = await get_user_from_token(authorization, user_repo)
 
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
@@ -1739,13 +1700,11 @@ async def setup_google_calendar(
 
 @router.delete("/settings/google-calendar")
 async def disconnect_google_calendar(
-    authorization: str = Header(None),
-    user_repo: UserRepository = Depends(get_user_repository),
+    user: User = Depends(get_current_user),
     google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
 ) -> dict:
     """Disconnect Google Calendar integration."""
     try:
-        user = await get_user_from_token(authorization, user_repo)
 
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
@@ -1768,14 +1727,11 @@ async def disconnect_google_calendar(
 
 @router.get("/settings/google-calendar/url")
 async def get_public_calendar_url(
-    authorization: str = Header(None),
-    user_repo: UserRepository = Depends(get_user_repository),
+    user: User = Depends(get_current_user),
     google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
 ) -> dict:
     """Get public Google Calendar URL."""
     try:
-        user = await get_user_from_token(authorization, user_repo)
-
         integration = await google_calendar_repo.get_by_workspace(user.workspace_id)
 
         if not integration or not integration.is_active:
@@ -1795,15 +1751,13 @@ async def get_public_calendar_url(
 
 @router.post("/settings/google-calendar/sync")
 async def sync_google_calendar(
-    authorization: str = Header(None),
-    user_repo: UserRepository = Depends(get_user_repository),
+    user: User = Depends(get_current_user),
     google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository),
     schedule_repo: ScheduleRepository = Depends(get_schedule_repository),
     team_repo: TeamRepository = Depends(get_team_repository)
 ) -> dict:
     """Manually trigger Google Calendar sync."""
     try:
-        user = await get_user_from_token(authorization, user_repo)
 
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can access this endpoint")

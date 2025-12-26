@@ -16,12 +16,15 @@ class ScheduleRepository(BaseRepository[Schedule]):
     def __init__(self, db: AsyncSession):
         super().__init__(db, Schedule)
 
-    async def get_by_team_and_date(self, team_id: int, duty_date: date) -> Optional[Schedule]:
-        """Get schedule for team on specific date."""
+    async def get_by_team_and_date(self, team_id: int, duty_date: date, user_id: int | None = None) -> Optional[Schedule]:
+        """Get schedule for team on specific date. Optional user_id for many-to-many lookup."""
         stmt = select(Schedule).options(joinedload(Schedule.user)).where(
             Schedule.team_id == team_id,
             Schedule.date == duty_date
         )
+        if user_id is not None:
+            stmt = stmt.where(Schedule.user_id == user_id)
+            
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
@@ -70,30 +73,33 @@ class ScheduleRepository(BaseRepository[Schedule]):
             return True
         return False
 
-    async def create_or_update_schedule(self, team_id: int, duty_date: date, user_id: int, commit: bool = True) -> Schedule:
-        """Create new schedule or update existing one."""
-        schedule = await self.get_by_team_and_date(team_id, duty_date)
-
-        if schedule:
-            schedule.user_id = user_id
-            if commit:
-                await self.db.commit()
-                await self.db.refresh(schedule)
+    async def create_or_update_schedule(self, team_id: int, duty_date: date, user_id: int, is_shift: bool = False, commit: bool = True) -> Schedule:
+        """Create new schedule or update existing one.
+        If is_shift is False, we find any record for (team, date) and update it to maintain 1 user per day.
+        If is_shift is True, we allow multiple records for the same (team, date) but different users.
+        """
+        if not is_shift:
+            # For non-shifts, find ANY record for this day and team
+            schedule = await self.get_by_team_and_date(team_id, duty_date)
+            if schedule:
+                schedule.user_id = user_id
+                schedule.is_shift = False
             else:
-                await self.db.flush()
+                schedule = Schedule(team_id=team_id, user_id=user_id, date=duty_date, is_shift=False)
+                self.db.add(schedule)
         else:
-            # Note: create() also commits and refreshes by default in BaseRepository
-            # We bypass it here to support custom commit flag
-            schedule = Schedule(
-                team_id=team_id,
-                date=duty_date,
-                user_id=user_id,
-            )
-            self.db.add(schedule)
-            if commit:
-                await self.db.commit()
-                await self.db.refresh(schedule)
+            # For shifts, we check for THIS specific user
+            schedule = await self.get_by_team_and_date(team_id, duty_date, user_id=user_id)
+            if not schedule:
+                schedule = Schedule(team_id=team_id, user_id=user_id, date=duty_date, is_shift=True)
+                self.db.add(schedule)
             else:
-                await self.db.flush()
+                schedule.is_shift = True
+
+        if commit:
+            await self.db.commit()
+            await self.db.refresh(schedule)
+        else:
+            await self.db.flush()
 
         return schedule

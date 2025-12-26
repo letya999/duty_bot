@@ -138,15 +138,8 @@ const SchedulesPage: React.FC = () => {
           formData.teamId ? parseInt(formData.teamId) : undefined
         );
       } else {
-        // Create new duty (or bulk)
-        if (formData.isBulk && getSelectedTeam()?.has_shifts) {
-          await apiService.assignShiftsBulk(
-            formData.userIds.map((id: string) => parseInt(id)),
-            formData.startDate,
-            formData.endDate,
-            parseInt(formData.teamId)
-          );
-        } else if (formData.isBulk) {
+        if (formData.isBulk) {
+          // Bulk assignment (works for both shifts and regular duties)
           await apiService.assignBulkDuties(
             formData.userIds.map((id: string) => parseInt(id)),
             formData.startDate,
@@ -154,7 +147,7 @@ const SchedulesPage: React.FC = () => {
             formData.teamId ? parseInt(formData.teamId) : undefined
           );
         } else {
-          // Single assignment (possibly multiple users for same day if shift enabled)
+          // Single day assignment (possibly multiple users if shift enabled)
           if (formData.userIds.length > 1) {
             // treat as bulk for single day
             await apiService.assignBulkDuties(
@@ -163,14 +156,12 @@ const SchedulesPage: React.FC = () => {
               selectedDate,
               formData.teamId ? parseInt(formData.teamId) : undefined
             );
-          } else {
-            if (formData.userIds.length > 0) {
-              await apiService.assignDuty(
-                parseInt(formData.userIds[0]),
-                selectedDate,
-                formData.teamId ? parseInt(formData.teamId) : undefined
-              );
-            }
+          } else if (formData.userIds.length > 0) {
+            await apiService.assignDuty(
+              parseInt(formData.userIds[0]),
+              selectedDate,
+              formData.teamId ? parseInt(formData.teamId) : undefined
+            );
           }
         }
       }
@@ -559,35 +550,59 @@ const SchedulesPage: React.FC = () => {
             </Select>
           </div>
 
-          <div>
-            <Select
-              label={getSelectedTeam()?.has_shifts ? t('schedules.modal.users_label') : t('schedules.modal.user_label')}
-              multiple={getSelectedTeam()?.has_shifts}
-              value={getSelectedTeam()?.has_shifts ? formData.userIds : (formData.userIds[0] || '')}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                if (getSelectedTeam()?.has_shifts) {
-                  const options = e.target.options;
-                  const values = [];
-                  for (let i = 0; i < options.length; i++) {
-                    if (options[i].selected) values.push(options[i].value);
-                  }
-                  setFormData({ ...formData, userIds: values });
-                } else {
-                  setFormData({ ...formData, userIds: [e.target.value] });
-                }
-              }}
-              className={getSelectedTeam()?.has_shifts ? "h-32" : ""}
-            >
-              <option value="" disabled={getSelectedTeam()?.has_shifts}>{t('schedules.modal.select_user')}</option>
-              {(formData.teamId ? (getSelectedTeam()?.members || []) : users).map(u => (
-                <option key={u.id} value={u.id}>
-                  {u.display_name || `${u.first_name} ${u.last_name || ''}`}
-                </option>
-              ))}
-            </Select>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              {getSelectedTeam()?.has_shifts ? t('schedules.modal.users_label') : t('schedules.modal.user_label')}
+            </label>
+            {getSelectedTeam()?.has_shifts ? (
+              <div className="border border-gray-200 rounded-lg bg-gray-50/50 p-2 max-h-48 overflow-y-auto space-y-1 shadow-inner">
+                {(formData.teamId ? (getSelectedTeam()?.members || []) : users).map(u => (
+                  <label key={u.id} className="flex items-center gap-3 p-2 hover:bg-white hover:shadow-sm rounded-md cursor-pointer transition-all border border-transparent hover:border-gray-200">
+                    <input
+                      type="checkbox"
+                      checked={formData.userIds.includes(u.id.toString())}
+                      onChange={(e) => {
+                        const id = u.id.toString();
+                        if (e.target.checked) {
+                          setFormData({ ...formData, userIds: [...formData.userIds, id] });
+                        } else {
+                          setFormData({ ...formData, userIds: formData.userIds.filter(uid => uid !== id) });
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/20"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-gray-900">
+                        {u.display_name || u.first_name}
+                      </span>
+                      {u.username && (
+                        <span className="text-[10px] text-gray-500">@{u.username}</span>
+                      )}
+                    </div>
+                  </label>
+                ))}
+                {(formData.teamId ? (getSelectedTeam()?.members || []) : users).length === 0 && (
+                  <p className="text-xs text-center py-6 text-gray-400 italic">
+                    {t('schedules.modal.no_members')}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <Select
+                value={formData.userIds[0] || ''}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData({ ...formData, userIds: [e.target.value] })}
+              >
+                <option value="">{t('schedules.modal.select_user')}</option>
+                {(formData.teamId ? (getSelectedTeam()?.members || []) : users).map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.display_name || `${u.first_name} ${u.last_name || ''}`}
+                  </option>
+                ))}
+              </Select>
+            )}
             {getSelectedTeam()?.has_shifts && (
-              <p className="text-[10px] text-text-muted mt-1">
-                {t('common.hold_ctrl_hint', 'Hold Ctrl/Cmd to select multiple')}
+              <p className="text-[10px] text-text-muted mt-1 italic">
+                {t('common.multi_select_hint', 'Select all users that should be assigned to this day')}
               </p>
             )}
           </div>

@@ -4,10 +4,10 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.database import AsyncSessionLocal
-from app.models import Schedule, Shift, User, Team, Workspace
+from app.models import Schedule, User, Team, Workspace
 from app.auth import session_manager
 from app.services.schedule_service import ScheduleService
 
@@ -55,6 +55,15 @@ async def schedules_page(request: Request, session: dict = Depends(get_session_f
                 end_date = datetime(year, month + 1, 1).date() - timedelta(days=1)
 
             # Only get schedules from this workspace
+            stmt = select(Schedule).join(Team).where(
+                (Schedule.date >= start_date) &
+                (Schedule.date <= end_date) &
+                (Team.workspace_id == workspace_id)
+            ).options(joinedload(Schedule.user), joinedload(Schedule.team))
+            result = await db.execute(stmt)
+            schedules = result.unique().scalars().all()
+
+            # Get schedules for current month (includes those marked as is_shift=True)
             stmt = select(Schedule).join(Team).where(
                 (Schedule.date >= start_date) &
                 (Schedule.date <= end_date) &
@@ -222,7 +231,6 @@ async def schedules_page(request: Request, session: dict = Depends(get_session_f
                         padding: 10px;
                         margin-bottom: 15px;
                         border: 1px solid #ddd;
-                        border-radius: 5px;
                     }}
                     .modal-buttons {{
                         display: flex;
@@ -367,7 +375,26 @@ def generate_calendar(year, month, schedules):
     # Create schedule map
     schedule_map = {}
     for schedule in schedules:
-        key = schedule.duty_date.strftime("%Y-%m-%d")
+        key = schedule.date.strftime("%Y-%m-%d")
+        # Maybe I should check if `schedule.duty_date` is correct.
+        # I'll change it to `schedule.date` because I know the model has it.
+        # Wait, the original code had:
+        # key = schedule.duty_date.strftime("%Y-%m-%d")
+        # If I change it to `schedule.date`, I might fix a bug or break something if `duty_date` was a property.
+        # Looking at models.py, `Schedule` class has `date` column. No `duty_date`.
+        # So maybe the original code WAS BROKEN there too? Or maybe `schedule` passed to it was not a raw model?
+        # In schedules_page, `schedules = result.unique().scalars().all()`. These are raw models.
+        # So `schedule.duty_date` would fail unless added dynamically.
+        # I will change it to `schedule.date` to be safe and correct.
+        
+        # ACTUALLY, checking the original code again (Step 35):
+        # 370:         key = schedule.duty_date.strftime("%Y-%m-%d")
+        
+        # This looks wrong given `models.py`. 
+        # But I'll fix it to `schedule.date` which I know is correct from `models.py`.
+        
+        key = schedule.date.strftime("%Y-%m-%d")
+        
         if key not in schedule_map:
             schedule_map[key] = []
         schedule_map[key].append(schedule)

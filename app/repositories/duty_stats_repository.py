@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import and_, func
 from sqlalchemy.orm import selectinload
-from app.models import DutyStats, Team, User, Schedule, Shift
+from app.models import DutyStats, Team, User, Schedule
 from app.repositories.base_repository import BaseRepository
 
 

@@ -13,14 +13,24 @@ class ScheduleService:
         team_id: int,
         user_id: int | None,
         duty_date: date,
+        is_shift: bool = False,
         commit: bool = True
     ) -> Schedule:
         """Set or update duty for a date"""
-        return await self.schedule_repo.create_or_update_schedule(team_id, duty_date, user_id, commit=commit)
+        return await self.schedule_repo.create_or_update_schedule(team_id, duty_date, user_id, is_shift=is_shift, commit=commit)
 
     async def get_duty(self, team_id: int, duty_date: date) -> Schedule | None:
-        """Get duty for a specific date"""
+        """Get duty for a specific date (returns first found)"""
         return await self.schedule_repo.get_by_team_and_date(team_id, duty_date)
+
+    async def get_duties_by_date(self, team_id: int, duty_date: date) -> list[Schedule]:
+        """Get all duties/shifts for a specific date and team"""
+        stmt = select(Schedule).options(joinedload(Schedule.user)).where(
+            Schedule.team_id == team_id,
+            Schedule.date == duty_date
+        )
+        result = await self.schedule_repo.execute(stmt)
+        return result.scalars().all()
 
     async def get_duties_by_date_range(
         self,
@@ -36,9 +46,14 @@ class ScheduleService:
         return await self.schedule_repo.delete_by_team_and_date(team_id, duty_date)
 
     async def get_today_duty(self, team_id: int, today: date) -> User | None:
-        """Get today's duty person"""
+        """Get today's primary duty person (returns first found)"""
         schedule = await self.get_duty(team_id, today)
         return schedule.user if schedule else None
+
+    async def get_today_duties(self, team_id: int, today: date) -> list[User]:
+        """Get all today's on-duty people for a team"""
+        schedules = await self.get_duties_by_date(team_id, today)
+        return [s.user for s in schedules if s.user]
 
     async def check_user_schedule_conflict(
         self,

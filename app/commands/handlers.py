@@ -4,14 +4,8 @@ from app.commands.parser import CommandParser, DateParser, CommandError, DateRan
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
-from app.services.shift_service import ShiftService
-from app.services.escalation_service import EscalationService
-from app.services.admin_service import AdminService
-from app.services.rotation_service import RotationService
-from app.services.incident_service import IncidentService
-from app.services.metrics_service import MetricsService
 from app.repositories import (
-    UserRepository, TeamRepository, ScheduleRepository, ShiftRepository,
+    UserRepository, TeamRepository, ScheduleRepository,
     EscalationRepository, EscalationEventRepository, AdminLogRepository, RotationConfigRepository,
     IncidentRepository
 )
@@ -30,7 +24,6 @@ class CommandHandler:
         self.user_repo = UserRepository(db)
         self.team_repo = TeamRepository(db)
         self.schedule_repo = ScheduleRepository(db)
-        self.shift_repo = ShiftRepository(db)
         self.escalation_repo = EscalationRepository(db)
         self.escalation_event_repo = EscalationEventRepository(db)
         self.admin_log_repo = AdminLogRepository(db)
@@ -41,7 +34,6 @@ class CommandHandler:
         self.user_service = UserService(self.user_repo, self.admin_log_repo)
         self.team_service = TeamService(self.team_repo)
         self.schedule_service = ScheduleService(self.schedule_repo)
-        self.shift_service = ShiftService(self.shift_repo)
         self.escalation_service = EscalationService(self.escalation_repo, self.escalation_event_repo)
         self.admin_service = AdminService(self.admin_log_repo, self.user_repo)
         self.rotation_service = RotationService(self.rotation_config_repo, self.schedule_repo, self.user_repo)
@@ -132,19 +124,12 @@ class CommandHandler:
 
         result = []
         for team in teams:
-            if team.has_shifts:
-                shift = await self.shift_service.get_today_shift(team, today)
-                if shift:
-                    names = ", ".join([u.display_name for u in shift])
-                    result.append(f"**{team.display_name}**: {names}")
-                else:
-                    result.append(f"**{team.display_name}**: не назначен")
+            users = await self.schedule_service.get_today_duties(team.id, today)
+            if users:
+                names = ", ".join([u.display_name for u in users])
+                result.append(f"**{team.display_name}**: {names}")
             else:
-                user = await self.schedule_service.get_today_duty(team.id, today)
-                if user:
-                    result.append(f"**{team.display_name}**: {user.display_name}")
-                else:
-                    result.append(f"**{team.display_name}**: не назначен")
+                result.append(f"**{team.display_name}**: не назначен")
 
         return "\n".join(result)
 
@@ -156,18 +141,12 @@ class CommandHandler:
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        if team.has_shifts:
-            shift = await self.shift_service.get_today_shift(team, today)
-            if not shift:
-                raise CommandError(f"No shift assigned for {team.display_name} today")
-            mentions = " ".join([f"@{u.telegram_username or u.slack_user_id}" for u in shift])
-            return f"Today's shift for {team.display_name}: {mentions}"
-        else:
-            user = await self.schedule_service.get_today_duty(team.id, today)
-            if not user:
-                raise CommandError(f"No duty assigned for {team.display_name} today")
-            mention = f"@{user.telegram_username or user.slack_user_id}"
-            return f"Today's duty for {team.display_name}: {mention}"
+        users = await self.schedule_service.get_today_duties(team.id, today)
+        if not users:
+            raise CommandError(f"No duty assigned for {team.display_name} today")
+        
+        mentions = " ".join([f"@{u.telegram_username or u.slack_user_id}" for u in users])
+        return f"Today's duty for {team.display_name}: {mentions}"
 
     # ==================== Team Commands ====================
 
@@ -469,19 +448,26 @@ Members: {members_str}"""
         else:
             date_range = DateParser.get_month_dates(period, today, self.settings.timezone)
 
-        shifts = await self.shift_service.get_shifts_by_date_range(
-            team, date_range.start, date_range.end
+        schedules = await self.schedule_service.get_duties_by_date_range(
+            team.id, date_range.start, date_range.end
         )
 
-        if not shifts:
+        if not schedules:
             return f"No shifts assigned for {team.display_name} in this period"
 
-        result = []
-        for shift in shifts:
-            names = ", ".join([u.display_name for u in shift.users]) if shift.users else "не назначена"
-            result.append(f"{shift.date.strftime('%a %d.%m')}: {names}")
+        # Group by date for display
+        by_date = {}
+        for s in schedules:
+            if s.date not in by_date: by_date[s.date] = []
+            by_date[s.date].append(s.user.display_name if s.user else "Unknown")
 
-        return f"**{team.display_name}**\n" + "\n".join(result)
+        result = []
+        # Sort dates
+        for d in sorted(by_date.keys()):
+            names = ", ".join(by_date[d])
+            result.append(f"{d.strftime('%a %d.%m')}: {names}")
+
+        return f"**{team.display_name}** (Shifts)\n" + "\n".join(result)
 
     async def shift_set(
         self,
@@ -503,58 +489,24 @@ Members: {members_str}"""
 
         date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
 
-        # Check for conflicts
-        conflicts = []
-        current = date_range.start
-        while current <= date_range.end:
-            for user in users:
-                conflict = await self.shift_service.check_user_shift_conflict(user, current, self.workspace_id)
-                if conflict:
-                    conflicts.append(conflict)
-            current += timedelta(days=1)
-
-        # Handle conflicts
-        if conflicts and not force:
-            conflict_info = "\n".join([
-                f"  • {c['date']} - {[u.display_name for u in users if u.id == c['user_id']][0]} already assigned"
-                for c in conflicts[:5]  # Show first 5 conflicts
-            ])
-            if len(conflicts) > 5:
-                conflict_info += f"\n  ...and {len(conflicts) - 5} more"
-            raise CommandError(
-                f"⚠️ Shift conflicts detected:\n{conflict_info}\n"
-                f"Use --force flag to override"
-            )
-
-        # Log conflict attempts
-        if conflicts:
-            await self.admin_service.log_action(
-                workspace_id=self.workspace_id,
-                admin_id=users[0].id if users else 1,
-                action="shift_conflict_override",
-                details={
-                    "team_name": team.name,
-                    "team_id": team.id,
-                    "date_range": f"{date_range.start} to {date_range.end}",
-                    "users_count": len(users),
-                    "conflicts_count": len(conflicts),
-                    "conflicts": conflicts[:10]  # Store first 10 conflicts
-                }
-            )
-
+        # In unified model, we just set the duties for each user
+        # Note: Set duty for each day/user pair
         current = date_range.start
         count = 0
         while current <= date_range.end:
-            await self.shift_service.create_shift(team, current, users)
+            # First clear existing for these dates if needed? 
+            # Or just replace? For shifts, we probably want to replace everyone.
+            # actually set_duty with is_shift=True will append if not exists.
+            # If we want to fully "SET" the shift to exactly these users, we should clear first.
+            await self.schedule_repo.delete_by_team_and_date(team.id, current)
+            
+            for user in users:
+                await self.schedule_service.set_duty(team.id, user.id, current, is_shift=True)
             count += 1
             current += timedelta(days=1)
 
         names = ", ".join([u.display_name for u in users])
-        result = f"Shift set for {names} for {count} day(s)"
-        if conflicts:
-            result += f"\n⚠️ Conflicts overridden for {len(conflicts)} assignment(s)"
-
-        return result
+        return f"Shift set for {names} for {count} day(s)"
 
     async def shift_add_user(
         self,
@@ -572,39 +524,10 @@ Members: {members_str}"""
             raise CommandError(f"Team not found: {team_name}")
 
         shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
+        
+        await self.schedule_service.set_duty(team.id, user.id, shift_date, is_shift=True)
 
-        # Check for conflicts
-        conflict = await self.shift_service.check_user_shift_conflict(user, shift_date, self.workspace_id)
-
-        # Handle conflicts
-        if conflict and not force:
-            raise CommandError(
-                f"⚠️ {user.display_name} is already assigned on {conflict['date']}\n"
-                f"Use --force flag to override"
-            )
-
-        # Log conflict attempt
-        if conflict:
-            await self.admin_service.log_action(
-                workspace_id=self.workspace_id,
-                admin_id=user.id,
-                action="shift_add_conflict_override",
-                target_user_id=user.id,
-                details={
-                    "team_name": team.name,
-                    "team_id": team.id,
-                    "date": str(shift_date),
-                    "conflict": conflict
-                }
-            )
-
-        await self.shift_service.add_user_to_shift(team, shift_date, user)
-
-        result = f"{user.display_name} added to shift on {shift_date}"
-        if conflict:
-            result += "\n⚠️ Conflict overridden"
-
-        return result
+        return f"{user.display_name} added to shift on {shift_date}"
 
     async def shift_remove_user(
         self,
@@ -621,7 +544,18 @@ Members: {members_str}"""
             raise CommandError(f"Team not found: {team_name}")
 
         shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
-        await self.shift_service.remove_user_from_shift(team, shift_date, user)
+        
+        # Remove specific user assignment
+        stmt = select(Schedule).where(
+            Schedule.team_id == team.id,
+            Schedule.user_id == user.id,
+            Schedule.date == shift_date
+        )
+        result = await self.db.execute(stmt)
+        schedule = result.scalars().first()
+        if schedule:
+            await self.db.delete(schedule)
+            await self.db.commit()
 
         return f"{user.display_name} removed from shift on {shift_date}"
 

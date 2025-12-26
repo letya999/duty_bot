@@ -239,54 +239,6 @@ export const apiService = {
     return response.data;
   },
 
-  // Assign user to shift (for teams with shifts enabled)
-  assignShift: async (userId: number, shiftDate: string, teamId: number): Promise<any> => {
-    const response = await api.post('/shifts/assign', {
-      user_id: userId,
-      shift_date: shiftDate,
-      team_id: teamId,
-    });
-    return response.data;
-  },
-
-  // Bulk assign users to shifts for date range
-  assignShiftsBulk: async (userIds: number[], startDate: string, endDate: string, teamId: number): Promise<any> => {
-    const response = await api.post('/shifts/assign-bulk', {
-      user_ids: userIds,
-      start_date: startDate,
-      end_date: endDate,
-      team_id: teamId,
-    });
-    return response.data;
-  },
-
-  // Get shifts for a specific date
-  getShiftsForDate: async (shiftDate: string, teamId?: number): Promise<any> => {
-    const response = await api.get(`/shifts/date/${shiftDate}`, {
-      params: { team_id: teamId },
-    });
-    return response.data;
-  },
-
-  // Get shifts for date range
-  getShiftsRange: async (startDate: string, endDate: string, teamId?: number): Promise<any> => {
-    const response = await api.get('/shifts/range', {
-      params: { start_date: startDate, end_date: endDate, team_id: teamId },
-    });
-    return response.data;
-  },
-
-  // Remove user from shift
-  removeShiftMember: async (shiftId: number, userId: number): Promise<any> => {
-    const response = await api.delete(`/shifts/${shiftId}/members/${userId}`);
-    return response.data;
-  },
-
-  // Delete entire shift
-  deleteShift: async (shiftId: number): Promise<any> => {
-    const response = await api.delete(`/shifts/${shiftId}`);
-    return response.data;
-  },
 
   // Incidents
   createIncident: async (workspaceId: number, name: string): Promise<any> => {

@@ -410,6 +410,7 @@ async def telegram_widget_callback(request: Request):
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "is_admin": user.is_admin,
+                "workspace_id": user.workspace_id,
             }
         })
         

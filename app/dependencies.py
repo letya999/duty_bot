@@ -7,7 +7,6 @@ from app.repositories import (
     TeamRepository,
     WorkspaceRepository,
     ScheduleRepository,
-    ShiftRepository,
     EscalationRepository,
     AdminLogRepository,
     RotationConfigRepository,
@@ -43,10 +42,6 @@ async def get_schedule_repository(db: AsyncSession = Depends(get_db)) -> Schedul
     """Get schedule repository."""
     return ScheduleRepository(db)
 
-
-async def get_shift_repository(db: AsyncSession = Depends(get_db)) -> ShiftRepository:
-    """Get shift repository."""
-    return ShiftRepository(db)
 
 
 async def get_escalation_repository(db: AsyncSession = Depends(get_db)) -> EscalationRepository:

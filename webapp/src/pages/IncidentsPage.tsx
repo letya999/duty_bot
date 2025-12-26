@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -29,7 +28,7 @@ interface Metrics {
 }
 
 const IncidentsPage: React.FC = () => {
-  const { t } = useTranslation();
+  // const { t } = useTranslation();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,7 +36,7 @@ const IncidentsPage: React.FC = () => {
   const [incidentName, setIncidentName] = useState('');
   const [activeIncidents, setActiveIncidents] = useState<Incident[]>([]);
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('week');
-  const timerIntervals = useRef<Map<number, NodeJS.Timeout>>(new Map());
+  const timerIntervals = useRef<Map<number, any>>(new Map());
 
   useEffect(() => {
     loadData();
@@ -67,6 +66,12 @@ const IncidentsPage: React.FC = () => {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const workspaceId = user.workspace_id;
 
+      if (!workspaceId) {
+        console.warn('No workspace ID found in user session');
+        setLoading(false);
+        return;
+      }
+
       const [incidentsData, metricsData, activeData] = await Promise.all([
         apiService.getIncidents(workspaceId),
         apiService.getMetrics(workspaceId, period),
@@ -94,6 +99,11 @@ const IncidentsPage: React.FC = () => {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const workspaceId = user.workspace_id;
 
+      if (!workspaceId) {
+        setError('Working workspace not identified. Please try logging in again.');
+        return;
+      }
+
       await apiService.createIncident(workspaceId, incidentName);
       setIncidentName('');
       setError(null);
@@ -108,6 +118,11 @@ const IncidentsPage: React.FC = () => {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const workspaceId = user.workspace_id;
+
+      if (!workspaceId) {
+        setError('Working workspace not identified.');
+        return;
+      }
 
       await apiService.completeIncident(workspaceId, incidentId);
       await loadData();
@@ -285,11 +300,10 @@ const IncidentsPage: React.FC = () => {
                     <tr key={incident.id} className="border-b hover:bg-gray-50">
                       <td className="py-3 px-4">{incident.name}</td>
                       <td className="py-3 px-4">
-                        <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                          incident.status === 'active'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}>
+                        <span className={`px-3 py-1 rounded-full text-sm font-semibold ${incident.status === 'active'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-green-100 text-green-800'
+                          }`}>
                           {incident.status === 'active' ? 'Active' : 'Resolved'}
                         </span>
                       </td>

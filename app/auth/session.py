@@ -66,6 +66,14 @@ class SessionManager:
         self.revoke_session(token)
         return new_token
 
+    async def get_user_from_token(self, token: str, user_repo) -> Optional[User]:
+        """Get user object from session token"""
+        session = self.validate_session(token)
+        if not session:
+            return None
+        
+        return await user_repo.get_by_id(session['user_id'])
+
 
 # Global session manager
 session_manager = SessionManager()

@@ -11,7 +11,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.orm import joinedload
 
 from app.database import AsyncSessionLocal
-from app.models import Schedule, User, Team, AdminLog, Workspace, Shift, DutyStats
+from app.models import Schedule, User, Team, AdminLog, Workspace, DutyStats
 from app.services.stats_service import StatsService
 from app.auth import session_manager
 

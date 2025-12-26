@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,7 +66,7 @@ async def get_metrics_service(
 
 
 async def get_user_from_token(
-    authorization: str = None,
+    authorization: str = Header(None),
     user_repo = Depends(get_user_repository)
 ) -> User:
     """Get user from token."""

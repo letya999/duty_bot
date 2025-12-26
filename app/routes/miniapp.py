@@ -5,18 +5,17 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from app.database import AsyncSessionLocal
-from app.models import User, Team, Schedule, Shift, Workspace, ChatChannel, team_members, shift_members
+from app.models import User, Team, Schedule, Workspace, ChatChannel, team_members
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
-from app.services.shift_service import ShiftService
 from app.config.api_utils import (
     format_user_response,
     get_month_dates,
-    get_schedules_and_shifts_for_period,
+    get_schedules_for_period,
     build_schedule_by_date,
     build_days_array,
-    get_daily_schedules_and_shifts,
+    get_daily_schedules,
     build_daily_users_list
 )
 
@@ -141,11 +140,11 @@ async def get_month_schedule(
         # Get month dates
         start_date, end_date = await get_month_dates(year, month)
 
-        # Get schedules and shifts
-        schedules, shifts = await get_schedules_and_shifts_for_period(db, user, start_date, end_date)
+        # Get schedules (includes shifts now)
+        schedules = await get_schedules_for_period(db, user, start_date, end_date)
 
         # Group by date
-        schedule_by_date = await build_schedule_by_date(schedules, shifts, db)
+        schedule_by_date = await build_schedule_by_date(schedules)
 
         # Build response days array
         days = await build_days_array(start_date, end_date, schedule_by_date)
@@ -171,11 +170,11 @@ async def get_daily_schedule(
         from datetime import datetime as dt
         date_obj = dt.fromisoformat(date).date()
 
-        # Get schedules and shifts for this date
-        schedules, shifts = await get_daily_schedules_and_shifts(db, user, date_obj)
+        # Get schedules (includes shifts now) for this date
+        schedules = await get_daily_schedules(db, user, date_obj)
 
         # Build users list
-        result = await build_daily_users_list(schedules, shifts, db)
+        result = await build_daily_users_list(schedules)
 
         return {
             "date": date,
@@ -198,6 +197,7 @@ async def assign_duty(
     """Assign duty to a user for a specific date"""
     try:
         from datetime import datetime as dt
+        from sqlalchemy.orm import selectinload
 
         # Verify team belongs to user's workspace
         team_stmt = select(Team).where(
@@ -224,31 +224,24 @@ async def assign_duty(
 
         date_obj = dt.fromisoformat(date).date()
 
-        # Check if schedule already exists
-        existing_stmt = select(Schedule).where(
-            and_(
-                Schedule.team_id == team_id,
-                Schedule.user_id == user_id,
-                Schedule.date == date_obj
-            )
-        )
-        existing = (await db.execute(existing_stmt)).scalars().first()
+        from app.services.schedule_service import ScheduleService
+        from app.repositories.schedule_repository import ScheduleRepository
+        schedule_service = ScheduleService(ScheduleRepository(db))
 
-        if existing:
-            return {"status": "already_assigned", "schedule_id": existing.id}
-
-        # Create new schedule
-        schedule = Schedule(
-            team_id=team_id,
+        # Use ScheduleService to set duty - it handles both shifts and regular duties
+        schedule = await schedule_service.set_duty(
+            team_id=team.id,
             user_id=user_id,
-            date=date_obj
+            duty_date=date_obj,
+            is_shift=team.has_shifts,
+            commit=True
         )
-        db.add(schedule)
-        await db.commit()
 
         return {
+            "success": True,
             "status": "assigned",
             "schedule_id": schedule.id,
+            "is_shift": schedule.is_shift,
             "date": date
         }
     except HTTPException:

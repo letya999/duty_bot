@@ -9,7 +9,7 @@ from app.commands.handlers import CommandHandler as BotCommandHandler
 from app.commands.parser import CommandParser, DateParser, CommandError
 from app.services.user_service import UserService
 from app.repositories import (
-    UserRepository, TeamRepository, ScheduleRepository, ShiftRepository,
+    UserRepository, TeamRepository, ScheduleRepository,
     EscalationRepository, RotationConfigRepository, AdminLogRepository
 )
 from app.models import Workspace
@@ -119,8 +119,7 @@ class TelegramHandler:
         await self.app.bot.set_my_description(
             description="📅 Duty Roster Bot helps you manage team duty schedules and shifts.\n\n"
                        "Features:\n"
-                       "• Duty schedules (single person per day)\n"
-                       "• Team shifts (multiple people per day)\n"
+                       "• Duty schedules & Team shifts\n"
                        "• Escalation system\n"
                        "• Team management\n"
                        "• Morning digest notifications\n\n"

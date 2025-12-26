@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
 
-from app.models import DutyStats, Schedule, Shift, User, Team, Workspace
+from app.models import DutyStats, Schedule, User, Team, Workspace
 from app.repositories import DutyStatsRepository
 
 
@@ -46,33 +46,30 @@ class StatsService:
             team = team_with_members.scalar_one()
 
             for user in team.members:
-                # Count duty days (Schedule)
-                duty_count_result = await self.db.execute(
-                    select(func.count(Schedule.id)).where(
-                        and_(
-                            Schedule.team_id == team.id,
-                            Schedule.user_id == user.id,
-                            Schedule.date >= start_date,
-                            Schedule.date <= end_date,
-                        )
+                # Count regular duty days (Schedule where is_shift=False)
+                duty_count_stmt = select(func.count(Schedule.id)).where(
+                    and_(
+                        Schedule.team_id == team.id,
+                        Schedule.user_id == user.id,
+                        Schedule.date >= start_date,
+                        Schedule.date <= end_date,
+                        Schedule.is_shift == False
                     )
                 )
+                duty_count_result = await self.db.execute(duty_count_stmt)
                 duty_days = duty_count_result.scalar() or 0
 
-                # Count shift days (Shift)
-                shift_count_result = await self.db.execute(
-                    select(func.count(Shift.id))
-                    .select_from(Shift)
-                    .join(Shift.users)
-                    .where(
-                        and_(
-                            Shift.team_id == team.id,
-                            User.id == user.id,
-                            Shift.date >= start_date,
-                            Shift.date <= end_date,
-                        )
+                # Count shift days (Schedule where is_shift=True)
+                shift_count_stmt = select(func.count(Schedule.id)).where(
+                    and_(
+                        Schedule.team_id == team.id,
+                        Schedule.user_id == user.id,
+                        Schedule.date >= start_date,
+                        Schedule.date <= end_date,
+                        Schedule.is_shift == True
                     )
                 )
+                shift_count_result = await self.db.execute(shift_count_stmt)
                 shift_days = shift_count_result.scalar() or 0
 
                 # Create or update DutyStats record through repository

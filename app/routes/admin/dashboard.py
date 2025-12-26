@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
 
 from app.database import AsyncSessionLocal
-from app.models import User, Team, Schedule, Shift, AdminLog, Workspace
+from app.models import User, Team, Schedule, AdminLog, Workspace
 from app.auth import session_manager
 
 logger = logging.getLogger(__name__)
@@ -50,11 +50,12 @@ async def dashboard_page(request: Request, session: dict = Depends(get_session_f
             # Get upcoming shifts (next 7 days) - ONLY from this workspace
             start_date = today
             end_date = today + timedelta(days=7)
-            stmt = select(Shift).join(Shift.team).where(
-                (Shift.date >= start_date) &
-                (Shift.date <= end_date) &
+            stmt = select(Schedule).join(Schedule.team).where(
+                (Schedule.date >= start_date) &
+                (Schedule.date <= end_date) &
+                (Schedule.is_shift == True) &
                 (Team.workspace_id == workspace_id)
-            ).options(joinedload(Shift.team)).options(joinedload(Shift.users))
+            ).options(joinedload(Schedule.team)).options(joinedload(Schedule.user))
             result = await db.execute(stmt)
             upcoming_shifts = result.unique().scalars().all()
 
@@ -224,7 +225,7 @@ async def dashboard_page(request: Request, session: dict = Depends(get_session_f
                                 {"".join(f'''
                                 <tr>
                                     <td>{schedule.user.first_name or schedule.user.username}</td>
-                                    <td>{schedule.duty_date}</td>
+                                    <td>{schedule.date}</td>
                                     <td>{schedule.team.name if schedule.team else "N/A"}</td>
                                 </tr>
                                 ''' for schedule in today_schedules) if today_schedules else '<tr><td colspan="3" style="text-align: center;">No duties today</td></tr>'}
@@ -237,21 +238,19 @@ async def dashboard_page(request: Request, session: dict = Depends(get_session_f
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Shift</th>
-                                    <th>Start Date</th>
-                                    <th>End Date</th>
-                                    <th>Members</th>
+                                    <th>User</th>
+                                    <th>Date</th>
+                                    <th>Team</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {"".join(f'''
                                 <tr>
-                                    <td>{shift.name}</td>
-                                    <td>{shift.start_date}</td>
-                                    <td>{shift.end_date}</td>
-                                    <td>{len(shift.members) if shift.members else 0}</td>
+                                    <td>{schedule.user.first_name or schedule.user.username}</td>
+                                    <td>{schedule.date}</td>
+                                    <td>{schedule.team.name if schedule.team else "N/A"}</td>
                                 </tr>
-                                ''' for shift in upcoming_shifts) if upcoming_shifts else '<tr><td colspan="4" style="text-align: center;">No upcoming shifts</td></tr>'}
+                                ''' for schedule in upcoming_shifts) if upcoming_shifts else '<tr><td colspan="3" style="text-align: center;">No upcoming shifts</td></tr>'}
                             </tbody>
                         </table>
                     </div>

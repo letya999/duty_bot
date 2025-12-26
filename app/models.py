@@ -76,7 +76,6 @@ class User(Base):
     teams = relationship('Team', secondary=team_members, back_populates='members')
     led_teams = relationship('Team', back_populates='team_lead_user', foreign_keys='Team.team_lead_id')
     schedules = relationship('Schedule', back_populates='user')
-    shifts = relationship('Shift', secondary='shift_members', back_populates='users')
     escalation_as_cto = relationship('Escalation', back_populates='cto_user', foreign_keys='Escalation.cto_id')
     admin_logs_by_admin = relationship('AdminLog', back_populates='admin_user', foreign_keys='AdminLog.admin_user_id')
     admin_logs_by_target = relationship('AdminLog', back_populates='target_user', foreign_keys='AdminLog.target_user_id')
@@ -103,7 +102,6 @@ class Team(Base):
     members = relationship('User', secondary=team_members, back_populates='teams')
     team_lead_user = relationship('User', back_populates='led_teams', foreign_keys=[team_lead_id])
     schedules = relationship('Schedule', back_populates='team', cascade='all, delete-orphan')
-    shifts = relationship('Shift', back_populates='team', cascade='all, delete-orphan')
     escalations = relationship('Escalation', back_populates='team', cascade='all, delete-orphan')
     rotation_config = relationship('RotationConfig', back_populates='team', cascade='all, delete-orphan', uselist=False)
 
@@ -132,13 +130,14 @@ class RotationConfig(Base):
 
 
 class Schedule(Base):
-    """Duty schedule for teams without shifts"""
+    """Duty schedule for all teams (both regular and with shifts)"""
     __tablename__ = 'schedule'
 
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey('team.id'), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey('user.id'), nullable=True)
     date = Column(Date, nullable=False, index=True)
+    is_shift = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -146,35 +145,9 @@ class Schedule(Base):
     user = relationship('User', back_populates='schedules')
 
     __table_args__ = (
-        UniqueConstraint("team_id", "date", name="schedule_team_date_unique"),
+        UniqueConstraint("team_id", "user_id", "date", name="schedule_team_user_date_unique"),
     )
 
-
-# Association table for many-to-many shift members
-shift_members = Table(
-    'shift_members',
-    Base.metadata,
-    Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
-    Column('shift_id', Integer, ForeignKey('shift.id'), primary_key=True),
-)
-
-
-class Shift(Base):
-    """Shift schedule for teams with shifts"""
-    __tablename__ = 'shift'
-
-    id = Column(Integer, primary_key=True)
-    team_id = Column(Integer, ForeignKey('team.id'), nullable=False, index=True)
-    date = Column(Date, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    # Relationships
-    team = relationship('Team', back_populates='shifts')
-    users = relationship('User', secondary=shift_members, back_populates='shifts')
-
-    __table_args__ = (
-        UniqueConstraint("team_id", "date", name="shift_team_date_unique"),
-    )
 
 
 class EscalationLevelEnum(python_enum.Enum):

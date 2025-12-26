@@ -11,7 +11,6 @@ from app.dependencies import (
     get_user_repository,
     get_team_repository,
     get_schedule_repository,
-    get_shift_repository,
     get_escalation_repository,
     get_rotation_config_repository,
     get_admin_log_repository,
@@ -24,20 +23,17 @@ from app.schemas.admin import (
     TeamResponse,
     TeamDetailResponse,
     ScheduleResponse,
-    ShiftResponse,
-    ShiftDetailResponse,
     ErrorResponse,
 )
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
-from app.services.shift_service import ShiftService
 from app.services.escalation_service import EscalationService
 from app.services.rotation_service import RotationService
 from app.services.admin_service import AdminService
 from app.services.stats_service import StatsService
 from app.repositories import (
-    UserRepository, TeamRepository, ScheduleRepository, ShiftRepository,
+    UserRepository, TeamRepository, ScheduleRepository,
     EscalationRepository, RotationConfigRepository, AdminLogRepository
 )
 from app.exceptions import (
@@ -65,11 +61,6 @@ async def get_team_service(team_repo: TeamRepository = Depends(get_team_reposito
 async def get_schedule_service(schedule_repo: ScheduleRepository = Depends(get_schedule_repository)) -> ScheduleService:
     """Get schedule service with repositories"""
     return ScheduleService(schedule_repo)
-
-
-async def get_shift_service(shift_repo: ShiftRepository = Depends(get_shift_repository)) -> ShiftService:
-    """Get shift service with repositories"""
-    return ShiftService(shift_repo)
 
 
 async def get_escalation_service(escalation_repo: EscalationRepository = Depends(get_escalation_repository)) -> EscalationService:
@@ -328,68 +319,24 @@ async def get_month_schedule(
     month: int,
     user: User = Depends(get_user_from_token),
     schedule_service: ScheduleService = Depends(get_schedule_service),
-    team_service: TeamService = Depends(get_team_service)
+    team_service: TeamService = Depends(get_team_service),
+    db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Get schedule for a month - uses ScheduleService"""
     try:
-        from datetime import datetime as dt
+        from app.config.api_utils import (
+            get_month_dates, 
+            get_schedules_for_period,
+            build_schedule_by_date,
+            build_days_array
+        )
 
-
-        # Get all schedules for the month
-        start_date = dt(year, month, 1).date()
-        if month == 12:
-            end_date = dt(year + 1, 1, 1).date()
-        else:
-            end_date = dt(year, month + 1, 1).date()
-
-        teams = await team_service.get_all_teams(user.workspace_id)
-
-        schedule_by_date = {}
-        for team in teams:
-            duties = await schedule_service.get_duties_by_date_range(team.id, start_date, end_date - timedelta(days=1))
-            for duty in duties:
-                date_key = duty.date.isoformat()
-                if date_key not in schedule_by_date:
-                    schedule_by_date[date_key] = []
-                if duty not in schedule_by_date[date_key]:
-                    schedule_by_date[date_key].append(duty)
-
-        # Build response days array
-        days = []
-        current_date = start_date
-        while current_date < end_date:
-            date_key = current_date.isoformat()
-            duties = []
-
-            if date_key in schedule_by_date:
-                seen_users = set()
-                for schedule in schedule_by_date[date_key]:
-                    if schedule.user_id not in seen_users:
-                        duties.append({
-                            "id": schedule.id or 0,
-                            "user_id": schedule.user_id,
-                            "duty_date": schedule.date.isoformat(),
-                            "user": {
-                                "id": schedule.user.id,
-                                "username": schedule.user.username,
-                                "first_name": schedule.user.first_name,
-                                "last_name": schedule.user.last_name or "",
-                                "display_name": schedule.user.display_name,
-                            },
-                            "team": {
-                                "id": schedule.team.id if schedule.team else None,
-                                "name": schedule.team.name if schedule.team else None,
-                                "display_name": schedule.team.display_name if schedule.team else None,
-                            } if schedule.team else None,
-                            "notes": None,
-                        })
-                        seen_users.add(schedule.user_id)
-
-            days.append({
-                "date": date_key,
-                "duties": duties,
-            })
-            current_date += timedelta(days=1)
+        start_date, end_date = await get_month_dates(year, month)
+        schedules = await get_schedules_for_period(db, user, start_date, end_date)
+        
+        # Build schedule map using utility
+        schedule_by_date = await build_schedule_by_date(schedules)
+        days = await build_days_array(start_date, end_date, schedule_by_date)
 
         return {
             "year": year,
@@ -411,45 +358,25 @@ async def get_daily_schedule(
     date: str,
     user: User = Depends(get_user_from_token),
     schedule_service: ScheduleService = Depends(get_schedule_service),
-    team_service: TeamService = Depends(get_team_service)
+    team_service: TeamService = Depends(get_team_service),
+    db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Get schedule for a specific day - uses ScheduleService"""
     try:
         from datetime import datetime as dt
+        from app.config.api_utils import (
+            get_daily_schedules,
+            build_daily_users_list
+        )
 
         date_obj = dt.fromisoformat(date).date()
-
-        teams = await team_service.get_all_teams(user.workspace_id)
-
-        duties = []
-        seen_users = set()
-
-        for team in teams:
-            duty = await schedule_service.get_duty(team.id, date_obj)
-            if duty and duty.user_id not in seen_users:
-                duties.append({
-                    "id": duty.id,
-                    "user_id": duty.user_id,
-                    "duty_date": duty.date.isoformat(),
-                    "user": {
-                        "id": duty.user.id,
-                        "username": duty.user.username,
-                        "first_name": duty.user.first_name,
-                        "last_name": duty.user.last_name or "",
-                        "display_name": duty.user.display_name,
-                    },
-                    "team": {
-                        "id": duty.team.id if duty.team else None,
-                        "name": duty.team.name if duty.team else None,
-                        "display_name": duty.team.display_name if duty.team else None,
-                    } if duty.team else None,
-                    "notes": None,
-                })
-                seen_users.add(duty.user_id)
-
+        schedules = await get_daily_schedules(db, user, date_obj)
+        users_result = await build_daily_users_list(schedules)
+        
         return {
             "date": date,
-            "duties": duties,
+            "users": users_result["users"],
+            "count": users_result["count"]
         }
     except Exception as e:
         logger.error(f"Error getting daily schedule: {e}")
@@ -489,13 +416,19 @@ async def assign_duty(
 
         date_obj = dt.fromisoformat(duty_date).date()
 
-        # Use ScheduleService to set duty
-        schedule = await schedule_service.set_duty(team.id, target_user.id, date_obj)
+        # Use ScheduleService to set duty - it now handles both shifts and regular duties
+        schedule = await schedule_service.set_duty(
+            team.id, 
+            target_user.id, 
+            date_obj, 
+            is_shift=team.has_shifts
+        )
 
         return {
             "status": "assigned",
             "schedule_id": schedule.id,
-            "date": duty_date
+            "date": duty_date,
+            "is_shift": schedule.is_shift
         }
     except HTTPException:
         raise
@@ -669,272 +602,7 @@ async def assign_shifts_bulk(
         raise HTTPException(status_code=500, detail="Failed to bulk assign shifts")
 
 
-@router.get(
-    "/shifts/date/{shift_date}",
-    tags=["Schedules"],
-    summary="Get shifts for a date",
-    description="Получить все смены на конкретную дату."
-)
-async def get_shifts_for_date(
-    shift_date: str,
-    team_id: int = None,
-    user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
-) -> dict:
-    """Get shifts for a specific date, optionally filtered by team"""
-    try:
-        from datetime import datetime as dt
-        from app.models import Shift
 
-        date_obj = dt.fromisoformat(shift_date).date()
-        shift_service = ShiftService(ShiftRepository(db))
-        team_service = TeamService(TeamRepository(db))
-
-        shifts = []
-
-        if team_id:
-            # Get shifts for specific team
-            team = await team_service.get_team(team_id, user.workspace_id)
-            if not team:
-                raise HTTPException(status_code=404, detail="Team not found")
-
-            shift = await shift_service.get_shift(team, date_obj)
-            if shift:
-                shifts.append({
-                    "id": shift.id,
-                    "date": shift.date.isoformat(),
-                    "team": {
-                        "id": shift.team.id,
-                        "name": shift.team.name,
-                        "display_name": shift.team.display_name,
-                    },
-                    "users": [
-                        {
-                            "id": u.id,
-                            "username": u.username,
-                            "first_name": u.first_name,
-                            "last_name": u.last_name or "",
-                        }
-                        for u in shift.users
-                    ]
-                })
-        else:
-            # Get all shifts for this date across all teams with shifts
-            teams = await team_service.get_all_teams(user.workspace_id)
-            for team in teams:
-                if team.has_shifts:
-                    shift = await shift_service.get_shift(team, date_obj)
-                    if shift:
-                        shifts.append({
-                            "id": shift.id,
-                            "date": shift.date.isoformat(),
-                            "team": {
-                                "id": shift.team.id,
-                                "name": shift.team.display_name or shift.team.name,
-                            },
-                            "users": [
-                                {
-                                    "id": u.id,
-                                    "username": u.username,
-                                    "first_name": u.first_name,
-                                    "last_name": u.last_name or "",
-                                }
-                                for u in shift.users
-                            ]
-                        })
-
-        return {
-            "date": shift_date,
-            "shifts": shifts
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting shifts for date: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get shifts")
-
-
-@router.get(
-    "/shifts/range",
-    tags=["Schedules"],
-    summary="Get shifts for date range",
-    description="Получить все смены за период дат."
-)
-async def get_shifts_range(
-    start_date: str,
-    end_date: str,
-    team_id: int = None,
-    user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
-) -> dict:
-    """Get shifts for a date range, optionally filtered by team"""
-    try:
-        from datetime import datetime as dt
-
-        start_date_obj = dt.fromisoformat(start_date).date()
-        end_date_obj = dt.fromisoformat(end_date).date()
-        shift_service = ShiftService(ShiftRepository(db))
-        team_service = TeamService(TeamRepository(db))
-
-        shifts_by_date = {}
-
-        if team_id:
-            # Get shifts for specific team
-            team = await team_service.get_team(team_id, user.workspace_id)
-            if not team:
-                raise HTTPException(status_code=404, detail="Team not found")
-
-            shifts = await shift_service.get_shifts_by_date_range(team, start_date_obj, end_date_obj)
-            for shift in shifts:
-                date_key = shift.date.isoformat()
-                shifts_by_date[date_key] = {
-                    "id": shift.id,
-                    "date": shift.date.isoformat(),
-                    "team": {
-                        "id": shift.team.id,
-                        "name": shift.team.display_name or shift.team.name,
-                    },
-                    "users": [
-                        {
-                            "id": u.id,
-                            "username": u.username,
-                            "first_name": u.first_name,
-                            "last_name": u.last_name or "",
-                        }
-                        for u in shift.users
-                    ]
-                }
-        else:
-            # Get shifts for all teams with shifts enabled
-            teams = await team_service.get_all_teams(user.workspace_id)
-            for team in teams:
-                if team.has_shifts:
-                    shifts = await shift_service.get_shifts_by_date_range(team, start_date_obj, end_date_obj)
-                    for shift in shifts:
-                        date_key = shift.date.isoformat()
-                        if date_key not in shifts_by_date:
-                            shifts_by_date[date_key] = []
-
-                        shifts_by_date[date_key].append({
-                            "id": shift.id,
-                            "date": shift.date.isoformat(),
-                            "team": {
-                                "id": shift.team.id,
-                                "name": shift.team.name,
-                                "display_name": shift.team.display_name,
-                            },
-                            "users": [
-                                {
-                                    "id": u.id,
-                                    "username": u.username,
-                                    "first_name": u.first_name,
-                                    "last_name": u.last_name or "",
-                                }
-                                for u in shift.users
-                            ]
-                        })
-
-        # Build sorted response
-        dates = sorted(shifts_by_date.keys())
-        return {
-            "start_date": start_date,
-            "end_date": end_date,
-            "shifts_by_date": {date: shifts_by_date[date] for date in dates}
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting shifts range: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get shifts")
-
-
-@router.delete(
-    "/shifts/{shift_id}/members/{user_id}",
-    tags=["Schedules"],
-    summary="Remove user from shift",
-    description="Удалить пользователя из смены."
-)
-async def remove_shift_member(
-    shift_id: int,
-    user_id: int,
-    current_user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
-) -> dict:
-    """Remove user from shift"""
-    try:
-        from app.models import Shift, Team
-
-        shift = await db.get(Shift, shift_id)
-        if not shift:
-            raise HTTPException(status_code=404, detail="Shift not found")
-
-        # Verify shift belongs to user's workspace
-        if shift.team.workspace_id != current_user.workspace_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
-
-        # Get the user to remove
-        target_user = await db.get(User, user_id)
-        if not target_user:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        # Use ShiftService to remove user
-        shift_service = ShiftService(db)
-        team = await db.get(Team, shift.team_id)
-        result = await shift_service.remove_user_from_shift(team, shift.date, target_user)
-
-        if not result:
-            raise HTTPException(status_code=400, detail="Failed to remove user from shift")
-
-        return {
-            "status": "removed",
-            "shift_id": shift_id,
-            "user_id": user_id,
-            "remaining_users": len(result.users)
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error removing shift member: {e}")
-        raise HTTPException(status_code=500, detail="Failed to remove shift member")
-
-
-@router.delete(
-    "/shifts/{shift_id}",
-    tags=["Schedules"],
-    summary="Delete entire shift",
-    description="Удалить смену полностью (все люди)."
-)
-async def delete_shift(
-    shift_id: int,
-    current_user: User = Depends(get_user_from_token),
-    db: AsyncSession = Depends(get_db)
-) -> dict:
-    """Delete entire shift"""
-    try:
-        from app.models import Shift, Team
-
-        shift = await db.get(Shift, shift_id)
-        if not shift:
-            raise HTTPException(status_code=404, detail="Shift not found")
-
-        # Verify shift belongs to user's workspace
-        if shift.team.workspace_id != current_user.workspace_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
-
-        # Use ShiftService to clear shift
-        shift_service = ShiftService(db)
-        team = await db.get(Team, shift.team_id)
-        success = await shift_service.clear_shift(team, shift.date)
-
-        if not success:
-            raise HTTPException(status_code=400, detail="Failed to delete shift")
-
-        return {"status": "deleted", "shift_id": shift_id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting shift: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete shift")
 
 
 # ============ Admin Management ============
@@ -1126,45 +794,46 @@ async def get_schedules_by_date_range(
     end_date: str,
     user: User = Depends(get_user_from_token),
     schedule_service: ScheduleService = Depends(get_schedule_service),
-    team_service: TeamService = Depends(get_team_service)
+    team_service: TeamService = Depends(get_team_service),
+    db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Get all schedules within a date range - uses ScheduleService"""
     try:
         from datetime import datetime as dt
+        from app.config.api_utils import get_schedules_for_period
 
         start = dt.fromisoformat(start_date).date()
         end = dt.fromisoformat(end_date).date()
 
-        teams = await team_service.get_all_teams(user.workspace_id)
+        db_schedules = await get_schedules_for_period(db, user, start, end)
+        schedules_list = []
 
-        schedules = []
-        for team in teams:
-            team_duties = await schedule_service.get_duties_by_date_range(team.id, start, end)
-            for duty in team_duties:
-                schedules.append({
-                    "id": duty.id,
-                    "user_id": duty.user_id,
-                    "team_id": duty.team_id,
-                    "duty_date": duty.date.isoformat(),
-                    "user": {
-                        "id": duty.user.id,
-                        "username": duty.user.username,
-                        "first_name": duty.user.first_name,
-                        "last_name": duty.user.last_name or "",
-                    },
-                    "team": {
-                        "id": duty.team.id if duty.team else None,
-                        "name": duty.team.name if duty.team else None,
-                        "display_name": duty.team.display_name if duty.team else None,
-                    } if duty.team else None,
-                    "notes": None,
-                })
+        for duty in db_schedules:
+            schedules_list.append({
+                "id": duty.id,
+                "user_id": duty.user_id,
+                "team_id": duty.team_id,
+                "duty_date": duty.date.isoformat(),
+                "user": {
+                    "id": duty.user.id,
+                    "username": duty.user.username,
+                    "first_name": duty.user.first_name,
+                    "last_name": duty.user.last_name or "",
+                    "display_name": duty.user.display_name,
+                },
+                "team": {
+                    "id": duty.team.id if duty.team else None,
+                    "name": duty.team.name if duty.team else None,
+                    "display_name": duty.team.display_name if duty.team else None,
+                } if duty.team else None,
+                "notes": "Shift" if duty.is_shift else None,
+            })
 
         return {
             "start_date": start_date,
             "end_date": end_date,
-            "total_count": len(schedules),
-            "schedules": schedules
+            "total_count": len(schedules_list),
+            "schedules": schedules_list
         }
     except Exception as e:
         logger.error(f"Error getting schedules by date range: {e}")
@@ -1294,7 +963,9 @@ async def assign_bulk_duties(
 ) -> dict:
     """Assign multiple users to dates in range"""
     try:
+        logger.info(f"🔵 Bulk assign started: users={user_ids}, range={start_date} to {end_date}, team={team_id}")
         if not user.is_admin:
+            logger.warning(f"❌ User {user.id} tried to bulk assign without admin perms")
             raise HTTPException(status_code=403, detail="Only admins can assign duties")
 
         schedule_service = ScheduleService(ScheduleRepository(db))
@@ -1306,32 +977,31 @@ async def assign_bulk_duties(
         team = await team_service.get_team(team_id, user.workspace_id) if team_id else None
 
         if not team:
+            logger.error(f"❌ Team {team_id} not found or access denied")
             raise HTTPException(status_code=400, detail="Team is required for bulk assignment")
-
-        if team.has_shifts:
-             # Redirect to shift-specific logic if team has shifts enabled
-             # although the UI should handle this, the API should be safe
-             pass
 
         created_count = 0
         current_date = start
         while current_date <= end:
-            # For regular teams, if multiple users are provided, they are currently 
-            # all assigned to the same day, which means only the last one sticks.
-            # If the user expects distribution, we should probably handle it,
-            # but for now let's just make sure it works without crashing.
             for user_id in user_ids:
                 try:
-                    # Passing commit=False and handling it ourselves for better performance and reliability
-                    await schedule_service.set_duty(team.id, user_id, current_date, commit=False)
+                    logger.debug(f"📅 Setting duty for user {user_id} on {current_date} (is_shift={team.has_shifts})")
+                    await schedule_service.set_duty(
+                        team.id, 
+                        user_id, 
+                        current_date, 
+                        is_shift=team.has_shifts, 
+                        commit=False
+                    )
                     created_count += 1
                 except Exception as e:
-                    logger.warning(f"Failed to set duty for user {user_id} on {current_date}: {e}")
-                    pass
+                    logger.warning(f"❌ Failed to set duty for user {user_id} on {current_date}: {e}")
             current_date += timedelta(days=1)
 
         # Final commit after all days processed
+        logger.info(f"💾 Committing {created_count} assignments to database")
         await db.commit()
+        logger.info(f"✅ Bulk assign completed successfully")
 
         return {"created": created_count, "total_expected": len(user_ids) * ((end - start).days + 1)}
     except Exception as e:

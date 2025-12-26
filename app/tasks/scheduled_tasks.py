@@ -14,6 +14,7 @@ from app.services.escalation_service import EscalationService
 from app.services.stats_service import StatsService
 from app.models import Workspace
 from app.config import get_settings
+from app.repositories import EscalationRepository, EscalationEventRepository
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -131,12 +132,11 @@ class ScheduledTasks:
 
                         for team in teams:
                             try:
-                                if team.has_shifts:
-                                    shift = await handler.shift_service.get_today_shift(team, today)
-                                    users = shift.users if shift else []
-                                else:
-                                    user = await handler.schedule_service.get_today_duty(team, today)
-                                    users = [user] if user else []
+                                # Get all on-duty people for the team today
+                                from app.services.schedule_service import ScheduleService
+                                from app.repositories.schedule_repository import ScheduleRepository
+                                schedule_service = ScheduleService(ScheduleRepository(db))
+                                users = await schedule_service.get_today_duties(team.id, today)
 
                                 for user in users:
                                     if user.telegram_username and self.telegram_bot and workspace.workspace_type == 'telegram':
@@ -167,7 +167,9 @@ class ScheduledTasks:
 
                 for workspace in workspaces:
                     try:
-                        escalation_service = EscalationService(db)
+                        escalation_repo = EscalationRepository(db)
+                        event_repo = EscalationEventRepository(db)
+                        escalation_service = EscalationService(escalation_repo, event_repo)
                         handler = BotCommandHandler(db, workspace.id)
 
                         teams = await handler.team_service.get_all_teams(workspace.id)

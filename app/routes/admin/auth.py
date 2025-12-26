@@ -1,5 +1,6 @@
 """Authentication routes for web panel"""
 import logging
+import os
 from fastapi import APIRouter, Request, Response, HTTPException, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -316,12 +317,15 @@ async def telegram_callback(request: Request):
         logger.info(f"Created session token for user {user.id}")
 
         response = RedirectResponse(url="/web/dashboard", status_code=302)
+        # Determine if we're in production (use HTTPS)
+        is_production = os.environ.get('ENVIRONMENT', 'development').lower() == 'production'
         response.set_cookie(
             "session_token",
             session_token,
             max_age=86400,
             httponly=True,
-            samesite="Lax"
+            samesite="Lax",
+            secure=is_production  # Only set secure flag in production with HTTPS
         )
         logger.info(f"Setting session cookie and redirecting to dashboard")
         return response
@@ -549,12 +553,15 @@ async def slack_callback(code: str = None, state: str = None):
         logger.info(f"Created session token for user {user.id}")
 
         response = RedirectResponse(url="/web/dashboard", status_code=302)
+        # Determine if we're in production (use HTTPS)
+        is_production = os.environ.get('ENVIRONMENT', 'development').lower() == 'production'
         response.set_cookie(
             "session_token",
             session_token,
             max_age=86400,
             httponly=True,
-            samesite="Lax"
+            samesite="Lax",
+            secure=is_production  # Only set secure flag in production with HTTPS
         )
         logger.info(f"Setting session cookie and redirecting to dashboard")
 

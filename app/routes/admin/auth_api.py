@@ -88,26 +88,14 @@ async def get_token(request: TokenRequest = Body(...)):
     """
     Generate authentication token for API access.
 
-    Demo endpoint - returns a test token. In production, validate against user database.
+    This endpoint is disabled for security reasons.
+    Please use Telegram or Slack OAuth authentication instead.
     """
-    # Demo validation - in production, query database and validate password hash
-    if request.username == "admin" and request.password == "admin":
-        # Create session token
-        token = session_manager.create_session({
-            'user_id': 1,
-            'username': request.username,
-            'is_admin': True
-        })
-
-        return TokenResponse(
-            access_token=token,
-            token_type="bearer",
-            expires_in=86400  # 24 hours
-        )
-
+    # Username/password authentication is not supported
+    # Users must authenticate via Telegram or Slack OAuth
     raise HTTPException(
-        status_code=401,
-        detail="Invalid username or password"
+        status_code=501,
+        detail="Username/password authentication is not supported. Please authenticate via Telegram or Slack OAuth."
     )
 
 

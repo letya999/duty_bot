@@ -197,12 +197,26 @@ app.add_exception_handler(ApplicationException, application_exception_handler)
 
 
 # Add CORS middleware for web panel API
+# SECURITY: Configurable CORS origins. Use specific origins in production.
+# Set CORS_ORIGINS environment variable with comma-separated list of allowed origins
+cors_origins_env = os.environ.get('CORS_ORIGINS', '')
+if cors_origins_env:
+    # Production: use specific allowed origins
+    allowed_origins = [origin.strip() for origin in cors_origins_env.split(',')]
+    allow_credentials = True
+    logger.info(f"CORS enabled for specific origins: {allowed_origins}")
+else:
+    # Development fallback: allow all origins but disable credentials for security
+    allowed_origins = ["*"]
+    allow_credentials = False
+    logger.warning("CORS configured for all origins with credentials disabled. Set CORS_ORIGINS for production.")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
-    allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
-    allow_headers=["*"],  # Allow all headers
+    allow_origins=allowed_origins,
+    allow_credentials=allow_credentials,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -304,6 +318,20 @@ async def test_check_escalations():
         return {"status": "success", "message": "Escalation check triggered"}
     except Exception as e:
         logger.exception(f"Error triggering escalation check: {e}")
+        return {"error": str(e), "status": "failed"}
+
+
+@app.post("/test/sync-google-calendars")
+async def test_sync_google_calendars():
+    """Manually trigger Google Calendar sync"""
+    if not scheduled_tasks:
+        return {"error": "Scheduled tasks not initialized"}
+
+    try:
+        await scheduled_tasks.sync_google_calendars()
+        return {"status": "success", "message": "Google Calendar sync triggered"}
+    except Exception as e:
+        logger.exception(f"Error triggering Google Calendar sync: {e}")
         return {"error": str(e), "status": "failed"}
 
 

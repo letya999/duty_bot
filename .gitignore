@@ -39,6 +39,8 @@ wheels/
 # Logs
 *.log
 logs/
+test_output.txt
+warnings_output.txt
 
 # Database
 *.db

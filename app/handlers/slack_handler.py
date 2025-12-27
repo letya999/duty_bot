@@ -43,6 +43,7 @@ async def get_or_create_slack_workspace(db, team_id: str) -> int:
 class SlackHandler:
     def __init__(self):
         if not settings.slack_bot_token or not settings.slack_signing_secret:
+            logger.warning("Slack bot token or signing secret not configured")
             self.app = None
             self.client = None
             return
@@ -51,25 +52,83 @@ class SlackHandler:
             # This custom authorize function forces the bot to use the token from settings
             # for any workspace. This fixes the "AuthorizeResult ... was not found" error
             # that occurs when Bolt incorrectly switches to multi-team mode.
+            logger.debug(f"Authorize function called for team_id={team_id}, enterprise_id={enterprise_id}")
+            logger.debug(f"Using bot token: {settings.slack_bot_token[:10] if settings.slack_bot_token else 'EMPTY'}...{settings.slack_bot_token[-4:] if settings.slack_bot_token else ''}")
             return AuthorizeResult(
                 enterprise_id=enterprise_id,
                 team_id=team_id,
                 bot_token=settings.slack_bot_token,
             )
 
-        logger.info(f"Initializing Slack App with bot token: {settings.slack_bot_token[:10] if settings.slack_bot_token else ''}...{settings.slack_bot_token[-4:] if settings.slack_bot_token else ''}")
+        token_preview = f"{settings.slack_bot_token[:10]}...{settings.slack_bot_token[-4:]}" if settings.slack_bot_token else "EMPTY"
+        logger.info(f"Initializing Slack App with bot token: {token_preview}")
+        logger.debug(f"Token length: {len(settings.slack_bot_token) if settings.slack_bot_token else 0}")
+
         self.app = AsyncApp(
             signing_secret=settings.slack_signing_secret,
             authorize=authorize,
         )
         self.client = AsyncWebClient(token=settings.slack_bot_token)
+        logger.info("Slack AsyncApp and client initialized successfully")
+
+        # Test token validity
+        self._test_token_status()
+
         self.setup_handlers()
-        
+
         # Test connection and log bot info
         @self.app.event("app_mention")
         async def handle_app_mentions(body, say, logger):
             logger.info(f"Received app_mention: {body}")
             await say("I'm alive and listening!")
+
+    def _test_token_status(self):
+        """Test if the Slack bot token is valid"""
+        import asyncio
+        try:
+            # Test if token is test token
+            if settings.slack_bot_token == "test_token":
+                logger.warning(
+                    "⚠️  USING TEST TOKEN! This will not work with real Slack API. "
+                    "Please set SLACK_BOT_TOKEN with a real bot token (xoxb-...)"
+                )
+                return
+
+            # Check token format
+            if not settings.slack_bot_token.startswith("xoxb-"):
+                logger.warning(
+                    f"⚠️  Slack token does not look like a bot token (should start with 'xoxb-'). "
+                    f"Token preview: {settings.slack_bot_token[:20]}..."
+                )
+        except Exception as e:
+            logger.debug(f"Error checking token status: {e}")
+
+    @staticmethod
+    async def _send_message_safe(client, channel: str, text: str) -> bool:
+        """Safely send a message to Slack with error handling"""
+        try:
+            await client.chat_postMessage(channel=channel, text=text)
+            return True
+        except Exception as e:
+            error_str = str(e).lower()
+            if "invalid_auth" in error_str:
+                logger.error(
+                    f"❌ SLACK AUTH ERROR: The bot token is invalid or expired. "
+                    f"Error: {e}"
+                )
+            elif "token_revoked" in error_str:
+                logger.error(
+                    f"❌ SLACK TOKEN REVOKED: The bot token has been revoked. "
+                    f"Please create a new token in Slack app settings. Error: {e}"
+                )
+            elif "missing_scope" in error_str:
+                logger.error(
+                    f"❌ SLACK MISSING SCOPE: The bot is missing required permissions. "
+                    f"Make sure 'chat:write' scope is enabled in app settings. Error: {e}"
+                )
+            else:
+                logger.error(f"❌ Failed to send Slack message: {e}")
+            return False
 
 
     def setup_handlers(self):
@@ -569,13 +628,8 @@ class SlackHandler:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
                 result = await handler.help()
-                await client.chat_postMessage(
-                    channel=command["channel_id"],
-                    text=result
-                )
+                await self._send_message_safe(client, command["channel_id"], result)
         except Exception as e:
             logger.exception(f"Error in help_command: {e}")
-            await client.chat_postMessage(
-                channel=command["channel_id"],
-                text="❌ An error occurred"
-            )
+            error_msg = "❌ An error occurred while processing your request. Please check bot configuration."
+            await self._send_message_safe(client, command["channel_id"], error_msg)

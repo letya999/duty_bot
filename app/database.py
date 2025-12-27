@@ -8,20 +8,32 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-# Configure engine with:
-# - pool_pre_ping=True: validates connections before using them (detects closed connections)
-# - pool_recycle=3600: recycle connections every hour to avoid stale connections
-# - max_overflow=10: allow overflow connections beyond pool size
-# - pool_size=10: number of connections to keep in pool
-engine = create_async_engine(
-    settings.database_url,
-    echo=False,
-    future=True,
-    pool_pre_ping=True,  # Validate connections before use
-    pool_recycle=3600,   # Recycle connections every hour
-    pool_size=10,        # Connection pool size
-    max_overflow=10,     # Allow overflow beyond pool size
-)
+
+# Configure engine based on database type
+# For SQLite (testing): use NullPool
+# For PostgreSQL (production): use QueuePool with connection pooling
+engine_kwargs = {
+    "echo": False,
+    "future": True,
+}
+
+if "sqlite" in settings.database_url:
+    # SQLite doesn't support connection pooling
+    engine_kwargs["poolclass"] = NullPool
+else:
+    # PostgreSQL: Configure engine with:
+    # - pool_pre_ping=True: validates connections before using them (detects closed connections)
+    # - pool_recycle=3600: recycle connections every hour to avoid stale connections
+    # - max_overflow=10: allow overflow connections beyond pool size
+    # - pool_size=10: number of connections to keep in pool
+    engine_kwargs.update({
+        "pool_pre_ping": True,  # Validate connections before use
+        "pool_recycle": 3600,   # Recycle connections every hour
+        "pool_size": 10,        # Connection pool size
+        "max_overflow": 10,     # Allow overflow beyond pool size
+    })
+
+engine = create_async_engine(settings.database_url, **engine_kwargs)
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 Base = declarative_base()

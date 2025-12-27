@@ -37,29 +37,26 @@ const IncidentsPage: React.FC = () => {
   const [incidentName, setIncidentName] = useState('');
   const [activeIncidents, setActiveIncidents] = useState<Incident[]>([]);
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('week');
-  const timerIntervals = useRef<Map<number, any>>(new Map());
+  const [updateTimestamp, setUpdateTimestamp] = useState(0);
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000); // Refresh every 5 seconds
+    // Polling every 30 seconds instead of 5 (6x reduction in API calls)
+    const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, [period]);
 
   useEffect(() => {
-    // Setup timers for active incidents
-    activeIncidents.forEach(incident => {
-      if (incident.status === 'active' && !timerIntervals.current.has(incident.id)) {
-        const timer = setInterval(() => {
-          setIncidents(prev => [...prev]); // Force re-render
-        }, 1000);
-        timerIntervals.current.set(incident.id, timer);
-      }
-    });
+    // Only update duration display every second if there are active incidents
+    // Using a single timer for all incidents instead of one timer per incident
+    if (activeIncidents.length === 0) return;
 
-    return () => {
-      timerIntervals.current.forEach(timer => clearInterval(timer));
-    };
-  }, [activeIncidents]);
+    const timer = setInterval(() => {
+      setUpdateTimestamp(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [activeIncidents.length > 0]);
 
   const loadData = async () => {
     try {

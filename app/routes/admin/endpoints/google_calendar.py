@@ -77,9 +77,13 @@ async def get_google_calendar_status(
                 "workspace_id": user.workspace_id
             }
 
+        google_service = GoogleCalendarService(google_calendar_repo)
+        needs_reauth = not await google_service.validate_integration(user.workspace_id)
+
         return {
             "is_connected": True,
             "is_active": integration.is_active,
+            "needs_reauth": needs_reauth,
             "public_calendar_url": integration.public_calendar_url,
             "service_account_email": integration.service_account_email,
             "last_sync_at": integration.last_sync_at.isoformat() if integration.last_sync_at else None,

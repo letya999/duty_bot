@@ -2,6 +2,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from slack_bolt.async_app import AsyncApp
+from slack_bolt.authorization import AuthorizeResult
 from slack_sdk.web.async_client import AsyncWebClient
 from app.database import AsyncSessionLocal, get_db_with_retry
 from app.commands.handlers import CommandHandler as BotCommandHandler
@@ -46,12 +47,29 @@ class SlackHandler:
             self.client = None
             return
 
+        async def authorize(enterprise_id, team_id, logger):
+            # This custom authorize function forces the bot to use the token from settings
+            # for any workspace. This fixes the "AuthorizeResult ... was not found" error
+            # that occurs when Bolt incorrectly switches to multi-team mode.
+            return AuthorizeResult(
+                enterprise_id=enterprise_id,
+                team_id=team_id,
+                bot_token=settings.slack_bot_token,
+            )
+
+        logger.info(f"Initializing Slack App with bot token: {settings.slack_bot_token[:10] if settings.slack_bot_token else ''}...{settings.slack_bot_token[-4:] if settings.slack_bot_token else ''}")
         self.app = AsyncApp(
-            token=settings.slack_bot_token,
             signing_secret=settings.slack_signing_secret,
+            authorize=authorize,
         )
         self.client = AsyncWebClient(token=settings.slack_bot_token)
         self.setup_handlers()
+        
+        # Test connection and log bot info
+        @self.app.event("app_mention")
+        async def handle_app_mentions(body, say, logger):
+            logger.info(f"Received app_mention: {body}")
+            await say("I'm alive and listening!")
 
 
     def setup_handlers(self):
@@ -65,7 +83,7 @@ class SlackHandler:
         self.app.command("/incident")(self.incident_command)
         self.app.command("/help")(self.help_command)
 
-    async def duty_command(self, ack, command, body):
+    async def duty_command(self, ack, command, body, client):
         """Handle /duty command"""
         await ack()
 
@@ -83,24 +101,24 @@ class SlackHandler:
                     team_name = text.split()[0].strip()
                     result = await handler.mention_duty(team_name)
 
-                await self.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=command["channel_id"],
                     text=result
                 )
 
         except CommandError as e:
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text=f"❌ {str(e)}"
             )
         except Exception as e:
             logger.exception(f"Error in duty_command: {e}")
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"
             )
 
-    async def team_command(self, ack, command, body):
+    async def team_command(self, ack, command, body, client):
         """Handle /team command"""
         await ack()
 
@@ -211,24 +229,24 @@ class SlackHandler:
                     team_name = cmd.strip()
                     result = await handler.team_info(team_name)
 
-                await self.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=command["channel_id"],
                     text=result
                 )
 
         except CommandError as e:
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text=f"❌ {str(e)}"
             )
         except Exception as e:
             logger.exception(f"Error in team_command: {e}")
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"
             )
 
-    async def schedule_command(self, ack, command, body):
+    async def schedule_command(self, ack, command, body, client):
         """Handle /schedule command"""
         await ack()
 
@@ -297,24 +315,24 @@ class SlackHandler:
                     period = parts[1] if len(parts) > 1 else "week"
                     result = await handler.schedule_show(team_name, period)
 
-                await self.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=command["channel_id"],
                     text=result
                 )
 
         except CommandError as e:
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text=f"❌ {str(e)}"
             )
         except Exception as e:
             logger.exception(f"Error in schedule_command: {e}")
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"
             )
 
-    async def shift_command(self, ack, command, body):
+    async def shift_command(self, ack, command, body, client):
         """Handle /shift command"""
         await ack()
 
@@ -387,24 +405,24 @@ class SlackHandler:
                     period = parts[1] if len(parts) > 1 else "week"
                     result = await handler.shift_show(team_name, period)
 
-                await self.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=command["channel_id"],
                     text=result
                 )
 
         except CommandError as e:
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text=f"❌ {str(e)}"
             )
         except Exception as e:
             logger.exception(f"Error in shift_command: {e}")
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"
             )
 
-    async def escalation_command(self, ack, command, body):
+    async def escalation_command(self, ack, command, body, client):
         """Handle /escalation command"""
         await ack()
 
@@ -429,24 +447,24 @@ class SlackHandler:
                 else:
                     result = await handler.escalation_show()
 
-                await self.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=command["channel_id"],
                     text=result
                 )
 
         except CommandError as e:
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text=f"❌ {str(e)}"
             )
         except Exception as e:
             logger.exception(f"Error in escalation_command: {e}")
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"
             )
 
-    async def escalate_command(self, ack, command, body):
+    async def escalate_command(self, ack, command, body, client):
         """Handle /escalate command"""
         await ack()
 
@@ -468,24 +486,24 @@ class SlackHandler:
                 else:
                     result = await handler.escalate_team(cmd)
 
-                await self.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=command["channel_id"],
                     text=result
                 )
 
         except CommandError as e:
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text=f"❌ {str(e)}"
             )
         except Exception as e:
             logger.exception(f"Error in escalate_command: {e}")
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"
             )
 
-    async def incident_command(self, ack, command, body):
+    async def incident_command(self, ack, command, body, client):
         """Handle /incident command"""
         await ack()
 
@@ -526,24 +544,24 @@ class SlackHandler:
                             "/incident metrics [week|month|quarter|year] - Show metrics"
                         )
 
-                await self.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=command["channel_id"],
                     text=result
                 )
 
         except CommandError as e:
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text=f"❌ {str(e)}"
             )
         except Exception as e:
             logger.exception(f"Error in incident_command: {e}")
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"
             )
 
-    async def help_command(self, ack, command, body):
+    async def help_command(self, ack, command, body, client):
         """Handle /help command"""
         await ack()
         try:
@@ -551,13 +569,13 @@ class SlackHandler:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
                 result = await handler.help()
-                await self.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=command["channel_id"],
                     text=result
                 )
         except Exception as e:
             logger.exception(f"Error in help_command: {e}")
-            await self.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"
             )

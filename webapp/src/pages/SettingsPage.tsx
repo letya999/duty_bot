@@ -289,6 +289,15 @@ const SettingsPage: React.FC = () => {
                 message={t('settings.google_calendar.connected')}
               />
 
+              {googleCalStatus.needs_reauth && (
+                <div className="mt-4">
+                  <Alert
+                    type="error"
+                    message={t('settings.google_calendar.credentials_error')}
+                  />
+                </div>
+              )}
+
               <div className="mt-6 space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">

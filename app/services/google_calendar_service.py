@@ -3,7 +3,7 @@
 import logging
 import json
 from datetime import datetime, date as date_type, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from google.oauth2.service_account import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -112,14 +112,19 @@ class GoogleCalendarService:
         self,
         integration: GoogleCalendarIntegration,
         team: Team,
-        schedule: Schedule
+        schedule: Schedule,
+        service: Any = None
     ) -> Optional[str]:
-        """Sync duty schedule to Google Calendar. Returns event ID."""
+        """
+        Sync duty schedule to Google Calendar. Returns event ID.
+        If service is provided, uses it directly (avoids repeated decryption/auth).
+        """
         try:
-            service_account_key = self._decrypt_service_account_key(
-                integration.service_account_key_encrypted
-            )
-            service = self._get_calendar_service(service_account_key)
+            if not service:
+                service_account_key = self._decrypt_service_account_key(
+                    integration.service_account_key_encrypted
+                )
+                service = self._get_calendar_service(service_account_key)
 
             # Create event body
             end_date = schedule.date + timedelta(days=1)
@@ -187,22 +192,24 @@ class GoogleCalendarService:
             if not integration:
                 return False
 
-            service_account_key = self._decrypt_service_account_key(
-                integration.service_account_key_encrypted
-            )
-            service = self._get_calendar_service(service_account_key)
-
-            # Delete the calendar
+            # Try to delete the calendar from Google side if possible
             try:
+                service_account_key = self._decrypt_service_account_key(
+                    integration.service_account_key_encrypted
+                )
+                service = self._get_calendar_service(service_account_key)
+                
                 service.calendars().delete(
                     calendarId=integration.google_calendar_id
                 ).execute()
-            except HttpError as e:
-                logger.warning(f"Could not delete calendar from Google: {e}")
+                logger.info(f"Deleted calendar {integration.google_calendar_id} from Google")
+            except Exception as e:
+                logger.warning(f"Could not delete calendar from Google side (likely decryption or API error): {e}")
+                # We continue anyway because we want to clear the local database state
 
-            # Delete integration record
+            # ALWAYS delete integration record from local DB
             await self.repo.delete(integration.id)
-            logger.info(f"Google Calendar disconnected for workspace {workspace_id}")
+            logger.info(f"Google Calendar integration record {integration.id} deleted from DB for workspace {workspace_id}")
 
             return True
 
@@ -230,6 +237,18 @@ class GoogleCalendarService:
             start_date = date_type.today() - timedelta(days=1)
             end_date = date_type.today() + timedelta(days=90)
 
+            # Decrypt and get service once
+            try:
+                service_account_key = self._decrypt_service_account_key(
+                    integration.service_account_key_encrypted
+                )
+                service = self._get_calendar_service(service_account_key)
+            except Exception as e:
+                logger.error(f"Failed to initialize Google Calendar for workspace {workspace_id}: {e}")
+                # We don't mark it inactive automatically to avoid accidental data loss if key is temporarily missing,
+                # but we return 0 synced.
+                return 0
+
             synced_count = 0
             for team in teams:
                 # Use a more efficient way to get schedules with users
@@ -249,7 +268,7 @@ class GoogleCalendarService:
                 
                 for schedule in schedules:
                     if schedule.user:
-                        event_id = await self.sync_schedule_to_calendar(integration, team, schedule)
+                        event_id = await self.sync_schedule_to_calendar(integration, team, schedule, service=service)
                         if event_id:
                             synced_count += 1
             
@@ -260,6 +279,19 @@ class GoogleCalendarService:
         except Exception as e:
             logger.error(f"Error during bulk sync for workspace {workspace_id}: {e}")
             return 0
+
+    async def validate_integration(self, workspace_id: int) -> bool:
+        """Check if integration credentials can be decrypted and are valid."""
+        try:
+            integration = await self.repo.get_by_workspace(workspace_id)
+            if not integration:
+                return False
+            
+            # This will raise an exception if decryption fails
+            self._decrypt_service_account_key(integration.service_account_key_encrypted)
+            return True
+        except Exception:
+            return False
 
     def _get_team_color(self, team_id: int) -> int:
         """Get consistent color for team based on ID."""

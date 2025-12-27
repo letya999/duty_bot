@@ -282,12 +282,7 @@ async def custom_openapi():
     return get_openapi_schema()
 
 
-# Serve React static files in production
-# Check if React build exists (production deployment)
-webapp_dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'webapp', 'dist')
-if os.path.isdir(webapp_dist_path):
-    logger.info(f"Serving React app from {webapp_dist_path}")
-    app.mount("/", StaticFiles(directory=webapp_dist_path, html=True), name="static")
+
 
 
 @app.get("/health")
@@ -374,6 +369,15 @@ async def test_scheduler_status():
     except Exception as e:
         logger.exception(f"Error getting scheduler status: {e}")
         return {"error": str(e), "status": "failed"}
+
+
+
+# Serve React static files in production
+# Check if React build exists (production deployment)
+webapp_dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'webapp', 'dist')
+if os.path.isdir(webapp_dist_path):
+    logger.info(f"Serving React app from {webapp_dist_path}")
+    app.mount("/", StaticFiles(directory=webapp_dist_path, html=True), name="static")
 
 
 if __name__ == "__main__":

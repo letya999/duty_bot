@@ -157,7 +157,8 @@
             "sync_now": "Sync Now",
             "syncing": "Syncing...",
             "sync_success": "Calendar synced successfully!",
-            "sync_error": "Failed to sync calendar"
+            "sync_error": "Failed to sync calendar",
+            "credentials_error": "Credentials decryption failed. Please disconnect and setup the integration again with the current ENCRYPTION_KEY."
         }
     },
     "incidents": {

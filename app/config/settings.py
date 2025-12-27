@@ -18,6 +18,13 @@ class Settings(BaseSettings):
             return None
         return v
 
+    @field_validator("slack_bot_token", "slack_signing_secret", "telegram_token", "slack_client_id", "slack_client_secret", mode="after")
+    @classmethod
+    def strip_whitespace(cls, v: Optional[str]) -> Optional[str]:
+        if v:
+            return v.strip()
+        return v
+
     # Slack
     slack_bot_token: Optional[str] = None
     slack_signing_secret: Optional[str] = None

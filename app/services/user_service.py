@@ -150,8 +150,52 @@ class UserService:
         )
 
     async def get_user_by_slack(self, workspace_id: int, slack_user_id: str) -> User | None:
-        """Get user by Slack user ID in workspace"""
-        return await self.user_repo.get_by_slack_user_id(workspace_id, slack_user_id)
+        """Get user by Slack user ID in workspace, fetch from Slack if needed"""
+        # 1. Try to find in current workspace
+        user = await self.user_repo.get_by_slack_user_id(workspace_id, slack_user_id)
+        if user:
+            return user
+        
+        # 2. Try to fetch from Slack API
+        from app.config import get_settings
+        settings = get_settings()
+        
+        info = {
+            "display_name": slack_user_id,
+            "first_name": None,
+            "last_name": None,
+        }
+
+        if settings.slack_bot_token:
+            try:
+                from slack_sdk.web.async_client import AsyncWebClient
+                import logging
+                logger = logging.getLogger(__name__)
+
+                client = AsyncWebClient(token=settings.slack_bot_token)
+                response = await client.users_info(user=slack_user_id)
+                
+                if response["ok"]:
+                    slack_user = response["user"]
+                    profile = slack_user.get("profile", {})
+                    
+                    info["first_name"] = profile.get("first_name")
+                    info["last_name"] = profile.get("last_name")
+                    info["display_name"] = profile.get("display_name") or profile.get("real_name") or slack_user.get("name")
+                    
+                    logger.info(f"Fetched Slack info for {slack_user_id}: {info['display_name']}")
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to fetch Slack info for {slack_user_id}: {e}")
+
+        # 3. Create record in this workspace
+        return await self.get_or_create_by_slack(
+            workspace_id,
+            slack_user_id,
+            info["display_name"],
+            first_name=info["first_name"],
+            last_name=info["last_name"]
+        )
 
     async def get_all_users(self, workspace_id: int) -> list[User]:
         """Get all users in workspace"""

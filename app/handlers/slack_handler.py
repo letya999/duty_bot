@@ -140,6 +140,7 @@ class SlackHandler:
         self.app.command("/escalation")(self.escalation_command)
         self.app.command("/escalate")(self.escalate_command)
         self.app.command("/incident")(self.incident_command)
+        self.app.command("/admin")(self.admin_command)
         self.app.command("/help")(self.help_command)
 
     async def duty_command(self, ack, command, body, client):
@@ -185,7 +186,11 @@ class SlackHandler:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
-                user_service = UserService(db)
+                user_service = handler.user_service
+
+                user = await user_service.get_user_by_slack(workspace_id, command["user_id"])
+                if not user:
+                    raise CommandError("User not found in roster. Please ask an admin to add you.")
 
                 text = command.get("text", "").strip()
                 if not text:
@@ -198,6 +203,10 @@ class SlackHandler:
                     result = await handler.team_list()
 
                 elif cmd == "add" and len(parts) >= 2:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "team_add"):
+                        raise CommandError("❌ You need admin permission to add teams")
+                    
                     name = parts[1].strip()
                     display_name = CommandParser.extract_quote_content(text)
                     if not display_name:
@@ -207,6 +216,10 @@ class SlackHandler:
                     result = await handler.team_add(name, display_name, has_shifts)
 
                 elif cmd == "edit" and len(parts) >= 2:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "team_edit"):
+                        raise CommandError("❌ You need admin permission to edit teams")
+
                     team_name = parts[1].strip()
 
                     if "--name" in text:
@@ -230,6 +243,10 @@ class SlackHandler:
                         raise CommandError("Unknown team edit option")
 
                 elif cmd == "lead" and len(parts) >= 3:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "team_lead"):
+                        raise CommandError("❌ You need admin permission to set team leads")
+                    
                     team_name = parts[1].strip()
                     mentions = CommandParser.extract_mentions(text)
                     if not mentions:
@@ -242,6 +259,10 @@ class SlackHandler:
                     result = await handler.team_set_lead(team_name, user)
 
                 elif cmd == "add-member" and len(parts) >= 2:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "team_member_add"):
+                        raise CommandError("❌ You need admin permission to add team members")
+
                     team_name = parts[1].strip()
                     mentions = CommandParser.extract_mentions(text)
                     if not mentions:
@@ -254,6 +275,10 @@ class SlackHandler:
                     result = await handler.team_add_member(team_name, user)
 
                 elif cmd == "remove-member" and len(parts) >= 2:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "team_member_remove"):
+                        raise CommandError("❌ You need admin permission to remove team members")
+
                     team_name = parts[1].strip()
                     mentions = CommandParser.extract_mentions(text)
                     if not mentions:
@@ -266,6 +291,10 @@ class SlackHandler:
                     result = await handler.team_remove_member(team_name, user)
 
                 elif cmd == "move" and len(parts) >= 4:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "team_member_move"):
+                        raise CommandError("❌ You need admin permission to move team members")
+
                     mentions = CommandParser.extract_mentions(text)
                     from_team = parts[2].strip()
                     to_team = parts[3].strip()
@@ -280,6 +309,10 @@ class SlackHandler:
                     result = await handler.team_move_member(user, from_team, to_team)
 
                 elif cmd == "delete" and len(parts) >= 2:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "team_delete"):
+                        raise CommandError("❌ You need admin permission to delete teams")
+
                     team_name = parts[1].strip()
                     result = await handler.team_delete(team_name)
 
@@ -313,7 +346,11 @@ class SlackHandler:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
-                user_service = UserService(db)
+                user_service = handler.user_service
+
+                user = await user_service.get_user_by_slack(workspace_id, command["user_id"])
+                if not user:
+                    raise CommandError("User not found in roster. Please ask an admin to add you.")
 
                 text = command.get("text", "").strip()
                 if not text:
@@ -325,6 +362,10 @@ class SlackHandler:
                 if "rotate" in text:
                     # Rotation command
                     if "enable" in text and len(parts) >= 3:
+                        # Check admin permission
+                        if not await handler.admin_service.check_permission(user.id, workspace_id, "rotation_enable"):
+                            raise CommandError("❌ You need admin permission to enable rotation")
+
                         mentions = CommandParser.extract_mentions(text)
                         if not mentions:
                             raise CommandError("Usage: /schedule <team> rotate enable @user1 @user2 ...")
@@ -339,11 +380,19 @@ class SlackHandler:
                         result = await handler.schedule_rotate_enable(team_name, users)
 
                     elif "assign" in text and len(parts) >= 3:
+                        # Check admin permission
+                        if not await handler.admin_service.check_permission(user.id, workspace_id, "rotation_assign"):
+                            raise CommandError("❌ You need admin permission to assign rotation")
+
                         date_idx = text.find("assign") + 6
                         date_part = text[date_idx:].split()[0]
                         result = await handler.schedule_rotate_assign(team_name, date_part)
 
                     elif "disable" in text:
+                        # Check admin permission
+                        if not await handler.admin_service.check_permission(user.id, workspace_id, "rotation_disable"):
+                            raise CommandError("❌ You need admin permission to disable rotation")
+
                         result = await handler.schedule_rotate_disable(team_name)
 
                     else:
@@ -351,6 +400,10 @@ class SlackHandler:
                         result = await handler.schedule_rotate_status(team_name)
 
                 elif "set" in text and len(parts) >= 3:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "schedule_set"):
+                        raise CommandError("❌ You need admin permission to set schedules")
+
                     date_idx = text.find("set") + 3
                     date_part = text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(text)
@@ -366,6 +419,10 @@ class SlackHandler:
                     result = await handler.schedule_set(team_name, date_part, user, force=force)
 
                 elif "clear" in text and len(parts) >= 3:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "schedule_clear"):
+                        raise CommandError("❌ You need admin permission to clear schedules")
+
                     date_idx = text.find("clear") + 5
                     date_part = text[date_idx:].split()[0]
                     result = await handler.schedule_clear(team_name, date_part)
@@ -399,7 +456,11 @@ class SlackHandler:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
-                user_service = UserService(db)
+                user_service = handler.user_service
+
+                user = await user_service.get_user_by_slack(workspace_id, command["user_id"])
+                if not user:
+                    raise CommandError("User not found in roster. Please ask an admin to add you.")
 
                 text = command.get("text", "").strip()
                 if not text:
@@ -409,6 +470,10 @@ class SlackHandler:
                 team_name = parts[0].strip()
 
                 if "set" in text and len(parts) >= 3:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "shift_set"):
+                        raise CommandError("❌ You need admin permission to set shifts")
+
                     date_idx = text.find("set") + 3
                     date_part = text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(text)
@@ -427,6 +492,10 @@ class SlackHandler:
                     result = await handler.shift_set(team_name, date_part, users, force=force)
 
                 elif "add" in text and len(parts) >= 3:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "shift_add"):
+                        raise CommandError("❌ You need admin permission to add shifts")
+
                     date_idx = text.find("add") + 3
                     date_part = text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(text)
@@ -442,6 +511,10 @@ class SlackHandler:
                     result = await handler.shift_add_user(team_name, date_part, user, force=force)
 
                 elif "remove" in text and len(parts) >= 3:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "shift_remove"):
+                        raise CommandError("❌ You need admin permission to remove shifts")
+
                     date_idx = text.find("remove") + 6
                     date_part = text[date_idx:].split()[0]
                     mentions = CommandParser.extract_mentions(text)
@@ -456,6 +529,10 @@ class SlackHandler:
                     result = await handler.shift_remove_user(team_name, date_part, user)
 
                 elif "clear" in text and len(parts) >= 3:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "shift_clear"):
+                        raise CommandError("❌ You need admin permission to clear shifts")
+
                     date_idx = text.find("clear") + 5
                     date_part = text[date_idx:].split()[0]
                     result = await handler.shift_clear(team_name, date_part)
@@ -489,20 +566,28 @@ class SlackHandler:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
-                user_service = UserService(db)
+                user_service = handler.user_service
+
+                user = await user_service.get_user_by_slack(workspace_id, command["user_id"])
+                if not user:
+                    raise CommandError("User not found in roster. Please ask an admin to add you.")
 
                 text = command.get("text", "").strip()
 
                 if "cto" in text:
+                    # Check admin permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "escalation_cto"):
+                        raise CommandError("❌ You need admin permission to set CTO")
+
                     mentions = CommandParser.extract_mentions(text)
                     if not mentions:
                         raise CommandError("Usage: /escalation cto @user")
 
-                    user = await user_service.get_user_by_slack(workspace_id, mentions[0])
-                    if not user:
+                    user_to_set = await user_service.get_user_by_slack(workspace_id, mentions[0])
+                    if not user_to_set:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
 
-                    result = await handler.escalation_set_cto(user)
+                    result = await handler.escalation_set_cto(user_to_set)
                 else:
                     result = await handler.escalation_show()
 
@@ -615,6 +700,104 @@ class SlackHandler:
             )
         except Exception as e:
             logger.exception(f"Error in incident_command: {e}")
+            await client.chat_postMessage(
+                channel=command["channel_id"],
+                text="❌ An error occurred"
+            )
+
+    async def admin_command(self, ack, command, body, client):
+        """Handle /admin command"""
+        await ack()
+
+        try:
+            async with get_db_with_retry() as db:
+                workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
+                handler = BotCommandHandler(db, workspace_id)
+                user_service = handler.user_service
+
+                user = await user_service.get_user_by_slack(workspace_id, command["user_id"])
+                if not user:
+                    raise CommandError("User not found in roster. Please ask an admin to add you.")
+
+                text = command.get("text", "").strip()
+                args = text.split()
+
+                if not args:
+                    # Show list of admins
+                    admins = await user_service.get_all_admins(workspace_id)
+                    if not admins:
+                        result = "👮 No admins configured in this workspace"
+                    else:
+                        admin_list = "\n".join(f"• {admin.display_name}" for admin in admins)
+                        result = f"👮 Admins in this workspace:\n{admin_list}"
+                else:
+                    cmd = args[0].strip()
+                    
+                    # Check admin management permission
+                    if not await handler.admin_service.check_permission(user.id, workspace_id, "admin_management"):
+                        raise CommandError("❌ You need admin permission to run this command")
+
+                    if cmd == "list":
+                        admins = await user_service.get_all_admins(workspace_id)
+                        if not admins:
+                            result = "👮 No admins configured in this workspace"
+                        else:
+                            admin_list = "\n".join(f"• {admin.display_name}" for admin in admins)
+                            result = f"👮 Admins in this workspace:\n{admin_list}"
+
+                    elif cmd == "add" and len(args) >= 2:
+                        mentions = CommandParser.extract_mentions(text)
+                        if not mentions:
+                            raise CommandError("Usage: /admin add @user")
+
+                        target_user = await user_service.get_user_by_slack(workspace_id, mentions[0])
+                        if not target_user:
+                            raise CommandError(f"User not found: <@{mentions[0]}>")
+
+                        await user_service.set_admin(target_user.id, True)
+                        await handler.admin_service.log_action(
+                            workspace_id,
+                            user.id,
+                            "added_admin",
+                            target_user_id=target_user.id,
+                            details={"target_display_name": target_user.display_name}
+                        )
+                        result = f"✅ {target_user.display_name} is now an admin"
+
+                    elif cmd == "remove" and len(args) >= 2:
+                        mentions = CommandParser.extract_mentions(text)
+                        if not mentions:
+                            raise CommandError("Usage: /admin remove @user")
+
+                        target_user = await user_service.get_user_by_slack(workspace_id, mentions[0])
+                        if not target_user:
+                            raise CommandError(f"User not found: <@{mentions[0]}>")
+
+                        await user_service.set_admin(target_user.id, False)
+                        await handler.admin_service.log_action(
+                            workspace_id,
+                            user.id,
+                            "removed_admin",
+                            target_user_id=target_user.id,
+                            details={"target_display_name": target_user.display_name}
+                        )
+                        result = f"✅ {target_user.display_name} is no longer an admin"
+
+                    else:
+                        result = "Usage: /admin [list|add|remove] @user"
+
+                await client.chat_postMessage(
+                    channel=command["channel_id"],
+                    text=result
+                )
+
+        except CommandError as e:
+            await client.chat_postMessage(
+                channel=command["channel_id"],
+                text=f"❌ {str(e)}"
+            )
+        except Exception as e:
+            logger.exception(f"Error in admin_command: {e}")
             await client.chat_postMessage(
                 channel=command["channel_id"],
                 text="❌ An error occurred"

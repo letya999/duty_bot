@@ -155,7 +155,7 @@ class SlackOAuth(OAuthProvider):
         return (
             f"https://slack.com/oauth/v2/authorize?"
             f"client_id={settings.slack_client_id}&"
-            f"scope=users:read,users:read.email&"
+            f"scope=identity.basic,identity.email&"
             f"state={state}&"
             f"redirect_uri={settings.slack_redirect_uri}"
         )
@@ -180,6 +180,7 @@ class SlackOAuth(OAuthProvider):
                     return {
                         'access_token': data.get('access_token'),
                         'team_id': data.get('team', {}).get('id'),
+                        'team_name': data.get('team', {}).get('name'),
                         'user_id': data.get('authed_user', {}).get('id'),
                     }
         except Exception as e:

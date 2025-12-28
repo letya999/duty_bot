@@ -57,7 +57,7 @@ class OrganizationService:
         return await self.org_repo.update(organization_id, {'name': name})
 
     async def add_workspace_to_organization(self, organization_id: int, workspace_id: int) -> Optional[Workspace]:
-        """Add a workspace to an organization."""
+        """Add a workspace to an organization and cascade to its users and teams."""
         org = await self.org_repo.get_by_id(organization_id)
         if not org:
             raise NotFoundError(f"Organization {organization_id} not found")
@@ -66,15 +66,43 @@ class OrganizationService:
         if not workspace:
             raise NotFoundError(f"Workspace {workspace_id} not found")
 
-        return await self.workspace_repo.update(workspace_id, {'organization_id': organization_id})
+        from sqlalchemy import update
+        from app.models import User, Team
+
+        # Update Workspace
+        ws = await self.workspace_repo.update(workspace_id, {'organization_id': organization_id})
+
+        # Cascade organization_id to users and teams in this workspace
+        stmt_users = update(User).where(User.workspace_id == workspace_id).values(organization_id=organization_id)
+        await self.db.execute(stmt_users)
+
+        stmt_teams = update(Team).where(Team.workspace_id == workspace_id).values(organization_id=organization_id)
+        await self.db.execute(stmt_teams)
+
+        await self.db.commit()
+        return ws
 
     async def remove_workspace_from_organization(self, workspace_id: int) -> Optional[Workspace]:
-        """Remove a workspace from an organization."""
+        """Remove a workspace from an organization and clear organization_id from its users and teams."""
         workspace = await self.workspace_repo.get_by_id(workspace_id)
         if not workspace:
             raise NotFoundError(f"Workspace {workspace_id} not found")
 
-        return await self.workspace_repo.update(workspace_id, {'organization_id': None})
+        from sqlalchemy import update
+        from app.models import User, Team
+
+        # Update Workspace
+        ws = await self.workspace_repo.update(workspace_id, {'organization_id': None})
+
+        # Clear organization_id from users and teams in this workspace
+        stmt_users = update(User).where(User.workspace_id == workspace_id).values(organization_id=None)
+        await self.db.execute(stmt_users)
+
+        stmt_teams = update(Team).where(Team.workspace_id == workspace_id).values(organization_id=None)
+        await self.db.execute(stmt_teams)
+
+        await self.db.commit()
+        return ws
 
     async def get_organization_workspaces(self, organization_id: int) -> List[Workspace]:
         """Get all workspaces in an organization."""

@@ -9,7 +9,14 @@ from app.dependencies import get_db, get_current_user
 from app.models import User
 from app.services.organization_service import OrganizationService
 from app.services.user_account_service import UserAccountService
-from app.routes.admin.dependencies import get_organization_service, get_user_account_service
+from app.services.user_service import UserService
+from app.services.team_service import TeamService
+from app.routes.admin.dependencies import (
+    get_organization_service, 
+    get_user_account_service,
+    get_user_service,
+    get_team_service
+)
 from app.exceptions import NotFoundError, ConflictError
 
 logger = logging.getLogger(__name__)
@@ -23,6 +30,14 @@ class CreateOrganizationRequest(BaseModel):
 
 class UpdateOrganizationRequest(BaseModel):
     name: str
+
+class MergeUsersRequest(BaseModel):
+    target_user_id: int
+    source_user_id: int
+
+class MergeTeamsRequest(BaseModel):
+    target_team_id: int
+    source_team_id: int
 
 
 class WorkspaceInOrganization(BaseModel):
@@ -403,3 +418,41 @@ async def remove_user_account(
     except Exception as e:
         logger.error(f"Error removing user account: {e}")
         raise HTTPException(status_code=500, detail="Failed to remove account")
+
+
+@router.post("/{org_id}/users/merge")
+async def merge_organization_users(
+    org_id: int,
+    req: MergeUsersRequest,
+    admin: User = Depends(get_current_user),
+    user_service: UserService = Depends(get_user_service)
+) -> dict:
+    """Merge two users in an organization"""
+    if not admin.is_superadmin:
+        raise HTTPException(status_code=403, detail="Only SuperAdmins can merge users")
+    
+    try:
+        await user_service.merge_users(req.target_user_id, req.source_user_id)
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Error merging users: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{org_id}/teams/merge")
+async def merge_organization_teams(
+    org_id: int,
+    req: MergeTeamsRequest,
+    admin: User = Depends(get_current_user),
+    team_service: TeamService = Depends(get_team_service)
+) -> dict:
+    """Merge two teams in an organization"""
+    if not admin.is_superadmin:
+        raise HTTPException(status_code=403, detail="Only SuperAdmins can merge teams")
+    
+    try:
+        await team_service.merge_teams(req.target_team_id, req.source_team_id)
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Error merging teams: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -14,7 +14,8 @@ from app.repositories import (
     EscalationRepository, EscalationEventRepository, AdminLogRepository, RotationConfigRepository,
     IncidentRepository
 )
-from app.models import Team, User
+from sqlalchemy import select
+from app.models import Team, User, Schedule
 from app.config import get_settings
 
 
@@ -404,6 +405,9 @@ Members: {members_str}"""
                 }
             )
 
+        # Reset current and initialize count
+        current = date_range.start
+        count = 0
         while current <= date_range.end:
             await self.schedule_service.set_duty(team.id, user.id, current, force=force)
             count += 1
@@ -592,7 +596,7 @@ Members: {members_str}"""
         current = date_range.start
         count = 0
         while current <= date_range.end:
-            if await self.shift_service.clear_shift(team, current):
+            if await self.schedule_service.clear_duty(team.id, current):
                 count += 1
             current += timedelta(days=1)
 

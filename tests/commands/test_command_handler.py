@@ -495,9 +495,10 @@ class TestCommandHandlerSchedule:
     async def test_schedule_show_week(self, db_session: AsyncSession, setup_schedule_data):
         """Test schedule_show displays weekly schedule"""
         workspace_id, team, user = setup_schedule_data
+        today = date.today()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.schedule_show("backend", "week")
+        result = await handler.schedule_show("backend", "week", today=today)
 
         assert isinstance(result, str)
         assert len(result) > 0
@@ -509,7 +510,7 @@ class TestCommandHandlerSchedule:
         today = date.today()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.schedule_set("backend", today, today, user)
+        result = await handler.schedule_set("backend", today, user, today=today)
 
         assert "set" in result.lower()
 
@@ -530,7 +531,7 @@ class TestCommandHandlerSchedule:
         await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.schedule_clear("backend", today, today)
+        result = await handler.schedule_clear("backend", today, today=today)
 
         assert "cleared" in result.lower()
 
@@ -594,9 +595,10 @@ class TestCommandHandlerShift:
     async def test_shift_show_week(self, db_session: AsyncSession, setup_shift_data):
         """Test shift_show displays weekly shifts"""
         workspace_id, team, user1, user2 = setup_shift_data
+        today = date.today()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.shift_show("backend", "week")
+        result = await handler.shift_show("backend", "week", today=today)
 
         assert isinstance(result, str)
         assert len(result) > 0
@@ -608,7 +610,7 @@ class TestCommandHandlerShift:
         today = date.today()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.shift_set("backend", today, today, [user1, user2])
+        result = await handler.shift_set("backend", today, [user1, user2], today=today)
 
         assert isinstance(result, str)
 
@@ -619,7 +621,7 @@ class TestCommandHandlerShift:
         today = date.today()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.shift_add_user("backend", today, user1)
+        result = await handler.shift_add_user("backend", today, user1, today=today)
 
         assert "added" in result.lower()
 
@@ -640,7 +642,7 @@ class TestCommandHandlerShift:
         await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.shift_remove_user("backend", today, user1)
+        result = await handler.shift_remove_user("backend", today, user1, today=today)
 
         assert "removed" in result.lower()
 
@@ -651,7 +653,7 @@ class TestCommandHandlerShift:
         today = date.today()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.shift_clear("backend", today, today)
+        result = await handler.shift_clear("backend", today, today=today)
 
         assert "cleared" in result.lower()
 

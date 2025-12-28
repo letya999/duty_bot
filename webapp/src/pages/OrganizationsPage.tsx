@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Plus, Users, Globe, Trash2, FolderTree, Shield } from 'lucide-react';
+import { Building2, Plus, Users, Globe, Trash2, FolderTree, Shield, GitMerge, Check, AlertCircle } from 'lucide-react';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
 interface Team {
@@ -7,6 +7,7 @@ interface Team {
     name: string;
     display_name: string;
     member_count: number;
+    workspace_id?: number;
 }
 
 interface Workspace {
@@ -57,6 +58,14 @@ const OrganizationsPage: React.FC = () => {
     const [newOrgName, setNewOrgName] = useState('');
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [accountModalUser, setAccountModalUser] = useState<number | null>(null);
+
+    // Merge States
+    const [isUserMergeModalOpen, setIsUserMergeModalOpen] = useState(false);
+    const [mergeSourceUser, setMergeSourceUser] = useState<number | null>(null);
+    const [mergeTargetUser, setMergeTargetUser] = useState<number | null>(null);
+    const [isTeamMergeModalOpen, setIsTeamMergeModalOpen] = useState(false);
+    const [mergeSourceTeam, setMergeSourceTeam] = useState<Team | null>(null);
+    const [mergeTargetTeam, setMergeTargetTeam] = useState<number | null>(null);
 
     // New Account State
     const [newAccountProvider, setNewAccountProvider] = useState('telegram');
@@ -128,8 +137,9 @@ const OrganizationsPage: React.FC = () => {
             });
             if (response.ok) {
                 const teams = await response.json();
-                setAllWorkspaces(prev => prev.map(ws => ws.id === workspaceId ? { ...ws, teams } : ws));
-                setWorkspaces(prev => prev.map(ws => ws.id === workspaceId ? { ...ws, teams } : ws));
+                const teamsWithWs = teams.map((t: Team) => ({ ...t, workspace_id: workspaceId }));
+                setAllWorkspaces(prev => prev.map(ws => ws.id === workspaceId ? { ...ws, teams: teamsWithWs } : ws));
+                setWorkspaces(prev => prev.map(ws => ws.id === workspaceId ? { ...ws, teams: teamsWithWs } : ws));
             }
         } catch (error) {
             console.error('Failed to fetch teams:', error);
@@ -224,7 +234,55 @@ const OrganizationsPage: React.FC = () => {
         }
     };
 
+    const handleMergeUsers = async () => {
+        if (!selectedOrg || !mergeSourceUser || !mergeTargetUser) return;
+        try {
+            const token = localStorage.getItem('session_token');
+            const response = await fetch(`/api/admin/organizations/${selectedOrg.id}/users/merge`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    target_user_id: mergeTargetUser,
+                    source_user_id: mergeSourceUser
+                })
+            });
+            if (response.ok) {
+                setIsUserMergeModalOpen(false);
+                setMergeSourceUser(null);
+                setMergeTargetUser(null);
+                fetchOrgDetails(selectedOrg.id);
+            }
+        } catch (error) {
+            console.error('Failed to merge users:', error);
+        }
+    };
+
+    const handleMergeTeams = async () => {
+        if (!selectedOrg || !mergeSourceTeam || !mergeTargetTeam) return;
+        try {
+            const token = localStorage.getItem('session_token');
+            const response = await fetch(`/api/admin/organizations/${selectedOrg.id}/teams/merge`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    target_team_id: mergeTargetTeam,
+                    source_team_id: mergeSourceTeam.id
+                })
+            });
+            if (response.ok) {
+                setIsTeamMergeModalOpen(false);
+                setMergeSourceTeam(null);
+                setMergeTargetTeam(null);
+                fetchOrgDetails(selectedOrg.id);
+            }
+        } catch (error) {
+            console.error('Failed to merge teams:', error);
+        }
+    };
+
     if (loading) return <div className="flex justify-center p-12"><LoadingSpinner size="lg" /></div>;
+
+    const allOrgTeams = workspaces.flatMap(ws => ws.teams || []).filter((t, i, a) => a.findIndex(t2 => t2.id === t.id) === i);
 
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-8">
@@ -329,9 +387,16 @@ const OrganizationsPage: React.FC = () => {
                                                         <div className="px-4 pb-4 bg-white border-t border-gray-50 pt-4">
                                                             <div className="grid grid-cols-2 gap-2">
                                                                 {ws.teams?.map(team => (
-                                                                    <div key={team.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                                                    <div key={team.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 group/team relative">
                                                                         <div className="text-xs font-bold text-gray-800 truncate">{team.display_name}</div>
                                                                         <div className="text-[10px] text-gray-400 mt-1">{team.member_count} members</div>
+                                                                        <button
+                                                                            onClick={() => { setMergeSourceTeam(team); setIsTeamMergeModalOpen(true); }}
+                                                                            className="absolute top-2 right-2 p-1 text-gray-300 hover:text-purple-600 opacity-0 group-hover/team:opacity-100 transition-all"
+                                                                            title="Merge Team"
+                                                                        >
+                                                                            <GitMerge size={12} />
+                                                                        </button>
                                                                     </div>
                                                                 ))}
                                                                 {!ws.teams && <div className="col-span-2 py-4 flex justify-center"><LoadingSpinner size="sm" /></div>}
@@ -352,6 +417,7 @@ const OrganizationsPage: React.FC = () => {
                                                         <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Member</th>
                                                         <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Identity Links</th>
                                                         <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Clearance</th>
+                                                        <th className="px-6 py-3 text-right text-[10px] font-black text-gray-400 uppercase tracking-widest">Actions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100 bg-white">
@@ -380,6 +446,15 @@ const OrganizationsPage: React.FC = () => {
                                                                 {user.is_superadmin && (
                                                                     <span className="px-3 py-1 bg-red-600 text-white text-[10px] font-black rounded-full shadow-lg shadow-red-100 uppercase tracking-widest">SUPER</span>
                                                                 )}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right">
+                                                                <button
+                                                                    onClick={() => { setMergeSourceUser(user.id); setIsUserMergeModalOpen(true); }}
+                                                                    className="text-purple-600 hover:bg-purple-50 p-2 rounded-lg transition-colors inline-flex items-center gap-2 text-xs font-bold uppercase"
+                                                                >
+                                                                    <GitMerge size={16} />
+                                                                    Merge
+                                                                </button>
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -456,12 +531,19 @@ const OrganizationsPage: React.FC = () => {
                                                     <div className="p-6 bg-white border-t border-gray-50">
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                                             {ws.teams?.map(team => (
-                                                                <div key={team.id} className="p-4 border border-gray-50 bg-gray-50 rounded-2xl hover:bg-white hover:border-blue-100 hover:shadow-lg transition-all group/team">
+                                                                <div key={team.id} className="p-4 border border-gray-50 bg-gray-50 rounded-2xl hover:bg-white hover:border-blue-100 hover:shadow-lg transition-all group/team relative">
                                                                     <div className="font-bold text-gray-900 mb-2 truncate group-hover/team:text-blue-600 transition-colors uppercase tracking-tight text-sm">{team.display_name}</div>
                                                                     <div className="flex items-center gap-2 text-[11px] font-black text-gray-400">
                                                                         <Users size={12} />
                                                                         <span>{team.member_count} Members</span>
                                                                     </div>
+                                                                    <button
+                                                                        onClick={() => { setMergeSourceTeam({ ...team, workspace_id: ws.id }); setIsTeamMergeModalOpen(true); }}
+                                                                        className="absolute top-4 right-4 p-2 text-gray-300 hover:text-purple-600 opacity-0 group-hover/team:opacity-100 transition-all bg-white rounded-lg border border-gray-100 shadow-sm"
+                                                                        title="Merge Team"
+                                                                    >
+                                                                        <GitMerge size={16} />
+                                                                    </button>
                                                                 </div>
                                                             ))}
                                                             {!ws.teams && <div className="col-span-full py-12 flex flex-col items-center gap-4 text-blue-500 font-bold"><LoadingSpinner size="md" /><span>SYNCING INFRASTRUCTURE...</span></div>}
@@ -482,6 +564,118 @@ const OrganizationsPage: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {/* User Merge Modal */}
+            {isUserMergeModalOpen && mergeSourceUser && (
+                <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full p-8 border border-white/20">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="text-2xl font-black text-gray-900 uppercase">Consolidate Identity</h3>
+                                <p className="text-sm text-gray-500">Merge User #{mergeSourceUser} into another record</p>
+                            </div>
+                            <button onClick={() => { setIsUserMergeModalOpen(false); setMergeSourceUser(null); setMergeTargetUser(null); }} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100">
+                                <Plus size={24} className="rotate-45 text-gray-400" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 max-h-[400px] overflow-y-auto px-1">
+                            <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex gap-4 items-start mb-4">
+                                <AlertCircle className="text-amber-600 shrink-0" size={20} />
+                                <div className="text-xs text-amber-900 font-bold leading-relaxed uppercase tracking-tight">
+                                    Warning: All accounts, schedules, and team memberships will be transferred to the target user. The source user will be deleted.
+                                </div>
+                            </div>
+
+                            {orgUsers.filter(u => u.id !== mergeSourceUser).map(user => (
+                                <button
+                                    key={user.id}
+                                    onClick={() => setMergeTargetUser(user.id)}
+                                    className={`w-full p-4 rounded-2xl border-2 transition-all text-left flex items-center justify-between ${mergeTargetUser === user.id ? 'border-blue-600 bg-blue-50 shadow-md' : 'border-gray-100 hover:border-blue-200 bg-gray-50'}`}
+                                >
+                                    <div>
+                                        <div className="font-bold text-gray-900">{user.display_name || 'Anonymous'}</div>
+                                        <div className="text-[10px] text-gray-400 font-black uppercase tracking-widest">UID: {user.id} • {user.user_accounts.length} Links</div>
+                                    </div>
+                                    {mergeTargetUser === user.id && <Check className="text-blue-600" size={20} />}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="mt-8 flex gap-4">
+                            <button
+                                onClick={() => { setIsUserMergeModalOpen(false); setMergeSourceUser(null); setMergeTargetUser(null); }}
+                                className="flex-1 px-6 py-4 bg-gray-100 text-gray-600 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-200 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleMergeUsers}
+                                disabled={!mergeTargetUser}
+                                className="flex-2 px-6 py-4 bg-purple-600 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-purple-100 disabled:opacity-50 disabled:bg-gray-400"
+                            >
+                                Initiate Merge
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Team Merge Modal */}
+            {isTeamMergeModalOpen && mergeSourceTeam && (
+                <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full p-8 border border-white/20">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="text-2xl font-black text-gray-900 uppercase">Unify Formations</h3>
+                                <p className="text-sm text-gray-500">Merge "{mergeSourceTeam.display_name}" into target team</p>
+                            </div>
+                            <button onClick={() => { setIsTeamMergeModalOpen(false); setMergeSourceTeam(null); setMergeTargetTeam(null); }} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100">
+                                <Plus size={24} className="rotate-45 text-gray-400" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 max-h-[400px] overflow-y-auto px-1">
+                            <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex gap-4 items-start mb-4">
+                                <AlertCircle className="text-amber-600 shrink-0" size={20} />
+                                <div className="text-xs text-amber-900 font-bold leading-relaxed uppercase tracking-tight">
+                                    All members, schedules, and configurations will be moved to the target team. Source team will be decommissioned.
+                                </div>
+                            </div>
+
+                            {allOrgTeams.filter(t => t.id !== mergeSourceTeam.id).map(team => (
+                                <button
+                                    key={team.id}
+                                    onClick={() => setMergeTargetTeam(team.id)}
+                                    className={`w-full p-4 rounded-2xl border-2 transition-all text-left flex items-center justify-between ${mergeTargetTeam === team.id ? 'border-blue-600 bg-blue-50 shadow-md' : 'border-gray-100 hover:border-blue-200 bg-gray-50'}`}
+                                >
+                                    <div>
+                                        <div className="font-bold text-gray-900">{team.display_name}</div>
+                                        <div className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Team ID: {team.id} • {team.member_count} Members</div>
+                                    </div>
+                                    {mergeTargetTeam === team.id && <Check className="text-blue-600" size={20} />}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="mt-8 flex gap-4">
+                            <button
+                                onClick={() => { setIsTeamMergeModalOpen(false); setMergeSourceTeam(null); setMergeTargetTeam(null); }}
+                                className="flex-1 px-6 py-4 bg-gray-100 text-gray-600 rounded-2xl font-black uppercase tracking-widest hover:bg-gray-200 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleMergeTeams}
+                                disabled={!mergeTargetTeam}
+                                className="flex-2 px-6 py-4 bg-blue-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-blue-100 disabled:opacity-50 disabled:bg-gray-400"
+                            >
+                                Initialize Unification
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {isAccountModalOpen && (
                 <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">

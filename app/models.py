@@ -145,10 +145,10 @@ class Team(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    workspace = relationship('Workspace', back_populates='teams')
-    organization = relationship('Organization', back_populates='teams')
-    members = relationship('User', secondary=team_members, back_populates='teams', lazy='joined')
-    team_lead_user = relationship('User', back_populates='led_teams', foreign_keys=[team_lead_id], lazy='joined')
+    workspace = relationship('Workspace', back_populates='teams', lazy='selectin')
+    organization = relationship('Organization', back_populates='teams', lazy='selectin')
+    members = relationship('User', secondary=team_members, back_populates='teams', lazy='selectin')
+    team_lead_user = relationship('User', back_populates='led_teams', foreign_keys=[team_lead_id], lazy='selectin')
     schedules = relationship('Schedule', back_populates='team', cascade='all, delete-orphan')
     escalations = relationship('Escalation', back_populates='team', cascade='all, delete-orphan')
     rotation_config = relationship('RotationConfig', back_populates='team', cascade='all, delete-orphan', uselist=False, lazy='selectin')
@@ -189,8 +189,8 @@ class Schedule(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    team = relationship('Team', back_populates='schedules')
-    user = relationship('User', back_populates='schedules', lazy='joined')
+    team = relationship('Team', back_populates='schedules', lazy='selectin')
+    user = relationship('User', back_populates='schedules', lazy='selectin')
 
     __table_args__ = (
         UniqueConstraint("team_id", "user_id", "date", name="schedule_team_user_date_unique"),

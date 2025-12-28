@@ -51,14 +51,19 @@ class ScheduleService:
         if user_id and not force:
             conflict = await self.check_user_schedule_conflict(user_id, duty_date)
             if conflict and (conflict['team_name'] != team.name or is_shift):
-                # If it's a different team, or the same team but we are adding a shift (which would be a duplicate record for same team/date)
                 raise ValueError(f"User is already on duty on {duty_date} in team {conflict['team_display_name']}")
 
         schedule = await self.schedule_repo.create_or_update_schedule(team_id, duty_date, user_id, is_shift=is_shift, commit=commit)
         
-        # Sync to Google Calendar if available
+        # Freshly created or updated schedule needs relationships loaded for sync
         if schedule:
-            await self._sync_schedule_to_calendar(schedule)
+            # Refresh to get relationships (joinedload)
+            stmt = select(Schedule).options(joinedload(Schedule.user), joinedload(Schedule.team)).where(Schedule.id == schedule.id)
+            result = await self.schedule_repo.execute(stmt)
+            schedule = result.scalar_one_or_none()
+            
+            if schedule:
+                await self._sync_schedule_to_calendar(schedule)
             
         return schedule
 
@@ -106,7 +111,7 @@ class ScheduleService:
         workspace_id: int = None
     ) -> dict | None:
         """Check if user is already scheduled for this date (optionally filtered by workspace)"""
-        stmt = select(Schedule).where(
+        stmt = select(Schedule).options(joinedload(Schedule.team)).where(
             Schedule.user_id == user_id,
             Schedule.date == duty_date
         )

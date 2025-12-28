@@ -321,3 +321,58 @@ class UserService:
         if not user or user.workspace_id != workspace_id:
             return None
         return await self.user_repo.update(user_id, update_data)
+
+    async def merge_users(self, target_user_id: int, source_user_id: int) -> User:
+        """Merge source_user into target_user and delete source_user (SuperAdmin only)"""
+        from sqlalchemy import update, delete
+        from sqlalchemy.future import select
+        from app.models import UserAccount, Team, Schedule, Escalation, team_members
+        
+        # 1. Transfer UserAccounts
+        stmt = update(UserAccount).where(UserAccount.user_id == source_user_id).values(user_id=target_user_id)
+        await self.user_repo.db.execute(stmt)
+        
+        # 2. Transfer Team Leadership
+        stmt = update(Team).where(Team.team_lead_id == source_user_id).values(team_lead_id=target_user_id)
+        await self.user_repo.db.execute(stmt)
+        
+        # 3. Transfer Schedules (handle duplicates)
+        source_schedules_stmt = select(Schedule).where(Schedule.user_id == source_user_id)
+        source_schedules = (await self.user_repo.db.execute(source_schedules_stmt)).scalars().all()
+        for s in source_schedules:
+            exists_stmt = select(Schedule).where(
+                Schedule.user_id == target_user_id,
+                Schedule.team_id == s.team_id,
+                Schedule.date == s.date
+            )
+            exists = (await self.user_repo.db.execute(exists_stmt)).scalar_one_or_none()
+            if exists:
+                await self.user_repo.db.delete(s)
+            else:
+                s.user_id = target_user_id
+        
+        # 4. Transfer Escalations
+        stmt = update(Escalation).where(Escalation.cto_id == source_user_id).values(cto_id=target_user_id)
+        await self.user_repo.db.execute(stmt)
+        
+        # 5. Team Membership (handle duplicates)
+        source_teams_stmt = select(team_members.c.team_id).where(team_members.c.user_id == source_user_id)
+        target_teams_stmt = select(team_members.c.team_id).where(team_members.c.user_id == target_user_id)
+        
+        source_teams = (await self.user_repo.db.execute(source_teams_stmt)).scalars().all()
+        target_teams = (await self.user_repo.db.execute(target_teams_stmt)).scalars().all()
+        
+        teams_to_transfer = set(source_teams) - set(target_teams)
+        for team_id in teams_to_transfer:
+            stmt = team_members.insert().values(user_id=target_user_id, team_id=team_id)
+            await self.user_repo.db.execute(stmt)
+            
+        # Remove source from all teams
+        stmt = team_members.delete().where(team_members.c.user_id == source_user_id)
+        await self.user_repo.db.execute(stmt)
+        
+        # 6. Delete source user
+        await self.user_repo.delete(source_user_id)
+        
+        await self.user_repo.db.commit()
+        return await self.user_repo.get_by_id(target_user_id)

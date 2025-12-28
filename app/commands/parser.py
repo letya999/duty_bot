@@ -35,14 +35,13 @@ class DateParser:
     }
 
     @staticmethod
-    def parse_date_string(date_str: str, today: date = None, timezone_str: str = "UTC") -> date:
+    def parse_date_string(date_str: str | date, today: date = None, timezone_str: str = "UTC") -> date:
         """
-        Parse date from string formats:
-        - DD.MM (assumes current or next year)
-        - DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY
-        - DD.MM.YY or DD/MM/YY or DD-MM-YY
-        - Month name (Russian or English)
+        Parse date from string formats or return date if already a date object
         """
+        if isinstance(date_str, (date, datetime)):
+            return date_str.date() if isinstance(date_str, datetime) else date_str
+
         if today is None:
             # Use application's configured timezone for consistent date comparison
             tz = ZoneInfo(timezone_str)
@@ -112,8 +111,12 @@ class DateParser:
         raise CommandError(f"Could not parse date: {original_date_str}")
 
     @staticmethod
-    def parse_date_range(range_str: str, today: date = None, timezone_str: str = "UTC") -> DateRange:
-        """Parse date range like '01.12-05.12'"""
+    def parse_date_range(range_str: str | date, today: date = None, timezone_str: str = "UTC") -> DateRange:
+        """Parse date range like '01.12-05.12' or handle single date object"""
+        if isinstance(range_str, (date, datetime)):
+            d = range_str.date() if isinstance(range_str, datetime) else range_str
+            return DateRange(d, d)
+
         if today is None:
             # Use application's configured timezone for consistent date comparison
             tz = ZoneInfo(timezone_str)

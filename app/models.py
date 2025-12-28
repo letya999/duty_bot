@@ -145,6 +145,8 @@ class Team(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
+    workspace = relationship('Workspace', back_populates='teams')
+    organization = relationship('Organization', back_populates='teams')
     workspace = relationship('Workspace', back_populates='teams', lazy='selectin')
     organization = relationship('Organization', back_populates='teams', lazy='selectin')
     members = relationship('User', secondary=team_members, back_populates='teams', lazy='selectin')

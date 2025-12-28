@@ -5,6 +5,14 @@ from pathlib import Path
 from typing import AsyncGenerator
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+
+# Import greenlet before sqlalchemy to enable async greenlet support
+try:
+    from greenlet import greenlet
+    greenlet.getcurrent()
+except (ImportError, AttributeError):
+    pass
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 

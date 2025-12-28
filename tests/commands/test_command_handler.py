@@ -35,7 +35,7 @@ class TestCommandHandlerDuty:
 
         db_session.add(user1)
         db_session.add(user2)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
 
@@ -46,13 +46,13 @@ class TestCommandHandlerDuty:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(team)
 
         # Add members
         team.members.append(user1)
         team.members.append(user2)
-        await db_session.commit()
+        await db_session.flush()
 
         return workspace_id, team, user1, user2
 
@@ -88,7 +88,7 @@ class TestCommandHandlerDuty:
             is_shift=False
         )
         db_session.add(schedule)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.duty_today(today=today)
@@ -129,7 +129,7 @@ class TestCommandHandlerDuty:
             is_shift=False
         )
         db_session.add(schedule)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.mention_duty("backend", today=today)
@@ -166,7 +166,7 @@ class TestCommandHandlerTeam:
 
         db_session.add(user1)
         db_session.add(user2)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
 
@@ -191,7 +191,7 @@ class TestCommandHandlerTeam:
             team_lead_id=user1.id
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.team_list()
@@ -220,15 +220,20 @@ class TestCommandHandlerTeam:
             team_lead_id=user1.id
         )
         db_session.add(team)
-        await db_session.commit()
-        await db_session.refresh(team)
+        await db_session.flush()
 
         team.members.append(user1)
         team.members.append(user2)
-        await db_session.commit()
+        await db_session.flush()
+        await db_session.refresh(team, ["members", "team_lead_user"])
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.team_info("backend")
+        try:
+            result = await handler.team_info("backend")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            raise
 
         assert "Backend Team" in result
         assert "Lead User" in result
@@ -257,7 +262,7 @@ class TestCommandHandlerTeam:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
 
@@ -275,7 +280,7 @@ class TestCommandHandlerTeam:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.team_edit_name("backend", "api")
@@ -294,7 +299,7 @@ class TestCommandHandlerTeam:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.team_edit_display("backend", "Backend Platform")
@@ -313,7 +318,7 @@ class TestCommandHandlerTeam:
             has_shifts=False
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.team_edit_shifts("backend", True)
@@ -331,7 +336,7 @@ class TestCommandHandlerTeam:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.team_set_lead("backend", user1)
@@ -349,7 +354,7 @@ class TestCommandHandlerTeam:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.team_add_member("backend", user1)
@@ -368,11 +373,10 @@ class TestCommandHandlerTeam:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
-        await db_session.refresh(team)
+        await db_session.flush()
 
         team.members.append(user1)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.team_remove_member("backend", user1)
@@ -391,7 +395,7 @@ class TestCommandHandlerTeam:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
 
@@ -415,12 +419,10 @@ class TestCommandHandlerTeam:
         )
         db_session.add(team1)
         db_session.add(team2)
-        await db_session.commit()
-        await db_session.refresh(team1)
-        await db_session.refresh(team2)
+        await db_session.flush()
 
         team1.members.append(user1)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.team_move_member(user1, "backend", "frontend")
@@ -438,7 +440,7 @@ class TestCommandHandlerTeam:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.team_delete("backend")
@@ -464,7 +466,7 @@ class TestCommandHandlerSchedule:
         )
 
         db_session.add(user)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(user)
 
         team = Team(
@@ -473,11 +475,11 @@ class TestCommandHandlerSchedule:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(team)
 
         team.members.append(user)
-        await db_session.commit()
+        await db_session.flush()
 
         return workspace_id, team, user
 
@@ -525,7 +527,7 @@ class TestCommandHandlerSchedule:
             is_shift=False
         )
         db_session.add(schedule)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.schedule_clear("backend", today, today)
@@ -560,7 +562,7 @@ class TestCommandHandlerShift:
 
         db_session.add(user1)
         db_session.add(user2)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
 
@@ -571,12 +573,12 @@ class TestCommandHandlerShift:
             has_shifts=True
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(team)
 
         team.members.append(user1)
         team.members.append(user2)
-        await db_session.commit()
+        await db_session.flush()
 
         return workspace_id, team, user1, user2
 
@@ -635,7 +637,7 @@ class TestCommandHandlerShift:
             is_shift=True
         )
         db_session.add(schedule)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.shift_remove_user("backend", today, user1)
@@ -681,7 +683,7 @@ class TestCommandHandlerEscalation:
 
         db_session.add(user1)
         db_session.add(user2)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
 
@@ -692,7 +694,7 @@ class TestCommandHandlerEscalation:
             team_lead_id=user1.id
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(team)
 
         return workspace_id, team, user1, user2
@@ -734,11 +736,11 @@ class TestCommandHandlerEscalation:
 
         # Set CTO first
         escalation = Escalation(
-            team_id=team.id,
+            team_id=None,
             cto_id=user2.id
         )
         db_session.add(escalation)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.escalate_cto()
@@ -773,7 +775,7 @@ class TestCommandHandlerRotation:
 
         db_session.add(user1)
         db_session.add(user2)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
 
@@ -783,12 +785,12 @@ class TestCommandHandlerRotation:
             display_name="Backend Team"
         )
         db_session.add(team)
-        await db_session.commit()
+        await db_session.flush()
         await db_session.refresh(team)
 
         team.members.append(user1)
         team.members.append(user2)
-        await db_session.commit()
+        await db_session.flush()
 
         return workspace_id, team, user1, user2
 
@@ -820,13 +822,14 @@ class TestCommandHandlerRotation:
         # Enable rotation first
         rotation = RotationConfig(
             team_id=team.id,
-            user_order=[user1.id, user2.id]
+            member_ids=[user1.id, user2.id],
+            enabled=True
         )
         db_session.add(rotation)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.schedule_rotate_assign("backend", date.today())
+        result = await handler.schedule_rotate_assign("backend", date.today().strftime("%d.%m.%Y"))
 
         assert isinstance(result, str)
 
@@ -834,6 +837,15 @@ class TestCommandHandlerRotation:
     async def test_schedule_rotate_disable(self, db_session: AsyncSession, setup_rotation_data):
         """Test schedule_rotate_disable disables rotation"""
         workspace_id, team, user1, user2 = setup_rotation_data
+
+        # Enable rotation first
+        rotation = RotationConfig(
+            team_id=team.id,
+            member_ids=[user1.id, user2.id],
+            enabled=True
+        )
+        db_session.add(rotation)
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.schedule_rotate_disable("backend")
@@ -893,7 +905,7 @@ class TestCommandHandlerIncident:
             start_time=datetime.utcnow()
         )
         db_session.add(incident)
-        await db_session.commit()
+        await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.incident_stop()

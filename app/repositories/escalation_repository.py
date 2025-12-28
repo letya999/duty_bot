@@ -37,7 +37,6 @@ class EscalationRepository(BaseRepository[Escalation]):
         if escalation:
             escalation.cto_id = user_id
             await self.db.commit()
-            await self.db.refresh(escalation)
         return escalation
 
     async def set_global_cto(self, user_id: int) -> Escalation:

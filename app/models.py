@@ -147,11 +147,11 @@ class Team(Base):
     # Relationships
     workspace = relationship('Workspace', back_populates='teams')
     organization = relationship('Organization', back_populates='teams')
-    members = relationship('User', secondary=team_members, back_populates='teams')
-    team_lead_user = relationship('User', back_populates='led_teams', foreign_keys=[team_lead_id])
+    members = relationship('User', secondary=team_members, back_populates='teams', lazy='joined')
+    team_lead_user = relationship('User', back_populates='led_teams', foreign_keys=[team_lead_id], lazy='joined')
     schedules = relationship('Schedule', back_populates='team', cascade='all, delete-orphan')
     escalations = relationship('Escalation', back_populates='team', cascade='all, delete-orphan')
-    rotation_config = relationship('RotationConfig', back_populates='team', cascade='all, delete-orphan', uselist=False)
+    rotation_config = relationship('RotationConfig', back_populates='team', cascade='all, delete-orphan', uselist=False, lazy='selectin')
 
     __table_args__ = (
         UniqueConstraint('workspace_id', 'name', name='team_workspace_name_unique'),
@@ -190,7 +190,7 @@ class Schedule(Base):
 
     # Relationships
     team = relationship('Team', back_populates='schedules')
-    user = relationship('User', back_populates='schedules')
+    user = relationship('User', back_populates='schedules', lazy='joined')
 
     __table_args__ = (
         UniqueConstraint("team_id", "user_id", "date", name="schedule_team_user_date_unique"),
@@ -216,7 +216,7 @@ class Escalation(Base):
     # Relationships
     team = relationship('Team', back_populates='escalations')
     organization = relationship('Organization', back_populates='escalations')
-    cto_user = relationship('User', back_populates='escalation_as_cto', foreign_keys=[cto_id])
+    cto_user = relationship('User', back_populates='escalation_as_cto', foreign_keys=[cto_id], lazy='joined')
 
 
 class EscalationEvent(Base):

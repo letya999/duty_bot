@@ -98,7 +98,6 @@ class ScheduleRepository(BaseRepository[Schedule]):
 
         if commit:
             await self.db.commit()
-            await self.db.refresh(schedule)
         else:
             await self.db.flush()
 

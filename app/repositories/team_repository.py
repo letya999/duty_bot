@@ -3,7 +3,7 @@
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from app.models import Team
 from app.repositories.base_repository import BaseRepository
 
@@ -16,7 +16,10 @@ class TeamRepository(BaseRepository[Team]):
 
     async def get_by_id_with_members(self, team_id: int) -> Optional[Team]:
         """Get team with loaded members relationship."""
-        stmt = select(Team).where(Team.id == team_id).options(selectinload(Team.members))
+        stmt = select(Team).where(Team.id == team_id).options(
+            selectinload(Team.members),
+            joinedload(Team.team_lead_user)
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -25,7 +28,7 @@ class TeamRepository(BaseRepository[Team]):
         stmt = select(Team).where(
             Team.workspace_id == workspace_id,
             Team.name == team_name
-        ).options(selectinload(Team.members), selectinload(Team.team_lead_user))
+        ).options(selectinload(Team.members), joinedload(Team.team_lead_user))
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -49,8 +52,8 @@ class TeamRepository(BaseRepository[Team]):
             team.display_name = display_name
             team.has_shifts = has_shifts
             await self.db.commit()
-            await self.db.refresh(team)
-        return team
+            return await self.get_by_id_with_members(team_id)
+        return None
 
     async def set_team_lead(self, team_id: int, user_id: Optional[int]) -> Optional[Team]:
         """Set team lead for a team."""
@@ -58,8 +61,8 @@ class TeamRepository(BaseRepository[Team]):
         if team:
             team.team_lead_id = user_id
             await self.db.commit()
-            await self.db.refresh(team)
-        return team
+            return await self.get_by_id_with_members(team_id)
+        return None
 
     async def add_member(self, team_id: int, user) -> Optional[Team]:
         """Add member to team and return updated team with members loaded."""
@@ -69,8 +72,8 @@ class TeamRepository(BaseRepository[Team]):
             if user.id not in [m.id for m in team.members]:
                 team.members.append(user)
                 await self.db.commit()
-                await self.db.refresh(team)
-        return team
+            return await self.get_by_id_with_members(team_id)
+        return None
 
     async def remove_member(self, team_id: int, user) -> Optional[Team]:
         """Remove member from team and return updated team with members loaded."""
@@ -81,5 +84,5 @@ class TeamRepository(BaseRepository[Team]):
             if member_to_remove:
                 team.members.remove(member_to_remove)
                 await self.db.commit()
-                await self.db.refresh(team)
-        return team
+            return await self.get_by_id_with_members(team_id)
+        return None

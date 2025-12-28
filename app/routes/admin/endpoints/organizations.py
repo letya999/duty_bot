@@ -30,6 +30,7 @@ class WorkspaceInOrganization(BaseModel):
     name: str
     workspace_type: str
     external_id: str
+    organization_id: Optional[int] = None
 
 
 class UserAccountResponse(BaseModel):
@@ -230,6 +231,36 @@ async def remove_workspace_from_organization(
         raise HTTPException(status_code=500, detail="Failed to remove workspace")
 
 
+@router.get("/workspaces/all", tags=["Workspaces"])
+async def list_all_workspaces(
+    user: User = Depends(get_current_user),
+    org_service: OrganizationService = Depends(get_organization_service)
+) -> List[WorkspaceInOrganization]:
+    """List all workspaces in the system (SuperAdmin only)"""
+    if not user.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only SuperAdmins can list all workspaces"
+        )
+
+    try:
+        # Use repository to list all workspaces
+        workspaces = await org_service.workspace_repo.list_all()
+        return [
+            WorkspaceInOrganization(
+                id=ws.id,
+                name=ws.name,
+                workspace_type=ws.workspace_type,
+                external_id=ws.external_id,
+                organization_id=ws.organization_id
+            )
+            for ws in workspaces
+        ]
+    except Exception as e:
+        logger.error(f"Error listing all workspaces: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list workspaces")
+
+
 @router.get("/{org_id}/workspaces")
 async def get_organization_workspaces(
     org_id: int,
@@ -250,7 +281,8 @@ async def get_organization_workspaces(
                 id=ws.id,
                 name=ws.name,
                 workspace_type=ws.workspace_type,
-                external_id=ws.external_id
+                external_id=ws.external_id,
+                organization_id=ws.organization_id
             )
             for ws in workspaces
         ]

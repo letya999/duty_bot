@@ -57,6 +57,38 @@ async def get_teams(
         raise HTTPException(status_code=500, detail="Failed to get teams")
 
 
+@router.get(
+    "/workspace/{workspace_id}",
+    summary="List teams for any workspace",
+    description="Superadmin only: get teams for a specific workspace."
+)
+async def get_workspace_teams(
+    workspace_id: int,
+    user: User = Depends(get_current_user),
+    team_service: TeamService = Depends(get_team_service)
+) -> list:
+    """Superadmin: Get all teams in any workspace"""
+    if not user.is_superadmin:
+        raise HTTPException(status_code=403, detail="Only SuperAdmins can access any workspace teams")
+        
+    try:
+        teams = await team_service.get_all_teams(workspace_id)
+        result_list = []
+        for team in teams:
+            result_list.append({
+                "id": team.id,
+                "name": team.name,
+                "display_name": team.display_name,
+                "has_shifts": team.has_shifts,
+                "team_lead_id": team.team_lead_id,
+                "member_count": len(team.members or [])
+            })
+        return result_list
+    except Exception as e:
+        logger.error(f"Error getting workspace teams: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get teams")
+
+
 @router.get("/{team_id}/members")
 async def get_team_members(
     team_id: int,

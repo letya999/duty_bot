@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Plus, Users, Globe, ExternalLink } from 'lucide-react';
+import { Building2, Plus, Users, Globe, Trash2, FolderTree, Shield } from 'lucide-react';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
-interface Organization {
+interface Team {
     id: number;
     name: string;
-    created_at: string;
+    display_name: string;
+    member_count: number;
 }
 
 interface Workspace {
@@ -13,6 +14,14 @@ interface Workspace {
     name: string;
     workspace_type: string;
     external_id: string;
+    organization_id?: number | null;
+    teams?: Team[];
+}
+
+interface Organization {
+    id: number;
+    name: string;
+    created_at: string;
 }
 
 interface UserAccount {
@@ -31,72 +40,120 @@ interface UserInOrg {
 }
 
 const OrganizationsPage: React.FC = () => {
+    // Data State
     const [organizations, setOrganizations] = useState<Organization[]>([]);
-    const [loading, setLoading] = useState(true);
     const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
     const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
     const [orgUsers, setOrgUsers] = useState<UserInOrg[]>([]);
+    const [allWorkspaces, setAllWorkspaces] = useState<Workspace[]>([]);
+
+    // UI State
+    const [loading, setLoading] = useState(true);
+    const [isLoadingAllWorkspaces, setIsLoadingAllWorkspaces] = useState(false);
+    const [openWorkspaces, setOpenWorkspaces] = useState<Set<number>>(new Set());
+
+    // Modal States
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [newOrgName, setNewOrgName] = useState('');
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [accountModalUser, setAccountModalUser] = useState<number | null>(null);
+
+    // New Account State
     const [newAccountProvider, setNewAccountProvider] = useState('telegram');
     const [newAccountProviderId, setNewAccountProviderId] = useState('');
     const [newAccountUsername, setNewAccountUsername] = useState('');
 
     useEffect(() => {
-        fetchOrganizations();
+        const init = async () => {
+            await fetchOrganizations();
+            await fetchAllWorkspaces();
+        };
+        init();
     }, []);
 
     const fetchOrganizations = async () => {
         setLoading(true);
         try {
             const token = localStorage.getItem('session_token');
-            const response = await fetch('/api/organizations', {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+            const response = await fetch('/api/admin/organizations', {
+                headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
-                const data = await response.json();
-                setOrganizations(data);
+                setOrganizations(await response.json());
             }
         } catch (error) {
-            console.error('Failed to fetch organizations:', error);
+            console.error('Failed to fetch orgs:', error);
         } finally {
             setLoading(false);
         }
     };
 
+    const fetchAllWorkspaces = async () => {
+        setIsLoadingAllWorkspaces(true);
+        try {
+            const token = localStorage.getItem('session_token');
+            const response = await fetch('/api/admin/organizations/workspaces/all', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                setAllWorkspaces(await response.json());
+            }
+        } catch (error) {
+            console.error('Failed to fetch all workspaces:', error);
+        } finally {
+            setIsLoadingAllWorkspaces(false);
+        }
+    };
+
     const fetchOrgDetails = async (orgId: number) => {
         const token = localStorage.getItem('session_token');
-
-        // Fetch workspaces
         try {
-            const wsRes = await fetch(`/api/organizations/${orgId}/workspaces`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (wsRes.ok) setWorkspaces(await wsRes.json());
+            const [wsRes, usersRes] = await Promise.all([
+                fetch(`/api/admin/organizations/${orgId}/workspaces`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`/api/admin/organizations/${orgId}/users`, { headers: { 'Authorization': `Bearer ${token}` } })
+            ]);
 
-            const usersRes = await fetch(`/api/organizations/${orgId}/users`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            if (wsRes.ok) setWorkspaces(await wsRes.json());
             if (usersRes.ok) setOrgUsers(await usersRes.json());
         } catch (error) {
             console.error('Failed to fetch org details:', error);
         }
     };
 
+    const fetchWorkspaceTeams = async (workspaceId: number) => {
+        const token = localStorage.getItem('session_token');
+        try {
+            const response = await fetch(`/api/admin/teams/workspace/${workspaceId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const teams = await response.json();
+                setAllWorkspaces(prev => prev.map(ws => ws.id === workspaceId ? { ...ws, teams } : ws));
+                setWorkspaces(prev => prev.map(ws => ws.id === workspaceId ? { ...ws, teams } : ws));
+            }
+        } catch (error) {
+            console.error('Failed to fetch teams:', error);
+        }
+    };
+
+    const toggleTeams = (workspaceId: number) => {
+        const newOpen = new Set(openWorkspaces);
+        if (newOpen.has(workspaceId)) {
+            newOpen.delete(workspaceId);
+        } else {
+            newOpen.add(workspaceId);
+            fetchWorkspaceTeams(workspaceId);
+        }
+        setOpenWorkspaces(newOpen);
+    };
+
     const handleCreateOrg = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
             const token = localStorage.getItem('session_token');
-            const response = await fetch('/api/organizations', {
+            const response = await fetch('/api/admin/organizations', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ name: newOrgName })
             });
             if (response.ok) {
@@ -105,20 +162,51 @@ const OrganizationsPage: React.FC = () => {
                 fetchOrganizations();
             }
         } catch (error) {
-            console.error('Failed to create organization:', error);
+            console.error('Failed to create org:', error);
         }
     };
+
+    const handleConnectWorkspace = async (workspaceId: number, orgId: number) => {
+        try {
+            const token = localStorage.getItem('session_token');
+            const response = await fetch(`/api/admin/organizations/${orgId}/workspaces/${workspaceId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                await fetchAllWorkspaces();
+                if (selectedOrg?.id === orgId) fetchOrgDetails(orgId);
+            }
+        } catch (error) {
+            console.error('Failed to connect:', error);
+        }
+    };
+
+    const handleDisconnectWorkspace = async (workspaceId: number) => {
+        if (!selectedOrg) return;
+        try {
+            const token = localStorage.getItem('session_token');
+            const response = await fetch(`/api/admin/organizations/${selectedOrg.id}/workspaces/${workspaceId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                await fetchAllWorkspaces();
+                fetchOrgDetails(selectedOrg.id);
+            }
+        } catch (error) {
+            console.error('Failed to disconnect:', error);
+        }
+    };
+
     const handleAddAccount = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedOrg || !accountModalUser) return;
         try {
             const token = localStorage.getItem('session_token');
-            const response = await fetch(`/api/organizations/${selectedOrg.id}/users/${accountModalUser}/accounts`, {
+            const response = await fetch(`/api/admin/organizations/${selectedOrg.id}/users/${accountModalUser}/accounts`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({
                     provider: newAccountProvider,
                     provider_id: newAccountProviderId,
@@ -139,31 +227,30 @@ const OrganizationsPage: React.FC = () => {
     if (loading) return <div className="flex justify-center p-12"><LoadingSpinner size="lg" /></div>;
 
     return (
-        <div className="p-6 max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-6">
+        <div className="p-6 max-w-7xl mx-auto space-y-8">
+            <div className="flex justify-between items-end">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Organizations</h1>
-                    <p className="text-gray-500">Manage multi-workspace organizations and shared resources</p>
+                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Organizations</h1>
+                    <p className="text-gray-500 mt-1">Multi-workspace management & centralized infrastructure control</p>
                 </div>
                 <button
                     onClick={() => setIsCreateModalOpen(true)}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                    className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 font-bold"
                 >
                     <Plus size={20} />
-                    Create Organization
+                    New Organization
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Organizations List */}
-                <div className="md:col-span-1 space-y-4">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                        <Building2 size={20} className="text-blue-500" />
-                        Organizations List
-                    </h2>
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                <div className="lg:col-span-1 space-y-4">
+                    <div className="flex items-center gap-2 px-1">
+                        <Building2 size={18} className="text-blue-500" />
+                        <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Select Organization</h2>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden divide-y divide-gray-100">
                         {organizations.length === 0 ? (
-                            <div className="p-8 text-center text-gray-500">No organizations found</div>
+                            <div className="p-8 text-center text-gray-400 text-sm italic">No organizations</div>
                         ) : (
                             organizations.map(org => (
                                 <button
@@ -172,89 +259,126 @@ const OrganizationsPage: React.FC = () => {
                                         setSelectedOrg(org);
                                         fetchOrgDetails(org.id);
                                     }}
-                                    className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors ${selectedOrg?.id === org.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
+                                    className={`w-full text-left px-5 py-4 transition-all group ${selectedOrg?.id === org.id
+                                            ? 'bg-blue-50 border-l-4 border-l-blue-600'
+                                            : 'hover:bg-gray-50'
                                         }`}
                                 >
-                                    <div className="font-medium text-gray-900">{org.name}</div>
-                                    <div className="text-xs text-gray-500 mt-1">ID: {org.id} • Created: {new Date(org.created_at).toLocaleDateString()}</div>
+                                    <div className="font-bold text-gray-900 group-hover:text-blue-700 transition-colors">{org.name}</div>
+                                    <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-2">
+                                        <span className="bg-gray-100 px-1.5 py-0.5 rounded">ID: {org.id}</span>
+                                        <span>•</span>
+                                        <span>{new Date(org.created_at).toLocaleDateString()}</span>
+                                    </div>
                                 </button>
                             ))
                         )}
                     </div>
                 </div>
 
-                {/* Organization Details */}
-                <div className="md:col-span-2 space-y-6">
+                <div className="lg:col-span-3 space-y-8">
                     {selectedOrg ? (
-                        <>
-                            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                                <h3 className="text-xl font-bold text-gray-900 mb-4">{selectedOrg.name} Details</h3>
+                        <div className="space-y-8">
+                            <div className="bg-white rounded-3xl border border-gray-200 shadow-xl overflow-hidden">
+                                <div className="bg-gradient-to-r from-gray-900 to-gray-800 p-8 text-white">
+                                    <div className="flex items-center gap-2 text-blue-400 mb-2">
+                                        <Shield size={16} />
+                                        <span className="text-xs font-bold uppercase tracking-widest">Active Organization</span>
+                                    </div>
+                                    <h2 className="text-4xl font-black">{selectedOrg.name}</h2>
+                                    <div className="mt-4 flex gap-6 text-sm text-gray-400">
+                                        <div className="flex items-center gap-2"><Globe size={14} /> {workspaces.length} Workspaces</div>
+                                        <div className="flex items-center gap-2"><Users size={14} /> {orgUsers.length} Team Members</div>
+                                    </div>
+                                </div>
 
-                                <div className="space-y-6">
-                                    {/* Workspaces Section */}
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                            <Globe size={16} />
-                                            Connected Workspaces
-                                        </h4>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="p-8 space-y-10">
+                                    <section>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-bold text-gray-900">Connected Hubs</h3>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {workspaces.map(ws => (
-                                                <div key={ws.id} className="p-3 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-between">
-                                                    <div>
-                                                        <div className="text-sm font-medium">{ws.name}</div>
-                                                        <div className="text-xs text-gray-500">{ws.workspace_type} • {ws.external_id}</div>
+                                                <div key={ws.id} className="group border border-gray-100 bg-gray-50 rounded-2xl overflow-hidden hover:border-blue-200 hover:bg-white transition-all hover:shadow-lg">
+                                                    <div className="p-4 flex items-center justify-between">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white font-black text-xl ${ws.workspace_type === 'telegram' ? 'bg-sky-500' : 'bg-purple-500'}`}>
+                                                                {ws.workspace_type[0].toUpperCase()}
+                                                            </div>
+                                                            <div>
+                                                                <div className="font-bold text-gray-900">{ws.name}</div>
+                                                                <div className="text-[10px] text-gray-500 uppercase font-black tracking-tighter opacity-60">{ws.external_id}</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => toggleTeams(ws.id)}
+                                                                className={`p-2 rounded-lg ${openWorkspaces.has(ws.id) ? 'bg-blue-600 text-white' : 'bg-white text-gray-400 hover:text-blue-500 border border-gray-100'}`}
+                                                            >
+                                                                <FolderTree size={18} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDisconnectWorkspace(ws.id)}
+                                                                className="p-2 bg-white text-gray-400 hover:text-red-500 border border-gray-100 rounded-lg"
+                                                            >
+                                                                <Trash2 size={18} />
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                    <ExternalLink size={14} className="text-gray-400" />
+                                                    {openWorkspaces.has(ws.id) && (
+                                                        <div className="px-4 pb-4 bg-white border-t border-gray-50 pt-4">
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                {ws.teams?.map(team => (
+                                                                    <div key={team.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                                                        <div className="text-xs font-bold text-gray-800 truncate">{team.display_name}</div>
+                                                                        <div className="text-[10px] text-gray-400 mt-1">{team.member_count} members</div>
+                                                                    </div>
+                                                                ))}
+                                                                {!ws.teams && <div className="col-span-2 py-4 flex justify-center"><LoadingSpinner size="sm" /></div>}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
-                                            {workspaces.length === 0 && <div className="col-span-2 text-sm text-gray-500 italic">No workspaces connected</div>}
                                         </div>
-                                    </div>
+                                    </section>
 
-                                    {/* Users Section */}
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                            <Users size={16} />
-                                            Organization Users
-                                        </h4>
-                                        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                                            <table className="min-w-full divide-y divide-gray-200">
+                                    <section>
+                                        <h3 className="text-lg font-bold text-gray-900 mb-4">Organization Officers</h3>
+                                        <div className="border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+                                            <table className="min-w-full divide-y divide-gray-100">
                                                 <thead className="bg-gray-50">
                                                     <tr>
-                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">User</th>
-                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Accounts</th>
-                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                                        <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Member</th>
+                                                        <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Identity Links</th>
+                                                        <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Clearance</th>
                                                     </tr>
                                                 </thead>
-                                                <tbody className="divide-y divide-gray-200">
+                                                <tbody className="divide-y divide-gray-100 bg-white">
                                                     {orgUsers.map(user => (
-                                                        <tr key={user.id}>
-                                                            <td className="px-4 py-3">
-                                                                <div className="text-sm font-medium text-gray-900">{user.display_name || `User ${user.id}`}</div>
-                                                                <div className="text-xs text-gray-500">ID: {user.id}</div>
+                                                        <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                                                            <td className="px-6 py-4">
+                                                                <div className="font-bold text-gray-900">{user.display_name || `Anonymous #${user.id}`}</div>
+                                                                <div className="text-[10px] text-gray-400">UID: {user.id}</div>
                                                             </td>
-                                                            <td className="px-4 py-3">
-                                                                <div className="flex flex-wrap gap-1 mb-2">
+                                                            <td className="px-6 py-4">
+                                                                <div className="flex flex-wrap gap-2 mb-2">
                                                                     {user.user_accounts.map(acc => (
-                                                                        <span key={acc.id} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800" title={`Account/Provider ID: ${acc.provider_id}`}>
-                                                                            {acc.provider === 'telegram' ? '✈️' : '⚡'} {acc.username || acc.provider_id}
+                                                                        <span key={acc.id} className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-100">
+                                                                            {acc.provider === 'telegram' ? '✈️' : '⚡'} @{acc.username || acc.provider_id.slice(0, 8)}
                                                                         </span>
                                                                     ))}
-                                                                    {user.user_accounts.length === 0 && <span className="text-xs text-gray-400">No accounts</span>}
                                                                 </div>
                                                                 <button
-                                                                    onClick={() => {
-                                                                        setAccountModalUser(user.id);
-                                                                        setIsAccountModalOpen(true);
-                                                                    }}
-                                                                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold uppercase"
+                                                                    onClick={() => { setAccountModalUser(user.id); setIsAccountModalOpen(true); }}
+                                                                    className="text-[10px] font-bold text-blue-600 hover:bg-blue-50 px-2 py-0.5 rounded transition-colors uppercase"
                                                                 >
-                                                                    + Add Account
+                                                                    + Map Account
                                                                 </button>
                                                             </td>
-                                                            <td className="px-4 py-3">
+                                                            <td className="px-6 py-4">
                                                                 {user.is_superadmin && (
-                                                                    <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded uppercase">SuperAdmin</span>
+                                                                    <span className="px-3 py-1 bg-red-600 text-white text-[10px] font-black rounded-full shadow-lg shadow-red-100 uppercase tracking-widest">SUPER</span>
                                                                 )}
                                                             </td>
                                                         </tr>
@@ -262,122 +386,183 @@ const OrganizationsPage: React.FC = () => {
                                                 </tbody>
                                             </table>
                                         </div>
-                                    </div>
+                                    </section>
                                 </div>
                             </div>
-                        </>
+
+                            <div className="bg-white rounded-3xl border border-gray-200 shadow-xl p-8">
+                                <div className="flex items-center justify-between mb-8">
+                                    <div>
+                                        <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tight">Infrastructure Hub</h3>
+                                        <p className="text-sm text-gray-500">Cross-organization workspace management & routing</p>
+                                    </div>
+                                    <Globe size={40} className="text-gray-100" />
+                                </div>
+
+                                <div className="space-y-4">
+                                    {isLoadingAllWorkspaces && allWorkspaces.length === 0 ? (
+                                        <div className="flex justify-center p-12"><LoadingSpinner size="md" /></div>
+                                    ) : (
+                                        allWorkspaces.map(ws => (
+                                            <div key={ws.id} className="border border-gray-100 rounded-2xl overflow-hidden group hover:shadow-xl transition-all">
+                                                <div className="bg-gray-50 p-6 flex items-center justify-between group-hover:bg-white transition-colors">
+                                                    <div className="flex items-center gap-6">
+                                                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-lg ${ws.workspace_type === 'telegram' ? 'bg-sky-500 shadow-sky-100' : 'bg-purple-500 shadow-purple-100'}`}>
+                                                            {ws.workspace_type[0].toUpperCase()}
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-xl font-bold text-gray-900">{ws.name}</div>
+                                                            <div className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-3 mt-1">
+                                                                <span>{ws.workspace_type} Cluster</span>
+                                                                <span className="w-1 h-1 bg-gray-300 rounded-full" />
+                                                                <span>CID: {ws.external_id}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-4">
+                                                        {ws.organization_id ? (
+                                                            <div className="text-right">
+                                                                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Assigned to</div>
+                                                                <div className="px-3 py-1 bg-emerald-50 text-emerald-600 text-sm font-bold rounded-lg border border-emerald-100">
+                                                                    {organizations.find(o => o.id === ws.organization_id)?.name || `Org #${ws.organization_id}`}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="px-3 py-1 bg-yellow-50 text-yellow-600 text-[10px] font-black rounded-lg border border-yellow-100 uppercase tracking-widest">Unassigned Hub</div>
+                                                        )}
+
+                                                        <div className="h-10 w-[1px] bg-gray-100 mx-2" />
+
+                                                        {ws.organization_id !== selectedOrg.id && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleConnectWorkspace(ws.id, selectedOrg.id); }}
+                                                                className="px-4 py-2 bg-gray-900 text-white text-xs font-black rounded-xl hover:bg-black transition-all shadow-lg shadow-gray-200 uppercase tracking-widest"
+                                                            >
+                                                                Move to {selectedOrg.name}
+                                                            </button>
+                                                        )}
+
+                                                        <button
+                                                            onClick={() => toggleTeams(ws.id)}
+                                                            className={`p-3 rounded-xl transition-all ${openWorkspaces.has(ws.id) ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                                                        >
+                                                            <Building2 size={24} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {openWorkspaces.has(ws.id) && (
+                                                    <div className="p-6 bg-white border-t border-gray-50">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                            {ws.teams?.map(team => (
+                                                                <div key={team.id} className="p-4 border border-gray-50 bg-gray-50 rounded-2xl hover:bg-white hover:border-blue-100 hover:shadow-lg transition-all group/team">
+                                                                    <div className="font-bold text-gray-900 mb-2 truncate group-hover/team:text-blue-600 transition-colors uppercase tracking-tight text-sm">{team.display_name}</div>
+                                                                    <div className="flex items-center gap-2 text-[11px] font-black text-gray-400">
+                                                                        <Users size={12} />
+                                                                        <span>{team.member_count} Members</span>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                            {!ws.teams && <div className="col-span-full py-12 flex flex-col items-center gap-4 text-blue-500 font-bold"><LoadingSpinner size="md" /><span>SYNCING INFRASTRUCTURE...</span></div>}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                     ) : (
-                        <div className="h-64 flex flex-col items-center justify-center text-gray-500 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
-                            <Building2 size={48} className="mb-2 opacity-20" />
-                            <p>Select an organization to view details</p>
+                        <div className="h-[600px] flex flex-col items-center justify-center text-gray-400 bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] animate-pulse">
+                            <Building2 size={80} className="mb-4 opacity-10" />
+                            <p className="text-xl font-black uppercase tracking-widest opacity-20">Select Strategic Entity</p>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Add Account Modal */}
             {isAccountModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold text-gray-900">Add User Account</h3>
-                            <button onClick={() => setIsAccountModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                                <Plus size={24} className="rotate-45" />
+                <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8 border border-white/20">
+                        <div className="flex justify-between items-center mb-8">
+                            <h3 className="text-2xl font-black text-gray-900 uppercase">Map Identity</h3>
+                            <button onClick={() => setIsAccountModalOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+                                <Plus size={24} className="rotate-45 text-gray-400" />
                             </button>
                         </div>
-                        <form onSubmit={handleAddAccount}>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
-                                    <select
-                                        value={newAccountProvider}
-                                        onChange={e => setNewAccountProvider(e.target.value)}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    >
-                                        <option value="telegram">Telegram</option>
-                                        <option value="slack">Slack</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Account / Provider ID</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={newAccountProviderId}
-                                        onChange={e => setNewAccountProviderId(e.target.value)}
-                                        placeholder="e.g. 123456789 or U12345678"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    />
-                                    <p className="text-[10px] text-gray-500 mt-1">Numerical ID for Telegram, User ID for Slack</p>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Username (Optional)</label>
-                                    <input
-                                        type="text"
-                                        value={newAccountUsername}
-                                        onChange={e => setNewAccountUsername(e.target.value)}
-                                        placeholder="e.g. john_doe"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-3 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAccountModalOpen(false)}
-                                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        <form onSubmit={handleAddAccount} className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Network Provider</label>
+                                <select
+                                    value={newAccountProvider}
+                                    onChange={e => setNewAccountProvider(e.target.value)}
+                                    className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white outline-none transition-all font-bold text-gray-900"
                                 >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                                >
-                                    Add Account
-                                </button>
+                                    <option value="telegram">TELEGRAM NETWORK</option>
+                                    <option value="slack">SLACK CLUSTER</option>
+                                </select>
                             </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Physical Identity ID</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={newAccountProviderId}
+                                    onChange={e => setNewAccountProviderId(e.target.value)}
+                                    placeholder="Numerical or Platform UUID"
+                                    className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white outline-none transition-all font-bold text-gray-900"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Alias (Optional)</label>
+                                <input
+                                    type="text"
+                                    value={newAccountUsername}
+                                    onChange={e => setNewAccountUsername(e.target.value)}
+                                    placeholder="Reference Username"
+                                    className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white outline-none transition-all font-bold text-gray-900"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-100"
+                            >
+                                Establish Link
+                            </button>
                         </form>
                     </div>
                 </div>
             )}
 
-            {/* Create Modal */}
             {isCreateModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold text-gray-900">Create New Organization</h3>
-                            <button onClick={() => setIsCreateModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                                <Plus size={24} className="rotate-45" />
+                <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-8 border border-white/20">
+                        <div className="flex justify-between items-center mb-8">
+                            <h3 className="text-2xl font-black text-gray-900 uppercase">New Strategic Entity</h3>
+                            <button onClick={() => setIsCreateModalOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
+                                <Plus size={24} className="rotate-45 text-gray-400" />
                             </button>
                         </div>
-                        <form onSubmit={handleCreateOrg}>
-                            <div className="mb-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name</label>
+                        <form onSubmit={handleCreateOrg} className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Entity Name</label>
                                 <input
                                     type="text"
                                     required
                                     value={newOrgName}
                                     onChange={e => setNewOrgName(e.target.value)}
-                                    placeholder="e.g. Acme Corp"
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none"
+                                    placeholder="Enter Organization Name"
+                                    className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white outline-none transition-all font-bold text-gray-900"
                                 />
                             </div>
-                            <div className="flex justify-end gap-3 mt-6">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsCreateModalOpen(false)}
-                                    className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-md shadow-blue-200"
-                                >
-                                    Create
-                                </button>
-                            </div>
+                            <button
+                                type="submit"
+                                className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-gray-200"
+                            >
+                                Initalize Entity
+                            </button>
                         </form>
                     </div>
                 </div>

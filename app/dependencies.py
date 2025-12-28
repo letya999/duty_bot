@@ -13,6 +13,8 @@ from app.repositories import (
     DutyStatsRepository,
     IncidentRepository,
     GoogleCalendarRepository,
+    OrganizationRepository,
+    UserAccountRepository,
 )
 
 
@@ -111,3 +113,13 @@ async def get_incident_repository(db: AsyncSession = Depends(get_db)) -> Inciden
 async def get_google_calendar_repository(db: AsyncSession = Depends(get_db)) -> GoogleCalendarRepository:
     """Get Google Calendar repository."""
     return GoogleCalendarRepository(db)
+
+
+async def get_organization_repository(db: AsyncSession = Depends(get_db)) -> OrganizationRepository:
+    """Get organization repository."""
+    return OrganizationRepository(db)
+
+
+async def get_user_account_repository(db: AsyncSession = Depends(get_db)) -> UserAccountRepository:
+    """Get user account repository."""
+    return UserAccountRepository(db)

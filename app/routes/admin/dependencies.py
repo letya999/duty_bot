@@ -6,12 +6,15 @@ from app.dependencies import (
     get_db,
     get_user_repository,
     get_team_repository,
+    get_workspace_repository,
     get_schedule_repository,
     get_escalation_repository,
     get_rotation_config_repository,
     get_admin_log_repository,
     get_duty_stats_repository,
     get_google_calendar_repository,
+    get_organization_repository,
+    get_user_account_repository,
 )
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
@@ -21,19 +24,23 @@ from app.services.rotation_service import RotationService
 from app.services.admin_service import AdminService
 from app.services.stats_service import StatsService
 from app.services.google_calendar_service import GoogleCalendarService
+from app.services.organization_service import OrganizationService
+from app.services.user_account_service import UserAccountService
 from app.repositories import (
     UserRepository, TeamRepository, ScheduleRepository,
     EscalationRepository, RotationConfigRepository, AdminLogRepository,
-    GoogleCalendarRepository
+    GoogleCalendarRepository, OrganizationRepository, UserAccountRepository,
+    WorkspaceRepository
 )
 
 
 async def get_user_service(
     user_repo: UserRepository = Depends(get_user_repository),
-    admin_log_repo: AdminLogRepository = Depends(get_admin_log_repository)
+    admin_log_repo: AdminLogRepository = Depends(get_admin_log_repository),
+    user_account_repo: UserAccountRepository = Depends(get_user_account_repository)
 ) -> UserService:
     """Get user service with repositories"""
-    return UserService(user_repo, admin_log_repo)
+    return UserService(user_repo, admin_log_repo, user_account_repo)
 
 
 async def get_team_service(
@@ -87,3 +94,22 @@ async def get_google_calendar_service(
 ) -> GoogleCalendarService:
     """Get Google Calendar service"""
     return GoogleCalendarService(google_calendar_repo)
+
+
+async def get_organization_service(
+    org_repo: OrganizationRepository = Depends(get_organization_repository),
+    workspace_repo: WorkspaceRepository = Depends(get_workspace_repository),
+    team_repo: TeamRepository = Depends(get_team_repository),
+    db: AsyncSession = Depends(get_db)
+) -> OrganizationService:
+    """Get organization service"""
+    return OrganizationService(org_repo, workspace_repo, team_repo, db)
+
+
+async def get_user_account_service(
+    user_account_repo: UserAccountRepository = Depends(get_user_account_repository),
+    user_repo: UserRepository = Depends(get_user_repository),
+    db: AsyncSession = Depends(get_db)
+) -> UserAccountService:
+    """Get user account service"""
+    return UserAccountService(user_account_repo, user_repo, db)

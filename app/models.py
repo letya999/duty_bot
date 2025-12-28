@@ -6,6 +6,23 @@ from app.database import Base
 import enum as python_enum
 
 
+class Organization(Base):
+    """Organization groups multiple workspaces and makes resources shared"""
+    __tablename__ = 'organization'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    created_by_user_id = Column(Integer, ForeignKey('user.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    workspaces = relationship('Workspace', back_populates='organization', cascade='all, delete-orphan')
+    users = relationship('User', back_populates='organization', cascade='all, delete-orphan')
+    teams = relationship('Team', back_populates='organization', cascade='all, delete-orphan')
+    incidents = relationship('Incident', back_populates='organization', cascade='all, delete-orphan')
+    escalations = relationship('Escalation', back_populates='organization', cascade='all, delete-orphan')
+
+
 class Workspace(Base):
     """Multi-workspace support for data isolation"""
     __tablename__ = 'workspace'
@@ -14,9 +31,11 @@ class Workspace(Base):
     name = Column(String, nullable=False)  # Display name
     workspace_type = Column(String, nullable=False)  # 'telegram' or 'slack'
     external_id = Column(String, nullable=False, index=True)  # chat_id or workspace_id
+    organization_id = Column(Integer, ForeignKey('organization.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
+    organization = relationship('Organization', back_populates='workspaces')
     chat_channels = relationship('ChatChannel', back_populates='workspace', cascade='all, delete-orphan')
     users = relationship('User', back_populates='workspace', cascade='all, delete-orphan')
     teams = relationship('Team', back_populates='workspace', cascade='all, delete-orphan')
@@ -57,11 +76,34 @@ team_members = Table(
 )
 
 
+class UserAccount(Base):
+    """Multiple login methods for a single user across different workspaces"""
+    __tablename__ = 'user_account'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('user.id'), nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=True, index=True)
+    provider = Column(String, nullable=False)  # 'slack' or 'telegram'
+    provider_id = Column(String, nullable=False)  # slack_user_id or telegram_id
+    username = Column(String, nullable=True)  # slack username or telegram username
+    account_email = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship('User', back_populates='user_accounts')
+    workspace = relationship('Workspace')
+
+    __table_args__ = (
+        UniqueConstraint('provider_id', 'workspace_id', name='user_account_provider_id_workspace_id_unique'),
+    )
+
+
 class User(Base):
     __tablename__ = 'user'
 
     id = Column(Integer, primary_key=True)
     workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey('organization.id'), nullable=True)
     telegram_id = Column(BigInteger, nullable=True, index=True) # Note: SQLAlchemy Integer might be too small for some TG IDs, but let's stick to what's likely intended or use BigInteger
     telegram_username = Column(String, nullable=True, index=True)
     username = Column(String, nullable=True, index=True)
@@ -70,10 +112,13 @@ class User(Base):
     last_name = Column(String, nullable=True)
     display_name = Column(String, nullable=True) # Allow null during migration transition
     is_admin = Column(Boolean, default=False)
+    is_superadmin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     workspace = relationship('Workspace', back_populates='users')
+    organization = relationship('Organization', back_populates='users')
+    user_accounts = relationship('UserAccount', back_populates='user', cascade='all, delete-orphan')
     teams = relationship('Team', secondary=team_members, back_populates='members')
     led_teams = relationship('Team', back_populates='team_lead_user', foreign_keys='Team.team_lead_id')
     schedules = relationship('Schedule', back_populates='user')
@@ -92,6 +137,7 @@ class Team(Base):
 
     id = Column(Integer, primary_key=True)
     workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey('organization.id'), nullable=True)
     name = Column(String, nullable=False, index=True)
     display_name = Column(String, nullable=False)
     has_shifts = Column(Boolean, default=False)
@@ -100,6 +146,7 @@ class Team(Base):
 
     # Relationships
     workspace = relationship('Workspace', back_populates='teams')
+    organization = relationship('Organization', back_populates='teams')
     members = relationship('User', secondary=team_members, back_populates='teams')
     team_lead_user = relationship('User', back_populates='led_teams', foreign_keys=[team_lead_id])
     schedules = relationship('Schedule', back_populates='team', cascade='all, delete-orphan')
@@ -162,11 +209,13 @@ class Escalation(Base):
 
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey('team.id'), nullable=True, index=True)  # NULL for global CTO
+    organization_id = Column(Integer, ForeignKey('organization.id'), nullable=True)
     cto_id = Column(Integer, ForeignKey('user.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     team = relationship('Team', back_populates='escalations')
+    organization = relationship('Organization', back_populates='escalations')
     cto_user = relationship('User', back_populates='escalation_as_cto', foreign_keys=[cto_id])
 
 
@@ -236,6 +285,7 @@ class Incident(Base):
 
     id = Column(Integer, primary_key=True)
     workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey('organization.id'), nullable=True)
     name = Column(String, nullable=False)
     status = Column(Enum('active', 'resolved', name='incident_status_enum'), default='active', nullable=False)
     start_time = Column(DateTime, nullable=False, index=True)
@@ -245,6 +295,7 @@ class Incident(Base):
 
     # Relationships
     workspace = relationship('Workspace')
+    organization = relationship('Organization', back_populates='incidents')
 
 
 class GoogleCalendarIntegration(Base):

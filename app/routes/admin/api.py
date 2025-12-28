@@ -10,6 +10,7 @@ from app.routes.admin.endpoints.escalations import router as escalations_router
 from app.routes.admin.endpoints.stats import router as stats_router
 from app.routes.admin.endpoints.stats import schedules_router as schedules_range_router
 from app.routes.admin.endpoints.google_calendar import router as google_calendar_router
+from app.routes.admin.endpoints.organizations import router as organizations_router
 
 # Create main router
 router = APIRouter(prefix="/api/admin")
@@ -23,3 +24,4 @@ router.include_router(escalations_router)
 router.include_router(stats_router)
 router.include_router(schedules_range_router)
 router.include_router(google_calendar_router)
+router.include_router(organizations_router)

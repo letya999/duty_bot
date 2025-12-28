@@ -6,6 +6,7 @@ export interface User {
   last_name?: string;
   display_name?: string;
   is_admin: boolean;
+  is_superadmin?: boolean;
   workspace_id: number;
   telegram_id?: number;
   telegram_username?: string;

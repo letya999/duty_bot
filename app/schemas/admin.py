@@ -57,6 +57,7 @@ class UserResponse(UserBase):
     id: int = Field(..., description="User ID")
     workspace_id: int = Field(..., description="Workspace ID")
     is_admin: bool = Field(..., description="Is admin user")
+    is_superadmin: bool = Field(False, description="Is superadmin user")
     telegram_id: Optional[int] = Field(None, description="Telegram user ID")
     telegram_username: Optional[str] = Field(None, description="Telegram username")
     slack_user_id: Optional[str] = Field(None, description="Slack user ID")

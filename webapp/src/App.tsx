@@ -11,6 +11,7 @@ import EscalationsPage from './pages/EscalationsPage';
 import SettingsPage from './pages/SettingsPage';
 import ReportsPage from './pages/ReportsPage';
 import IncidentsPage from './pages/IncidentsPage';
+import OrganizationsPage from './pages/OrganizationsPage';
 
 // Components
 import Navigation from './components/Navigation';
@@ -70,11 +71,7 @@ function App() {
                     <Route path="/incidents" element={<IncidentsPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
-                    <Route index element={<DashboardPage />} />
-                    <Route path="schedules" element={<SchedulesPage />} />
-                    <Route path="incidents" element={<IncidentsPage />} />
-                    <Route path="settings" element={<SettingsPage />} />
-                    <Route path="reports" element={<ReportsPage />} />
+                    <Route path="/organizations" element={<OrganizationsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </main>

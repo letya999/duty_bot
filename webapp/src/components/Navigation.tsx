@@ -66,8 +66,11 @@ const Navigation: React.FC = () => {
 
       if (response.ok) {
         const data = await response.json();
-        // Store new token and reload
+        // Store new token and user, then reload
         localStorage.setItem('session_token', data.session_token);
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
         // Close switcher and reload page to get new workspace data
         setIsWorkspaceSwitcherOpen(false);
         window.location.href = '/';
@@ -89,12 +92,15 @@ const Navigation: React.FC = () => {
     { path: '/', label: t('navigation.dashboard'), icon: <Home size={20} /> },
     { path: '/schedules', label: t('navigation.schedules'), icon: <Calendar size={20} /> },
     { path: '/incidents', label: t('navigation.incidents'), icon: <Zap size={20} /> },
-    ...(user?.is_admin ? [
+    ...(user?.is_admin || user?.is_superadmin ? [
       { path: '/teams', label: t('navigation.teams'), icon: <Users size={20} /> },
       { path: '/escalations', label: t('navigation.escalations'), icon: <AlertCircle size={20} /> },
     ] : []),
+    ...(user?.is_superadmin ? [
+      { path: '/organizations', label: 'Organizations', icon: <Settings size={20} /> },
+    ] : []),
     { path: '/reports', label: t('navigation.reports'), icon: <BarChart3 size={20} /> },
-    ...(user?.is_admin ? [{ path: '/settings', label: t('navigation.settings'), icon: <Settings size={20} /> }] : []),
+    ...(user?.is_admin || user?.is_superadmin ? [{ path: '/settings', label: t('navigation.settings'), icon: <Settings size={20} /> }] : []),
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -148,11 +154,15 @@ const Navigation: React.FC = () => {
                 {user.first_name} {user.last_name || ''}
               </p>
               <p className="text-xs text-gray-500">@{user.username}</p>
-              {user.is_admin && (
-                <span className="inline-block mt-2 px-2 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded">
-                  {t('dashboard.stats.admins').slice(0, -1)} {/* Crude but usually works for "Admin" vs "Admins" if not separately translated */}
+              {user.is_superadmin ? (
+                <span className="inline-block mt-2 px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded">
+                  Super Admin
                 </span>
-              )}
+              ) : user.is_admin ? (
+                <span className="inline-block mt-2 px-2 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded">
+                  {t('dashboard.stats.admins').slice(0, -1)}
+                </span>
+              ) : null}
             </div>
 
             {/* Workspace Switcher - show only if multiple workspaces */}

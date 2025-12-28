@@ -146,7 +146,7 @@ async def telegram_callback(request: Request):
         # Get or create user and workspace
         async with AsyncSessionLocal() as db:
             # 1. Try to find an existing user record with this telegram_id
-            user_stmt = select(User).where(User.telegram_id == user_info['user_id']).order_by(User.is_admin.desc())
+            user_stmt = select(User).where(User.telegram_id == user_info['user_id']).order_by(User.is_superadmin.desc(), User.is_admin.desc())
             result = await db.execute(user_stmt)
             existing_user = result.scalars().first()
 
@@ -241,12 +241,20 @@ async def telegram_callback(request: Request):
             "first_name": user.first_name,
             "last_name": user.last_name,
             "is_admin": user.is_admin,
+            "is_superadmin": user.is_superadmin,
             "workspace_id": user.workspace_id,
         }
         
         # Master admin check
         if user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram'):
             user_data["is_admin"] = True
+            if not user.is_admin:
+                # Update in memory and potentially DB
+                user_data["is_admin"] = True
+        
+        # Superadmin check
+        if user.is_superadmin:
+            user_data["is_superadmin"] = True
 
         # Return bridge HTML to set localStorage and redirect to modern dashboard
         html = f"""
@@ -284,8 +292,15 @@ async def telegram_callback(request: Request):
 
 
 @router.post("/web/auth/telegram-widget-callback")
-async def telegram_widget_callback(request: Request):
+async def telegram_widget_callback(
+    request: Request,
+    user_account_service: "UserAccountService" = Depends(lambda: None) # Will be resolved below if possible or used manually
+):
     """Handle Telegram Login Widget callback (for web admin panel)"""
+    from app.routes.admin.dependencies import get_user_account_service
+    # We might need to resolve it manually since this is a route but let's try Depends first
+    # Actually, let's use the manual way to be safe in this complex file
+    
     try:
         logger.info("🔵 [Backend] POST /telegram-widget-callback received")
         logger.info(f"🔵 [Backend] Request headers: {dict(request.headers)}")
@@ -316,7 +331,7 @@ async def telegram_widget_callback(request: Request):
             # 1. Try to find an existing user record with this telegram_id
             # Order by is_admin desc to prefer workspaces where the user is an admin
             # Order by created_at desc to prefer more recently created/active profiles as a tie-breaker
-            user_stmt = select(User).where(User.telegram_id == user_info['user_id']).order_by(User.is_admin.desc(), User.created_at.desc())
+            user_stmt = select(User).where(User.telegram_id == user_info['user_id']).order_by(User.is_superadmin.desc(), User.is_admin.desc(), User.created_at.desc())
             result = await db.execute(user_stmt)
             existing_user = result.scalars().first()
 
@@ -361,9 +376,28 @@ async def telegram_widget_callback(request: Request):
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "is_admin": user.is_admin or (user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram')),
+                "is_superadmin": user.is_superadmin,
                 "workspace_id": user.workspace_id,
             }
         })
+        
+        # Ensure UserAccount entry exists
+        try:
+            from app.repositories.user_account_repository import UserAccountRepository
+            from app.repositories.user_repository import UserRepository
+            from app.services.user_account_service import UserAccountService
+            
+            async with AsyncSessionLocal() as db:
+                ua_service = UserAccountService(UserAccountRepository(db), UserRepository(db), db)
+                await ua_service.find_or_create_account(
+                    user_id=user.id,
+                    provider='telegram',
+                    provider_id=str(user_info['user_id']),
+                    workspace_id=user.workspace_id,
+                    username=user_info.get('username')
+                )
+        except Exception as e:
+            logger.warning(f"Failed to create/update UserAccount during login: {e}")
         
         # Set cookie for web panel
         response.set_cookie(
@@ -524,6 +558,7 @@ async def slack_callback(code: str = None, state: str = None):
             "first_name": user.first_name,
             "last_name": user.last_name,
             "is_admin": user.is_admin,
+            "is_superadmin": user.is_superadmin,
             "workspace_id": user.workspace_id,
         }
         
@@ -535,6 +570,27 @@ async def slack_callback(code: str = None, state: str = None):
         if user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram'):
             is_admin = True
             user_data["is_admin"] = True
+        
+        if user.is_superadmin:
+            user_data["is_superadmin"] = True
+
+        # Ensure UserAccount entry exists
+        try:
+            from app.repositories.user_account_repository import UserAccountRepository
+            from app.repositories.user_repository import UserRepository
+            from app.services.user_account_service import UserAccountService
+            
+            async with AsyncSessionLocal() as db:
+                ua_service = UserAccountService(UserAccountRepository(db), UserRepository(db), db)
+                await ua_service.find_or_create_account(
+                    user_id=user.id,
+                    provider='slack',
+                    provider_id=user_info['user_id'],
+                    workspace_id=user.workspace_id,
+                    username=user_info.get('username')
+                )
+        except Exception as e:
+            logger.warning(f"Failed to create/update UserAccount during Slack login: {e}")
 
         # Return bridge HTML to set localStorage and redirect to modern dashboard
         html = f"""
@@ -641,16 +697,20 @@ async def list_workspaces(request: Request, session: dict = Depends(get_session_
                             is_admin = True
                         if user_record.slack_user_id and user_record.slack_user_id in admin_slack_ids:
                             is_admin = True
+                        
+                        # Superadmin privilege: allow access to all their workspaces
+                        is_allowed = is_admin or user_record.is_superadmin
 
-                        # Filter: only show if admin or master admin
-                        if is_admin:
+                        # Filter: only show if admin, superadmin or master admin
+                        if is_allowed:
                             workspaces.append({
                                 'id': workspace.id,
                                 'name': workspace.name,
                                 'type': workspace.workspace_type,
                                 'is_current': workspace.id == current_workspace_id,
                                 'is_admin': is_admin,
-                                'role': 'admin' if is_admin else 'member'
+                                'is_superadmin': user_record.is_superadmin,
+                                'role': 'superadmin' if user_record.is_superadmin else ('admin' if is_admin else 'member')
                             })
 
             logger.info(f"User {user_id} has access to {len(workspaces)} workspace(s)")
@@ -747,6 +807,15 @@ async def switch_workspace(request: Request, session: dict = Depends(get_session
         response = JSONResponse(content={
             'success': True,
             'session_token': new_token,
+            'user': {
+                'id': target_user.id,
+                'username': target_user.username or target_user.telegram_username,
+                'first_name': target_user.first_name,
+                'last_name': target_user.last_name,
+                'is_admin': is_admin,
+                'is_superadmin': target_user.is_superadmin,
+                'workspace_id': target_workspace_id,
+            },
             'workspace': {
                 'id': target_workspace_id,
                 'name': target_workspace.name,

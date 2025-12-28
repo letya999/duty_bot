@@ -34,6 +34,7 @@ async def get_user_info(user: User = Depends(get_current_user)) -> dict:
         "first_name": user.first_name,
         "last_name": user.last_name or "",
         "is_admin": user.is_admin,
+        "is_superadmin": user.is_superadmin,
         "workspace_id": user.workspace_id,
     }
 
@@ -63,6 +64,7 @@ async def get_all_users(
                 "last_name": u.last_name or "",
                 "display_name": u.display_name,
                 "is_admin": u.is_admin,
+                "is_superadmin": u.is_superadmin,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
             }
             for u in users

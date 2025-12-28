@@ -30,7 +30,6 @@ class BaseRepository(Generic[ModelT]):
         db_obj = self.model_class(**obj_in)
         self.db.add(db_obj)
         await self.db.commit()
-        await self.db.refresh(db_obj)
         return db_obj
 
     async def update(self, entity_id: int, obj_in: dict) -> Optional[ModelT]:
@@ -44,7 +43,6 @@ class BaseRepository(Generic[ModelT]):
                 setattr(db_obj, key, value)
 
         await self.db.commit()
-        await self.db.refresh(db_obj)
         return db_obj
 
     async def delete(self, entity_id: int) -> bool:

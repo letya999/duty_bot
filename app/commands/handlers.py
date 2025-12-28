@@ -15,6 +15,7 @@ from app.repositories import (
     EscalationRepository, EscalationEventRepository, AdminLogRepository, RotationConfigRepository,
     IncidentRepository
 )
+from sqlalchemy import select
 from app.models import Team, User, Schedule
 from app.config import get_settings
 
@@ -329,6 +330,9 @@ Members: {members_str}"""
             date_range = CommandParser.get_current_week_dates(today, self.settings.timezone)
         elif period == "next":
             date_range = CommandParser.get_next_week_dates(today, self.settings.timezone)
+        elif period == "month":
+            # Treat "month" as current month
+            date_range = DateParser.get_month_dates(today.strftime("%B").lower(), today, self.settings.timezone)
         else:
             date_range = DateParser.get_month_dates(period, today, self.settings.timezone)
 
@@ -414,6 +418,7 @@ Members: {members_str}"""
                 }
             )
 
+        # Reset current and initialize count
         current = date_range.start
         count = 0
         while current <= date_range.end:
@@ -481,6 +486,9 @@ Members: {members_str}"""
             date_range = CommandParser.get_current_week_dates(today, self.settings.timezone)
         elif period == "next":
             date_range = CommandParser.get_next_week_dates(today, self.settings.timezone)
+        elif period == "month":
+            # Treat "month" as current month
+            date_range = DateParser.get_month_dates(today.strftime("%B").lower(), today, self.settings.timezone)
         else:
             date_range = DateParser.get_month_dates(period, today, self.settings.timezone)
 

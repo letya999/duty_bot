@@ -78,5 +78,4 @@ class UserRepository(BaseRepository[User]):
         if user:
             user.is_admin = is_admin
             await self.db.commit()
-            await self.db.refresh(user)
         return user

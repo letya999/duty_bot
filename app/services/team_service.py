@@ -94,3 +94,61 @@ class TeamService:
     async def delete_team(self, team_id: int) -> bool:
         """Delete team"""
         return await self.team_repo.delete(team_id)
+
+    async def merge_teams(self, target_team_id: int, source_team_id: int) -> Team:
+        """Merge source_team into target_team and delete source_team (SuperAdmin only)"""
+        from sqlalchemy import update
+        from sqlalchemy.future import select
+        from app.models import team_members, Schedule, Escalation, RotationConfig, Incident
+        
+        # 1. Members
+        source_members_stmt = select(team_members.c.user_id).where(team_members.c.team_id == source_team_id)
+        target_members_stmt = select(team_members.c.user_id).where(team_members.c.team_id == target_team_id)
+        
+        source_members = (await self.team_repo.db.execute(source_members_stmt)).scalars().all()
+        target_members = (await self.team_repo.db.execute(target_members_stmt)).scalars().all()
+        
+        members_to_add = set(source_members) - set(target_members)
+        for user_id in members_to_add:
+            stmt = team_members.insert().values(user_id=user_id, team_id=target_team_id)
+            await self.team_repo.db.execute(stmt)
+
+        # 2. Schedules (handle duplicates)
+        source_schedules_stmt = select(Schedule).where(Schedule.team_id == source_team_id)
+        source_schedules = (await self.team_repo.db.execute(source_schedules_stmt)).scalars().all()
+        for s in source_schedules:
+            exists_stmt = select(Schedule).where(
+                Schedule.team_id == target_team_id,
+                Schedule.user_id == s.user_id,
+                Schedule.date == s.date
+            )
+            exists = (await self.team_repo.db.execute(exists_stmt)).scalar_one_or_none()
+            if exists:
+                await self.team_repo.db.delete(s)
+            else:
+                s.team_id = target_team_id
+
+        # 3. Escalations
+        stmt = update(Escalation).where(Escalation.team_id == source_team_id).values(team_id=target_team_id)
+        await self.team_repo.db.execute(stmt)
+
+        # 4. RotationConfig
+        source_config_stmt = select(RotationConfig).where(RotationConfig.team_id == source_team_id)
+        source_config = (await self.team_repo.db.execute(source_config_stmt)).scalar_one_or_none()
+        if source_config:
+            target_config_stmt = select(RotationConfig).where(RotationConfig.team_id == target_team_id)
+            target_config = (await self.team_repo.db.execute(target_config_stmt)).scalar_one_or_none()
+            if not target_config:
+                source_config.team_id = target_team_id
+            else:
+                await self.team_repo.db.delete(source_config)
+
+        # 5. Incidents
+        stmt = update(Incident).where(Incident.team_id == source_team_id).values(team_id=target_team_id)
+        await self.team_repo.db.execute(stmt)
+
+        # 6. Delete source team
+        await self.team_repo.delete(source_team_id)
+        
+        await self.team_repo.db.commit()
+        return await self.team_repo.get_by_id(target_team_id)

@@ -25,7 +25,6 @@ class RotationConfigRepository(BaseRepository[RotationConfig]):
         if config:
             config.member_ids = member_ids
             await self.db.commit()
-            await self.db.refresh(config)
         return config
 
     async def update_last_assigned(self, team_id: int, user_id: int, assigned_date) -> Optional[RotationConfig]:
@@ -35,7 +34,6 @@ class RotationConfigRepository(BaseRepository[RotationConfig]):
             config.last_assigned_user_id = user_id
             config.last_assigned_date = assigned_date
             await self.db.commit()
-            await self.db.refresh(config)
         return config
 
     async def toggle_enabled(self, team_id: int, enabled: bool) -> Optional[RotationConfig]:
@@ -44,7 +42,6 @@ class RotationConfigRepository(BaseRepository[RotationConfig]):
         if config:
             config.enabled = enabled
             await self.db.commit()
-            await self.db.refresh(config)
         return config
 
     async def enable_rotation(self, team_id: int, member_ids: list[int]) -> RotationConfig:
@@ -58,7 +55,6 @@ class RotationConfigRepository(BaseRepository[RotationConfig]):
             if not config.last_assigned_user_id and member_ids:
                 config.last_assigned_user_id = member_ids[0]
             await self.db.commit()
-            await self.db.refresh(config)
         else:
             # Create new config
             config = await self.create({
@@ -77,5 +73,4 @@ class RotationConfigRepository(BaseRepository[RotationConfig]):
             config.last_assigned_user_id = user_id
             config.last_assigned_date = assigned_date
             await self.db.commit()
-            await self.db.refresh(config)
         return config

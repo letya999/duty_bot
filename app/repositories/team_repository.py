@@ -16,10 +16,7 @@ class TeamRepository(BaseRepository[Team]):
 
     async def get_by_id_with_members(self, team_id: int) -> Optional[Team]:
         """Get team with loaded members relationship."""
-        stmt = select(Team).where(Team.id == team_id).options(
-            selectinload(Team.members),
-            joinedload(Team.team_lead_user)
-        )
+        stmt = select(Team).where(Team.id == team_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -28,7 +25,7 @@ class TeamRepository(BaseRepository[Team]):
         stmt = select(Team).where(
             Team.workspace_id == workspace_id,
             Team.name == team_name
-        ).options(selectinload(Team.members), joinedload(Team.team_lead_user))
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -37,7 +34,6 @@ class TeamRepository(BaseRepository[Team]):
         stmt = (
             select(Team)
             .where(Team.workspace_id == workspace_id)
-            .options(selectinload(Team.members))
             .offset(skip)
             .limit(limit)
         )
@@ -64,8 +60,6 @@ class TeamRepository(BaseRepository[Team]):
             # Reload with eager loading to avoid greenlet issues
             team = await self.get_by_id_with_members(team_id)
         return team
-            return await self.get_by_id_with_members(team_id)
-        return None
 
     async def add_member(self, team_id: int, user) -> Optional[Team]:
         """Add member to team and return updated team with members loaded."""
@@ -78,8 +72,6 @@ class TeamRepository(BaseRepository[Team]):
                 # Reload with eager loading to avoid greenlet issues
                 team = await self.get_by_id_with_members(team_id)
         return team
-            return await self.get_by_id_with_members(team_id)
-        return None
 
     async def remove_member(self, team_id: int, user) -> Optional[Team]:
         """Remove member from team and return updated team with members loaded."""
@@ -93,5 +85,3 @@ class TeamRepository(BaseRepository[Team]):
                 # Reload with eager loading to avoid greenlet issues
                 team = await self.get_by_id_with_members(team_id)
         return team
-            return await self.get_by_id_with_members(team_id)
-        return None

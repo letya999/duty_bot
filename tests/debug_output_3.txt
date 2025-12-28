@@ -1,0 +1,78 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-7.4.3, pluggy-1.6.0 -- C:\Users\User\a_projects\duty_bot\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\User\a_projects\duty_bot
+configfile: pytest.ini
+plugins: anyio-4.12.0, Faker-39.0.0, asyncio-0.23.3, cov-4.1.0, mock-3.12.0
+asyncio: mode=Mode.AUTO
+collecting ... collected 45 items
+
+tests/commands/test_command_handler.py::TestCommandHandlerDuty::test_duty_today_no_teams PASSED [  2%]
+tests/commands/test_command_handler.py::TestCommandHandlerDuty::test_duty_today_with_team_no_schedule PASSED [  4%]
+tests/commands/test_command_handler.py::TestCommandHandlerDuty::test_duty_today_with_schedule PASSED [  6%]
+tests/commands/test_command_handler.py::TestCommandHandlerDuty::test_mention_duty_team_not_found PASSED [  8%]
+tests/commands/test_command_handler.py::TestCommandHandlerDuty::test_mention_duty_no_assignment PASSED [ 11%]
+tests/commands/test_command_handler.py::TestCommandHandlerDuty::test_mention_duty_success PASSED [ 13%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_list_empty PASSED [ 15%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_list_with_teams PASSED [ 17%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_info_not_found PASSED [ 20%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_info_success PASSED [ 22%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_add_success PASSED [ 24%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_add_duplicate PASSED [ 26%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_edit_name PASSED [ 28%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_edit_display PASSED [ 31%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_edit_shifts_enable PASSED [ 33%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_set_lead PASSED [ 35%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_add_member PASSED [ 37%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_remove_member PASSED [ 40%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_remove_member_not_in_team PASSED [ 42%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_move_member PASSED [ 44%]
+tests/commands/test_command_handler.py::TestCommandHandlerTeam::test_team_delete PASSED [ 46%]
+tests/commands/test_command_handler.py::TestCommandHandlerSchedule::test_schedule_show_team_not_found PASSED [ 48%]
+tests/commands/test_command_handler.py::TestCommandHandlerSchedule::test_schedule_show_week PASSED [ 51%]
+tests/commands/test_command_handler.py::TestCommandHandlerSchedule::test_schedule_set FAILED [ 53%]
+tests/commands/test_command_handler.py::TestCommandHandlerSchedule::test_schedule_clear FAILED [ 55%]
+tests/commands/test_command_handler.py::TestCommandHandlerShift::test_shift_show_team_not_found PASSED [ 57%]
+tests/commands/test_command_handler.py::TestCommandHandlerShift::test_shift_show_week PASSED [ 60%]
+tests/commands/test_command_handler.py::TestCommandHandlerShift::test_shift_set FAILED [ 62%]
+tests/commands/test_command_handler.py::TestCommandHandlerShift::test_shift_add_user PASSED [ 64%]
+tests/commands/test_command_handler.py::TestCommandHandlerShift::test_shift_remove_user PASSED [ 66%]
+tests/commands/test_command_handler.py::TestCommandHandlerShift::test_shift_clear FAILED [ 68%]
+tests/commands/test_command_handler.py::TestCommandHandlerEscalation::test_escalation_show PASSED [ 71%]
+tests/commands/test_command_handler.py::TestCommandHandlerEscalation::test_escalation_set_cto PASSED [ 73%]
+tests/commands/test_command_handler.py::TestCommandHandlerEscalation::test_escalate_team PASSED [ 75%]
+tests/commands/test_command_handler.py::TestCommandHandlerEscalation::test_escalate_cto PASSED [ 77%]
+tests/commands/test_command_handler.py::TestCommandHandlerRotation::test_schedule_rotate_status PASSED [ 80%]
+tests/commands/test_command_handler.py::TestCommandHandlerRotation::test_schedule_rotate_enable PASSED [ 82%]
+tests/commands/test_command_handler.py::TestCommandHandlerRotation::test_schedule_rotate_assign PASSED [ 84%]
+tests/commands/test_command_handler.py::TestCommandHandlerRotation::test_schedule_rotate_disable PASSED [ 86%]
+tests/commands/test_command_handler.py::TestCommandHandlerIncident::test_incident_list_empty PASSED [ 88%]
+tests/commands/test_command_handler.py::TestCommandHandlerIncident::test_incident_start PASSED [ 91%]
+tests/commands/test_command_handler.py::TestCommandHandlerIncident::test_incident_stop_no_active PASSED [ 93%]
+tests/commands/test_command_handler.py::TestCommandHandlerIncident::test_incident_stop_active PASSED [ 95%]
+tests/commands/test_command_handler.py::TestCommandHandlerIncident::test_incident_metrics PASSED [ 97%]
+tests/commands/test_command_handler.py::TestCommandHandlerHelp::test_help_command PASSED [100%]
+
+================================== FAILURES ===================================
+________________ TestCommandHandlerSchedule.test_schedule_set _________________
+tests\commands\test_command_handler.py:505: in test_schedule_set
+    result = await handler.schedule_set("backend", today, user, today=today)
+E   TypeError: CommandHandler.schedule_set() missing 1 required positional argument: 'user'
+_______________ TestCommandHandlerSchedule.test_schedule_clear ________________
+tests\commands\test_command_handler.py:526: in test_schedule_clear
+    result = await handler.schedule_clear("backend", today, today=today)
+E   TypeError: CommandHandler.schedule_clear() missing 1 required positional argument: 'end_date'
+___________________ TestCommandHandlerShift.test_shift_set ____________________
+tests\commands\test_command_handler.py:602: in test_shift_set
+    result = await handler.shift_set("backend", today, [user1, user2], today=today)
+E   TypeError: CommandHandler.shift_set() missing 1 required positional argument: 'users'
+__________________ TestCommandHandlerShift.test_shift_clear ___________________
+tests\commands\test_command_handler.py:645: in test_shift_clear
+    result = await handler.shift_clear("backend", today, today=today)
+E   TypeError: CommandHandler.shift_clear() missing 1 required positional argument: 'end_date'
+=========================== short test summary info ===========================
+FAILED tests/commands/test_command_handler.py::TestCommandHandlerSchedule::test_schedule_set
+FAILED tests/commands/test_command_handler.py::TestCommandHandlerSchedule::test_schedule_clear
+FAILED tests/commands/test_command_handler.py::TestCommandHandlerShift::test_shift_set
+FAILED tests/commands/test_command_handler.py::TestCommandHandlerShift::test_shift_clear
+================= 4 failed, 41 passed, 113 warnings in 4.65s ==================

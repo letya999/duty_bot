@@ -43,15 +43,12 @@ class TestCommandHandlerDuty:
         team = Team(
             workspace_id=workspace_id,
             name="backend",
-            display_name="Backend Team"
+            display_name="Backend Team",
+            members=[user1, user2]
         )
         db_session.add(team)
         await db_session.flush()
         await db_session.refresh(team)
-
-        # Add members
-        team.members.append(user1)
-        team.members.append(user2)
         await db_session.flush()
 
         return workspace_id, team, user1, user2
@@ -217,13 +214,10 @@ class TestCommandHandlerTeam:
             workspace_id=workspace_id,
             name="backend",
             display_name="Backend Team",
-            team_lead_id=user1.id
+            team_lead_id=user1.id,
+            members=[user1, user2]
         )
         db_session.add(team)
-        await db_session.flush()
-
-        team.members.append(user1)
-        team.members.append(user2)
         await db_session.flush()
         await db_session.refresh(team, ["members", "team_lead_user"])
 
@@ -370,12 +364,10 @@ class TestCommandHandlerTeam:
         team = Team(
             workspace_id=workspace_id,
             name="backend",
-            display_name="Backend Team"
+            display_name="Backend Team",
+            members=[user1]
         )
         db_session.add(team)
-        await db_session.flush()
-
-        team.members.append(user1)
         await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
@@ -410,7 +402,8 @@ class TestCommandHandlerTeam:
         team1 = Team(
             workspace_id=workspace_id,
             name="backend",
-            display_name="Backend Team"
+            display_name="Backend Team",
+            members=[user1]
         )
         team2 = Team(
             workspace_id=workspace_id,
@@ -421,8 +414,9 @@ class TestCommandHandlerTeam:
         db_session.add(team2)
         await db_session.flush()
 
-        team1.members.append(user1)
-        await db_session.flush()
+        if user1 not in team1.members:
+             # Should be there from constructor, but for safety in case of reload issues
+             pass
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
         result = await handler.team_move_member(user1, "backend", "frontend")
@@ -472,14 +466,12 @@ class TestCommandHandlerSchedule:
         team = Team(
             workspace_id=workspace_id,
             name="backend",
-            display_name="Backend Team"
+            display_name="Backend Team",
+            members=[user]
         )
         db_session.add(team)
         await db_session.flush()
         await db_session.refresh(team)
-
-        team.members.append(user)
-        await db_session.flush()
 
         return workspace_id, team, user
 
@@ -510,7 +502,7 @@ class TestCommandHandlerSchedule:
         today = date.today()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.schedule_set("backend", today, user, today=today)
+        result = await handler.schedule_set("backend", today, today, user, today=today)
 
         assert "set" in result.lower()
 
@@ -531,7 +523,7 @@ class TestCommandHandlerSchedule:
         await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.schedule_clear("backend", today, today=today)
+        result = await handler.schedule_clear("backend", today, today, today=today)
 
         assert "cleared" in result.lower()
 
@@ -571,15 +563,12 @@ class TestCommandHandlerShift:
             workspace_id=workspace_id,
             name="backend",
             display_name="Backend Team",
-            has_shifts=True
+            has_shifts=True,
+            members=[user1, user2]
         )
         db_session.add(team)
         await db_session.flush()
         await db_session.refresh(team)
-
-        team.members.append(user1)
-        team.members.append(user2)
-        await db_session.flush()
 
         return workspace_id, team, user1, user2
 
@@ -610,7 +599,7 @@ class TestCommandHandlerShift:
         today = date.today()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.shift_set("backend", today, [user1, user2], today=today)
+        result = await handler.shift_set("backend", today, today, [user1, user2], today=today)
 
         assert isinstance(result, str)
 
@@ -653,7 +642,7 @@ class TestCommandHandlerShift:
         today = date.today()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.shift_clear("backend", today, today=today)
+        result = await handler.shift_clear("backend", today, today, today=today)
 
         assert "cleared" in result.lower()
 
@@ -784,15 +773,12 @@ class TestCommandHandlerRotation:
         team = Team(
             workspace_id=workspace_id,
             name="backend",
-            display_name="Backend Team"
+            display_name="Backend Team",
+            members=[user1, user2]
         )
         db_session.add(team)
         await db_session.flush()
         await db_session.refresh(team)
-
-        team.members.append(user1)
-        team.members.append(user2)
-        await db_session.flush()
 
         return workspace_id, team, user1, user2
 

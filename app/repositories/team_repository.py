@@ -58,7 +58,8 @@ class TeamRepository(BaseRepository[Team]):
         if team:
             team.team_lead_id = user_id
             await self.db.commit()
-            await self.db.refresh(team)
+            # Reload with eager loading to avoid greenlet issues
+            team = await self.get_by_id_with_members(team_id)
         return team
 
     async def add_member(self, team_id: int, user) -> Optional[Team]:
@@ -69,7 +70,8 @@ class TeamRepository(BaseRepository[Team]):
             if user.id not in [m.id for m in team.members]:
                 team.members.append(user)
                 await self.db.commit()
-                await self.db.refresh(team)
+                # Reload with eager loading to avoid greenlet issues
+                team = await self.get_by_id_with_members(team_id)
         return team
 
     async def remove_member(self, team_id: int, user) -> Optional[Team]:
@@ -81,5 +83,6 @@ class TeamRepository(BaseRepository[Team]):
             if member_to_remove:
                 team.members.remove(member_to_remove)
                 await self.db.commit()
-                await self.db.refresh(team)
+                # Reload with eager loading to avoid greenlet issues
+                team = await self.get_by_id_with_members(team_id)
         return team

@@ -147,8 +147,8 @@ class Team(Base):
     # Relationships
     workspace = relationship('Workspace', back_populates='teams')
     organization = relationship('Organization', back_populates='teams')
-    members = relationship('User', secondary=team_members, back_populates='teams')
-    team_lead_user = relationship('User', back_populates='led_teams', foreign_keys=[team_lead_id])
+    members = relationship('User', secondary=team_members, back_populates='teams', lazy='selectin')
+    team_lead_user = relationship('User', back_populates='led_teams', foreign_keys=[team_lead_id], lazy='selectin')
     schedules = relationship('Schedule', back_populates='team', cascade='all, delete-orphan')
     escalations = relationship('Escalation', back_populates='team', cascade='all, delete-orphan')
     rotation_config = relationship('RotationConfig', back_populates='team', cascade='all, delete-orphan', uselist=False)

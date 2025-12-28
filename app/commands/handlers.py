@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from app.commands.parser import CommandParser, DateParser, CommandError, DateRange
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
@@ -14,7 +15,7 @@ from app.repositories import (
     EscalationRepository, EscalationEventRepository, AdminLogRepository, RotationConfigRepository,
     IncidentRepository
 )
-from app.models import Team, User
+from app.models import Team, User, Schedule
 from app.config import get_settings
 
 
@@ -348,7 +349,8 @@ Members: {members_str}"""
     async def schedule_set(
         self,
         team_name: str,
-        date_range_str: str,
+        start_date: str | date,
+        end_date: str | date,
         user: User,
         today: date = None,
         force: bool = False
@@ -363,7 +365,18 @@ Members: {members_str}"""
         if team.has_shifts:
             raise CommandError(f"{team.display_name} uses shift mode, use /shift instead")
 
-        date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
+        # Parse dates - handle both date objects and strings
+        if isinstance(start_date, date):
+            start = start_date
+        else:
+            start = DateParser.parse_date_string(start_date, today, self.settings.timezone)
+
+        if isinstance(end_date, date):
+            end = end_date
+        else:
+            end = DateParser.parse_date_string(end_date, today, self.settings.timezone)
+
+        date_range = DateRange(start, end)
 
         # Check for conflicts
         conflicts = []
@@ -401,6 +414,8 @@ Members: {members_str}"""
                 }
             )
 
+        current = date_range.start
+        count = 0
         while current <= date_range.end:
             await self.schedule_service.set_duty(team.id, user.id, current, force=force)
             count += 1
@@ -415,7 +430,8 @@ Members: {members_str}"""
     async def schedule_clear(
         self,
         team_name: str,
-        date_range_str: str,
+        start_date: str | date,
+        end_date: str | date,
         today: date = None
     ) -> str:
         """Clear duty for date range"""
@@ -425,7 +441,18 @@ Members: {members_str}"""
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
+        # Parse dates - handle both date objects and strings
+        if isinstance(start_date, date):
+            start = start_date
+        else:
+            start = DateParser.parse_date_string(start_date, today, self.settings.timezone)
+
+        if isinstance(end_date, date):
+            end = end_date
+        else:
+            end = DateParser.parse_date_string(end_date, today, self.settings.timezone)
+
+        date_range = DateRange(start, end)
 
         current = date_range.start
         count = 0
@@ -481,7 +508,8 @@ Members: {members_str}"""
     async def shift_set(
         self,
         team_name: str,
-        date_range_str: str,
+        start_date: str | date,
+        end_date: str | date,
         users: list[User],
         today: date = None,
         force: bool = False
@@ -496,7 +524,18 @@ Members: {members_str}"""
         if not team.has_shifts:
             raise CommandError(f"{team.display_name} uses duty mode, use /schedule instead")
 
-        date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
+        # Parse dates - handle both date objects and strings
+        if isinstance(start_date, date):
+            start = start_date
+        else:
+            start = DateParser.parse_date_string(start_date, today, self.settings.timezone)
+
+        if isinstance(end_date, date):
+            end = end_date
+        else:
+            end = DateParser.parse_date_string(end_date, today, self.settings.timezone)
+
+        date_range = DateRange(start, end)
 
         # In unified model, we just set the duties for each user
         # Note: Set duty for each day/user pair
@@ -520,7 +559,7 @@ Members: {members_str}"""
     async def shift_add_user(
         self,
         team_name: str,
-        shift_date_str: str,
+        shift_date_str: str | date,
         user: User,
         today: date = None,
         force: bool = False
@@ -532,7 +571,11 @@ Members: {members_str}"""
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
+        # Handle both date objects and strings
+        if isinstance(shift_date_str, date):
+            shift_date = shift_date_str
+        else:
+            shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
         
         await self.schedule_service.set_duty(team.id, user.id, shift_date, is_shift=True, force=force)
 
@@ -541,7 +584,7 @@ Members: {members_str}"""
     async def shift_remove_user(
         self,
         team_name: str,
-        shift_date_str: str,
+        shift_date_str: str | date,
         user: User,
         today: date = None
     ) -> str:
@@ -552,7 +595,11 @@ Members: {members_str}"""
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
+        # Handle both date objects and strings
+        if isinstance(shift_date_str, date):
+            shift_date = shift_date_str
+        else:
+            shift_date = DateParser.parse_date_string(shift_date_str, today, self.settings.timezone)
         
         # Remove specific user assignment
         stmt = select(Schedule).where(
@@ -571,7 +618,8 @@ Members: {members_str}"""
     async def shift_clear(
         self,
         team_name: str,
-        date_range_str: str,
+        start_date: str | date,
+        end_date: str | date,
         today: date = None
     ) -> str:
         """Clear shifts for date range"""
@@ -581,12 +629,23 @@ Members: {members_str}"""
         if not team:
             raise CommandError(f"Team not found: {team_name}")
 
-        date_range = DateParser.parse_date_range(date_range_str, today, self.settings.timezone)
+        # Parse dates - handle both date objects and strings
+        if isinstance(start_date, date):
+            start = start_date
+        else:
+            start = DateParser.parse_date_string(start_date, today, self.settings.timezone)
+
+        if isinstance(end_date, date):
+            end = end_date
+        else:
+            end = DateParser.parse_date_string(end_date, today, self.settings.timezone)
+
+        date_range = DateRange(start, end)
 
         current = date_range.start
         count = 0
         while current <= date_range.end:
-            if await self.shift_service.clear_shift(team, current):
+            if await self.schedule_service.clear_duty(team.id, current):
                 count += 1
             current += timedelta(days=1)
 

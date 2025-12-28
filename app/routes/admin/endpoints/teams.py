@@ -374,11 +374,22 @@ async def import_team_member(
                     if resp["ok"]:
                         slack_user = resp["user"]
                         profile = slack_user.get("profile", {})
-                        imported_info["first_name"] = profile.get("first_name") or slack_user.get("real_name") or "Slack User"
-                        imported_info["last_name"] = profile.get("last_name")
-                        imported_info["username"] = slack_user.get("name")
+                        
+                        real_name = profile.get("real_name") or slack_user.get("real_name")
+                        first_name = profile.get("first_name")
+                        last_name = profile.get("last_name")
+                        
+                        if not first_name and real_name:
+                            parts = real_name.split(' ', 1)
+                            first_name = parts[0]
+                            if len(parts) > 1:
+                                last_name = parts[1]
+                        
+                        imported_info["first_name"] = first_name or real_name or "Slack User"
+                        imported_info["last_name"] = last_name
+                        imported_info["username"] = slack_user.get("name") or slack_user.get("id")
                         imported_info["slack_id"] = slack_user.get("id")
-                        imported_info["display_name"] = slack_user.get("real_name") or slack_user.get("name")
+                        imported_info["display_name"] = profile.get("display_name") or real_name or slack_user.get("name")
                 except Exception as e:
                     logger.warning(f"Failed to fetch Slack info for {slack_user_id}: {e}")
 

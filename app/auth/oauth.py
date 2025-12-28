@@ -187,22 +187,25 @@ class SlackOAuth(OAuthProvider):
             logger.error(f"Error exchanging Slack code: {e}")
             return {}
 
-    async def get_user_info(self, token: str) -> Dict[str, Any]:
+    async def get_user_info(self, token: str, user_id: str = None) -> Dict[str, Any]:
         """Get user info from Slack"""
         try:
+            team_id = None
             async with aiohttp.ClientSession() as session:
-                # First, get the authenticated user ID via auth.test
-                async with session.get(
-                    "https://slack.com/api/auth.test",
-                    headers={"Authorization": f"Bearer {token}"}
-                ) as resp:
-                    auth_data = await resp.json()
-                    if not auth_data.get('ok'):
-                        logger.error(f"Slack auth.test error: {auth_data.get('error')}")
-                        return {}
-                    user_id = auth_data.get('user_id')
+                # If user_id is not provided, we must call auth.test to find out who we are.
+                if not user_id:
+                    async with session.get(
+                        "https://slack.com/api/auth.test",
+                        headers={"Authorization": f"Bearer {token}"}
+                    ) as resp:
+                        auth_data = await resp.json()
+                        if not auth_data.get('ok'):
+                            logger.error(f"Slack auth.test error: {auth_data.get('error')}")
+                            return {}
+                        user_id = auth_data.get('user_id')
+                        team_id = auth_data.get('team_id')
 
-                # Then get user info via users.info
+                # Get user info via users.info
                 async with session.get(
                     "https://slack.com/api/users.info",
                     headers={"Authorization": f"Bearer {token}"},
@@ -215,14 +218,27 @@ class SlackOAuth(OAuthProvider):
 
                     user_obj = data.get('user', {})
                     profile = user_obj.get('profile', {})
+                    real_name = profile.get('real_name') or user_obj.get('real_name')
+                    
+                    first_name = profile.get('first_name')
+                    last_name = profile.get('last_name')
+                    
+                    if not first_name and real_name:
+                        parts = real_name.split(' ', 1)
+                        first_name = parts[0]
+                        if len(parts) > 1:
+                            last_name = parts[1]
 
                     return {
                         'platform': 'slack',
                         'user_id': user_obj.get('id'),
-                        'username': user_obj.get('name'),
+                        'username': user_obj.get('name') or user_obj.get('id'),
                         'email': profile.get('email'),
-                        'real_name': user_obj.get('real_name'),
-                        'workspace_id': auth_data.get('team_id'),
+                        'real_name': real_name,
+                        'first_name': first_name,
+                        'last_name': last_name,
+                        'display_name': profile.get('display_name') or real_name or user_obj.get('name'),
+                        'workspace_id': team_id,
                     }
         except Exception as e:
             logger.error(f"Error getting Slack user info: {e}")

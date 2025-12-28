@@ -179,9 +179,19 @@ class UserService:
                     slack_user = response["user"]
                     profile = slack_user.get("profile", {})
                     
-                    info["first_name"] = profile.get("first_name")
-                    info["last_name"] = profile.get("last_name")
-                    info["display_name"] = profile.get("display_name") or profile.get("real_name") or slack_user.get("name")
+                    real_name = profile.get("real_name") or slack_user.get("real_name")
+                    first_name = profile.get("first_name")
+                    last_name = profile.get("last_name")
+                    
+                    if not first_name and real_name:
+                        parts = real_name.split(' ', 1)
+                        first_name = parts[0]
+                        if len(parts) > 1:
+                            last_name = parts[1]
+                            
+                    info["first_name"] = first_name or real_name or "Slack User"
+                    info["last_name"] = last_name
+                    info["display_name"] = profile.get("display_name") or real_name or slack_user.get("name")
                     
                     logger.info(f"Fetched Slack info for {slack_user_id}: {info['display_name']}")
             except Exception as e:

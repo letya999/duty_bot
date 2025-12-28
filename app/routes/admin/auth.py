@@ -4,6 +4,7 @@ import os
 from fastapi import APIRouter, Request, Response, HTTPException, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+import json
 import secrets
 from urllib.parse import urlencode
 from sqlalchemy import select
@@ -50,91 +51,8 @@ def get_session_from_cookie(request: Request) -> dict:
 
 @router.get("/web/auth/login")
 async def login_page(request: Request):
-    """Login page with provider options"""
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Duty Bot - Admin Panel Login</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .login-container {
-                background: white;
-                border-radius: 10px;
-                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-                padding: 40px;
-                max-width: 400px;
-                width: 100%;
-            }
-            h1 {
-                text-align: center;
-                margin-bottom: 10px;
-                color: #333;
-            }
-            .subtitle {
-                text-align: center;
-                color: #666;
-                margin-bottom: 30px;
-                font-size: 14px;
-            }
-            .login-options {
-                display: flex;
-                flex-direction: column;
-                gap: 15px;
-            }
-            .login-btn {
-                padding: 12px 20px;
-                border: none;
-                border-radius: 5px;
-                font-size: 16px;
-                cursor: pointer;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 10px;
-                text-decoration: none;
-                transition: opacity 0.3s;
-            }
-            .login-btn:hover {
-                opacity: 0.9;
-            }
-            .telegram-btn {
-                background: #0088cc;
-                color: white;
-            }
-            .slack-btn {
-                background: #36c5f0;
-                color: white;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="login-container">
-            <h1>Duty Bot</h1>
-            <p class="subtitle">Admin Panel</p>
-            <div class="login-options">
-                <a href="/web/auth/telegram-login" class="login-btn telegram-btn">
-                    ✈️ Login with Telegram
-                </a>
-                <a href="/web/auth/slack-login" class="login-btn slack-btn">
-                    ⚡ Login with Slack
-                </a>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html)
+    """Login page - Redirect to modern React dashboard"""
+    return RedirectResponse(url="/")
 
 
 @router.get("/web/auth/telegram-login")
@@ -316,7 +234,35 @@ async def telegram_callback(request: Request):
         )
         logger.info(f"Created session token for user {user.id}")
 
-        response = RedirectResponse(url="/web/dashboard", status_code=302)
+        # Prepare user data for React
+        user_data = {
+            "id": user.id,
+            "username": user.username or user.telegram_username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_admin": user.is_admin,
+            "workspace_id": user.workspace_id,
+        }
+        
+        # Master admin check
+        if user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram'):
+            user_data["is_admin"] = True
+
+        # Return bridge HTML to set localStorage and redirect to modern dashboard
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head><title>Redirecting...</title></head>
+        <body>
+            <script>
+                localStorage.setItem('session_token', {json.dumps(session_token)});
+                localStorage.setItem('user', {json.dumps(json.dumps(user_data))});
+                window.location.href = '/';
+            </script>
+        </body>
+        </html>
+        """
+        response = HTMLResponse(content=html)
         # Determine if we're in production (use HTTPS)
         is_production = os.environ.get('ENVIRONMENT', 'development').lower() == 'production'
         response.set_cookie(
@@ -325,9 +271,9 @@ async def telegram_callback(request: Request):
             max_age=86400,
             httponly=True,
             samesite="Lax",
-            secure=is_production  # Only set secure flag in production with HTTPS
+            secure=True  # Usually HTTPS via ngrok or prod
         )
-        logger.info(f"Setting session cookie and redirecting to dashboard")
+        logger.info(f"Setting session cookie and redirection bridge for Telegram user {user.id}")
         return response
 
     except HTTPException:
@@ -410,10 +356,11 @@ async def telegram_widget_callback(request: Request):
             "session_token": session_token,
             "user": {
                 "id": user.id,
+                "username": user.username or user.telegram_username,
                 "telegram_username": user.telegram_username,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
-                "is_admin": user.is_admin,
+                "is_admin": user.is_admin or (user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram')),
                 "workspace_id": user.workspace_id,
             }
         })
@@ -468,8 +415,11 @@ async def slack_callback(code: str = None, state: str = None):
             logger.error("Failed to exchange Slack code for token")
             raise HTTPException(status_code=401, detail="Failed to get access token")
 
-        # Get user info
-        user_info = await slack_oauth.get_user_info(token_info['access_token'])
+        # Get user info - pass user_id to avoid identifying as bot
+        user_info = await slack_oauth.get_user_info(
+            token_info['access_token'], 
+            token_info.get('user_id')
+        )
         if not user_info:
             logger.error("Failed to get Slack user info")
             raise HTTPException(status_code=401, detail="Failed to get user info")
@@ -528,14 +478,14 @@ async def slack_callback(code: str = None, state: str = None):
 
             if not user:
                 logger.info(f"Creating new user for Slack user ID {user_info['user_id']}")
-                username = user_info.get('username')
-                real_name = user_info.get('real_name')
                 
                 user = User(
                     workspace_id=workspace.id,
                     slack_user_id=user_info['user_id'],
-                    username=username,
-                    display_name=real_name or username or user_info['user_id']
+                    username=user_info.get('username'),
+                    first_name=user_info.get('first_name'),
+                    last_name=user_info.get('last_name'),
+                    display_name=user_info.get('display_name') or user_info.get('real_name') or user_info.get('username')
                 )
                 db.add(user)
                 await db.commit()
@@ -543,6 +493,21 @@ async def slack_callback(code: str = None, state: str = None):
                 logger.info(f"Created user: {user.id}")
             else:
                 logger.info(f"Found existing user: {user.id}")
+                # Update names if missing
+                updated = False
+                if not user.first_name and user_info.get('first_name'):
+                    user.first_name = user_info['first_name']
+                    updated = True
+                if not user.last_name and user_info.get('last_name'):
+                    user.last_name = user_info['last_name']
+                    updated = True
+                if not user.display_name and user_info.get('display_name'):
+                    user.display_name = user_info['display_name']
+                    updated = True
+                
+                if updated:
+                    await db.commit()
+                    await db.refresh(user)
 
         # Create session
         session_token = session_manager.create_session(
@@ -552,7 +517,40 @@ async def slack_callback(code: str = None, state: str = None):
         )
         logger.info(f"Created session token for user {user.id}")
 
-        response = RedirectResponse(url="/web/dashboard", status_code=302)
+        # Prepare user data for React
+        user_data = {
+            "id": user.id,
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_admin": user.is_admin,
+            "workspace_id": user.workspace_id,
+        }
+        
+        # Master admin check
+        is_admin = user.is_admin
+        if user.slack_user_id and user.slack_user_id in settings.get_admin_ids('slack'):
+            is_admin = True
+            user_data["is_admin"] = True
+        if user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram'):
+            is_admin = True
+            user_data["is_admin"] = True
+
+        # Return bridge HTML to set localStorage and redirect to modern dashboard
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head><title>Redirecting...</title></head>
+        <body>
+            <script>
+                localStorage.setItem('session_token', {json.dumps(session_token)});
+                localStorage.setItem('user', {json.dumps(json.dumps(user_data))});
+                window.location.href = '/';
+            </script>
+        </body>
+        </html>
+        """
+        response = HTMLResponse(content=html)
         # Determine if we're in production (use HTTPS)
         is_production = os.environ.get('ENVIRONMENT', 'development').lower() == 'production'
         response.set_cookie(
@@ -561,12 +559,13 @@ async def slack_callback(code: str = None, state: str = None):
             max_age=86400,
             httponly=True,
             samesite="Lax",
-            secure=is_production  # Only set secure flag in production with HTTPS
+            secure=True  # Usually HTTPS via ngrok
         )
-        logger.info(f"Setting session cookie and redirecting to dashboard")
+        logger.info(f"Setting session cookie and redirection bridge for Slack user {user.id}")
 
         # Clean up state
-        del pending_states[state]
+        if state in pending_states:
+            del pending_states[state]
 
         return response
 

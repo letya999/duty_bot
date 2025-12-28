@@ -3,8 +3,22 @@ from datetime import datetime, date
 from app.models import (
     Workspace, ChatChannel, User, Team, Schedule, RotationConfig,
     Escalation, EscalationEvent, AdminLog, DutyStats, Incident,
-    GoogleCalendarIntegration
+    GoogleCalendarIntegration, Organization
 )
+
+
+class TestOrganizationModel:
+    """Test Organization model"""
+
+    def test_organization_creation(self, organization_factory):
+        """Test creating an organization"""
+        org = organization_factory(
+            name="Test Org",
+            created_by_user_id=1
+        )
+        assert org.name == "Test Org"
+        assert org.created_by_user_id == 1
+        assert isinstance(org.created_at, datetime)
 
 
 class TestWorkspaceModel:

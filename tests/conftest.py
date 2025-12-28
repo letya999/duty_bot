@@ -27,7 +27,7 @@ load_env_test()
 from app.models import (
     Base, Workspace, ChatChannel, User, Team, RotationConfig, Schedule,
     Escalation, EscalationEvent, AdminLog, DutyStats, Incident,
-    GoogleCalendarIntegration, team_members
+    GoogleCalendarIntegration, team_members, Organization, UserAccount
 )
 from app.database import AsyncSessionLocal
 
@@ -82,12 +82,29 @@ def workspace_factory():
     def create(
         name: str = "Test Workspace",
         workspace_type: str = "telegram",
-        external_id: str = "123456789"
+        external_id: str = "123456789",
+        organization_id: int = None
     ) -> Workspace:
         return Workspace(
             name=name,
             workspace_type=workspace_type,
             external_id=external_id,
+            organization_id=organization_id,
+            created_at=datetime.utcnow()
+        )
+    return create
+
+
+@pytest.fixture
+def organization_factory():
+    """Factory for creating organization objects"""
+    def create(
+        name: str = "Test Organization",
+        created_by_user_id: int = None
+    ) -> Organization:
+        return Organization(
+            name=name,
+            created_by_user_id=created_by_user_id,
             created_at=datetime.utcnow()
         )
     return create
@@ -98,6 +115,8 @@ def user_factory():
     """Factory for creating user objects"""
     def create(
         workspace_id: int = 1,
+        id: int = None,
+        organization_id: int = None,
         telegram_id: int = None,
         telegram_username: str = "testuser",
         slack_user_id: str = None,
@@ -106,8 +125,9 @@ def user_factory():
         display_name: str = "Test User",
         is_admin: bool = False
     ) -> User:
-        return User(
+        user = User(
             workspace_id=workspace_id,
+            organization_id=organization_id,
             telegram_id=telegram_id,
             telegram_username=telegram_username,
             slack_user_id=slack_user_id,
@@ -117,6 +137,10 @@ def user_factory():
             is_admin=is_admin,
             created_at=datetime.utcnow()
         )
+        if id:
+            user.id = id
+        return user
+
     return create
 
 
@@ -136,6 +160,29 @@ def team_factory():
             display_name=display_name,
             has_shifts=has_shifts,
             team_lead_id=team_lead_id,
+            created_at=datetime.utcnow()
+        )
+    return create
+
+
+@pytest.fixture
+def user_account_factory():
+    """Factory for creating user account objects"""
+    def create(
+        user_id: int = 1,
+        provider: str = "slack",
+        provider_id: str = "U12345678",
+        workspace_id: int = 1,
+        username: str = "testuser",
+        account_email: str = "test@example.com"
+    ) -> UserAccount:
+        return UserAccount(
+            user_id=user_id,
+            provider=provider,
+            provider_id=provider_id,
+            workspace_id=workspace_id,
+            username=username,
+            account_email=account_email,
             created_at=datetime.utcnow()
         )
     return create

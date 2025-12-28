@@ -17,7 +17,7 @@ class Organization(Base):
 
     # Relationships
     workspaces = relationship('Workspace', back_populates='organization', cascade='all, delete-orphan')
-    users = relationship('User', back_populates='organization', cascade='all, delete-orphan')
+    users = relationship('User', back_populates='organization', cascade='all, delete-orphan', foreign_keys='User.organization_id')
     teams = relationship('Team', back_populates='organization', cascade='all, delete-orphan')
     incidents = relationship('Incident', back_populates='organization', cascade='all, delete-orphan')
     escalations = relationship('Escalation', back_populates='organization', cascade='all, delete-orphan')
@@ -117,7 +117,7 @@ class User(Base):
 
     # Relationships
     workspace = relationship('Workspace', back_populates='users')
-    organization = relationship('Organization', back_populates='users')
+    organization = relationship('Organization', back_populates='users', foreign_keys=[organization_id])
     user_accounts = relationship('UserAccount', back_populates='user', cascade='all, delete-orphan')
     teams = relationship('Team', secondary=team_members, back_populates='members')
     led_teams = relationship('Team', back_populates='team_lead_user', foreign_keys='Team.team_lead_id')

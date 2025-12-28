@@ -222,6 +222,8 @@ class SlackOAuth(OAuthProvider):
                         'username': user_obj.get('name'),
                         'email': profile.get('email'),
                         'real_name': user_obj.get('real_name'),
+                        'first_name': profile.get('first_name'),
+                        'last_name': profile.get('last_name'),
                         'workspace_id': auth_data.get('team_id'),
                     }
         except Exception as e:

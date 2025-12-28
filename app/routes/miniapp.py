@@ -96,10 +96,17 @@ async def get_user_from_telegram(
 
         if not user:
             # Create user if doesn't exist
+            first_name = user_dict.get('first_name')
+            last_name = user_dict.get('last_name')
+            display_name = f"{first_name} {last_name}".strip() if first_name or last_name else first_name or f'User {telegram_id}'
+
             user = User(
                 workspace_id=workspace.id,
                 telegram_username=str(telegram_id),
-                display_name=user_dict.get('first_name', f'User {telegram_id}')
+                telegram_id=telegram_id,
+                first_name=first_name,
+                last_name=last_name,
+                display_name=display_name
             )
             db.add(user)
             await db.flush()

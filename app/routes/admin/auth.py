@@ -530,11 +530,15 @@ async def slack_callback(code: str = None, state: str = None):
                 logger.info(f"Creating new user for Slack user ID {user_info['user_id']}")
                 username = user_info.get('username')
                 real_name = user_info.get('real_name')
-                
+                first_name = user_info.get('first_name')
+                last_name = user_info.get('last_name')
+
                 user = User(
                     workspace_id=workspace.id,
                     slack_user_id=user_info['user_id'],
                     username=username,
+                    first_name=first_name,
+                    last_name=last_name,
                     display_name=real_name or username or user_info['user_id']
                 )
                 db.add(user)
@@ -543,6 +547,17 @@ async def slack_callback(code: str = None, state: str = None):
                 logger.info(f"Created user: {user.id}")
             else:
                 logger.info(f"Found existing user: {user.id}")
+                # Update first_name and last_name if they're missing
+                if not user.first_name or not user.last_name:
+                    first_name = user_info.get('first_name')
+                    last_name = user_info.get('last_name')
+                    if first_name:
+                        user.first_name = first_name
+                    if last_name:
+                        user.last_name = last_name
+                    await db.commit()
+                    await db.refresh(user)
+                    logger.info(f"Updated user {user.id} with first_name and last_name")
 
         # Create session
         session_token = session_manager.create_session(

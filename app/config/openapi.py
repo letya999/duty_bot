@@ -10,19 +10,19 @@ def get_openapi_schema() -> Dict[str, Any]:
             "description": """
 # Duty Bot Admin API
 
-Comprehensive REST API для управления дежурствами, командами и эскалациями.
+Comprehensive REST API for managing duty schedules, teams, and escalations.
 
-## Аутентификация
+## Authentication
 
-Все endpoints (кроме `/auth/token`) требуют Bearer token в заголовке `Authorization`:
+All endpoints (except `/auth/token`) require a Bearer token in the `Authorization` header:
 
 ```
 Authorization: Bearer <token>
 ```
 
-### Получение токена
+### Getting a Token
 
-Используйте endpoint `/auth/token` для получения токена:
+Use the `/auth/token` endpoint to obtain a token:
 
 ```bash
 curl -X POST "http://localhost:8000/api/admin/auth/token" \\
@@ -30,36 +30,36 @@ curl -X POST "http://localhost:8000/api/admin/auth/token" \\
   -d '{"username": "user", "password": "password"}'
 ```
 
-Ответ содержит:
-- `access_token` - Bearer token для последующих запросов
-- `token_type` - тип токена (всегда "bearer")
-- `expires_in` - время жизни токена в секундах
+The response contains:
+- `access_token` - Bearer token for subsequent requests
+- `token_type` - token type (always "bearer")
+- `expires_in` - token lifetime in seconds
 
-## Базовая информация
+## Base Information
 
 ### Base URL
-- Разработка: `http://localhost:8000`
-- Production: зависит от развертывания
+- Development: `http://localhost:8000`
+- Production: depends on deployment configuration
 
 ### API Prefix
-Все endpoints находятся под префиксом `/api/admin`
+All endpoints are located under the `/api/admin` prefix
 
-### Ошибки
-Все ошибки возвращаются в формате:
+### Error Handling
+All errors are returned in the following format:
 ```json
 {
-  "detail": "Описание ошибки"
+  "detail": "Error description"
 }
 ```
 
-Коды ошибок:
-- `400` - Bad Request (неверные параметры)
-- `401` - Unauthorized (токен отсутствует или истек)
-- `403` - Forbidden (недостаточно прав)
-- `404` - Not Found (ресурс не найден)
-- `500` - Internal Server Error (ошибка сервера)
+Error codes:
+- `400` - Bad Request (invalid parameters)
+- `401` - Unauthorized (missing or expired token)
+- `403` - Forbidden (insufficient permissions)
+- `404` - Not Found (resource not found)
+- `500` - Internal Server Error (server error)
 
-## Структура данных
+## Data Structures
 
 ### User
 ```json
@@ -92,7 +92,7 @@ curl -X POST "http://localhost:8000/api/admin/auth/token" \\
   "user_id": 5,
   "duty_date": "2024-12-25",
   "team_id": 1,
-  "user": { "id": 5, "first_name": "Ivan" },
+  "user": { "id": 5, "first_name": "John" },
   "team": { "id": 1, "name": "backend-team" }
 }
 ```
@@ -105,8 +105,8 @@ curl -X POST "http://localhost:8000/api/admin/auth/token" \\
   "team_id": 1,
   "team": { "id": 1, "name": "backend-team" },
   "users": [
-    { "id": 5, "first_name": "Ivan" },
-    { "id": 7, "first_name": "Maria" }
+    { "id": 5, "first_name": "John" },
+    { "id": 7, "first_name": "Jane" }
   ]
 }
 ```

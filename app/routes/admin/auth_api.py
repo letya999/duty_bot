@@ -31,20 +31,20 @@ class TokenResponse(BaseModel):
     response_model=TokenResponse,
     summary="Get authentication token",
     description="""
-    Получить токен для аутентификации в API.
+    Get a token for API authentication.
 
-    Используйте этот endpoint для получения Bearer token, необходимого для всех защищенных endpoints.
+    Use this endpoint to obtain a Bearer token required for all protected endpoints.
 
-    **Параметры:**
-    - `username`: Имя пользователя
-    - `password`: Пароль пользователя
+    **Parameters:**
+    - `username`: Username
+    - `password`: User password
 
-    **Возвращает:**
-    - `access_token`: Bearer token для использования в Authorization заголовке
-    - `token_type`: Тип токена (всегда "bearer")
-    - `expires_in`: Время жизни токена в секундах
+    **Returns:**
+    - `access_token`: Bearer token for use in Authorization header
+    - `token_type`: Token type (always "bearer")
+    - `expires_in`: Token lifetime in seconds
 
-    **Примеры:**
+    **Example:**
 
     ```bash
     curl -X POST "http://localhost:8000/api/admin/auth/token" \\
@@ -55,7 +55,7 @@ class TokenResponse(BaseModel):
       }'
     ```
 
-    **Ответ:**
+    **Response:**
     ```json
     {
       "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
@@ -64,14 +64,14 @@ class TokenResponse(BaseModel):
     }
     ```
 
-    Полученный token используйте в Authorization заголовке:
+    Use the obtained token in the Authorization header:
     ```bash
     Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     ```
     """,
     responses={
         200: {
-            "description": "Token успешно получен",
+            "description": "Token successfully obtained",
             "model": TokenResponse
         },
         401: {
@@ -103,17 +103,17 @@ async def get_token(request: TokenRequest = Body(...)):
     "/auth/token/validate",
     summary="Validate authentication token",
     description="""
-    Проверить валидность токена.
+    Validate token validity.
 
     **Headers:**
     - `Authorization`: Bearer token
 
-    **Возвращает:**
-    - `valid`: boolean - валидность токена
-    - `user_id`: ID пользователя (если валидный)
-    - `expires_at`: Время истечения токена
+    **Returns:**
+    - `valid`: boolean - token validity
+    - `user_id`: User ID (if valid)
+    - `expires_at`: Token expiration time
 
-    **Примеры:**
+    **Example:**
 
     ```bash
     curl -X POST "http://localhost:8000/api/admin/auth/token/validate" \\

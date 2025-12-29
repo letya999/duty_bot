@@ -44,7 +44,7 @@ async def get_user_from_token(
         raise HTTPException(status_code=401, detail="Invalid token format")
 
     token = token.replace("Bearer ", "")
-    session = session_manager.validate_session(token)
+    session = await session_manager.validate_session(token)
 
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired token")

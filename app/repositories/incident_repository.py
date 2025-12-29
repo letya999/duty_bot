@@ -36,10 +36,10 @@ class IncidentRepository(BaseRepository[Incident]):
         stmt = select(Incident).where(
             and_(
                 Incident.workspace_id == workspace_id,
-                Incident.start_time >= start_time,
+                Incident.start_time <= end_time,
                 or_(
-                    Incident.end_time.is_(None),  # Active incidents
-                    Incident.end_time <= end_time  # Resolved incidents
+                    Incident.end_time.is_(None),
+                    Incident.end_time >= start_time
                 )
             )
         ).order_by(Incident.start_time.desc())

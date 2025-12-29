@@ -1,6 +1,5 @@
 from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from app.commands.parser import CommandParser, DateParser, CommandError, DateRange
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
@@ -13,7 +12,7 @@ from app.services.metrics_service import MetricsService
 from app.repositories import (
     UserRepository, TeamRepository, ScheduleRepository,
     EscalationRepository, EscalationEventRepository, AdminLogRepository, RotationConfigRepository,
-    IncidentRepository
+    IncidentRepository, UserAccountRepository
 )
 from sqlalchemy import select
 from app.models import Team, User, Schedule
@@ -36,9 +35,10 @@ class CommandHandler:
         self.admin_log_repo = AdminLogRepository(db)
         self.rotation_config_repo = RotationConfigRepository(db)
         self.incident_repo = IncidentRepository(db)
+        self.user_account_repo = UserAccountRepository(db)
 
         # Initialize services with repositories
-        self.user_service = UserService(self.user_repo, self.admin_log_repo)
+        self.user_service = UserService(self.user_repo, self.admin_log_repo, self.user_account_repo)
         self.team_service = TeamService(self.team_repo)
         self.schedule_service = ScheduleService(self.schedule_repo)
         self.escalation_service = EscalationService(self.escalation_repo, self.escalation_event_repo)
@@ -86,8 +86,8 @@ class CommandHandler:
 • `/schedule <team> <month>` - Show month
 • `/schedule <team> set <date> @user` - Set duty
 • `/schedule <team> set <date>-<date> @user` - Set range
-• `/schedule <team> clear <date>` - Clear duty
-• `/schedule <team> clear <date>-<date>` - Clear range
+• `/schedule <team> clear <date> @user` - Clear duty
+• `/schedule <team> clear <date>-<date> @user` - Clear range
 
 *🔁 Auto-rotation*
 • `/schedule <team> rotate` - Show rotation status
@@ -437,6 +437,7 @@ Members: {members_str}"""
         team_name: str,
         start_date: str | date,
         end_date: str | date,
+        user: User,
         today: date = None
     ) -> str:
         """Clear duty for date range"""
@@ -462,11 +463,11 @@ Members: {members_str}"""
         current = date_range.start
         count = 0
         while current <= date_range.end:
-            if await self.schedule_service.clear_duty(team.id, current):
+            if await self.schedule_service.clear_duty(team.id, current, user_id=user.id):
                 count += 1
             current += timedelta(days=1)
 
-        return f"Duty cleared for {count} day(s)"
+        return f"Duty cleared for {user.display_name} for {count} day(s)"
 
     # ==================== Shift Commands ====================
 

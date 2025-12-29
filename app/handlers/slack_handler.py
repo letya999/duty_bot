@@ -412,11 +412,12 @@ class SlackHandler:
                     if not mentions:
                         raise CommandError("Usage: /schedule <team> set <date> @user [--force]")
 
-                    user = await user_service.get_user_by_slack(workspace_id, mentions[0])
-                    if not user:
+                    user_to_set = await user_service.get_user_by_slack(workspace_id, mentions[0])
+                    if not user_to_set:
                         raise CommandError(f"User not found: <@{mentions[0]}>")
-
-                    result = await handler.schedule_set(team_name, date_part, user, force=force)
+ 
+                    dr = DateParser.parse_date_range(date_part)
+                    result = await handler.schedule_set(team_name, dr.start, dr.end, user_to_set, force=force)
 
                 elif "clear" in text and len(parts) >= 3:
                     # Check admin permission
@@ -425,7 +426,15 @@ class SlackHandler:
 
                     date_idx = text.find("clear") + 5
                     date_part = text[date_idx:].split()[0]
-                    result = await handler.schedule_clear(team_name, date_part)
+                    mentions = CommandParser.extract_mentions(text)
+                    if not mentions:
+                        raise CommandError("Usage: /schedule <team> clear <date> @user")
+                    target_user = await user_service.get_user_by_slack(workspace_id, mentions[0])
+                    if not target_user:
+                        raise CommandError(f"User not found: <@{mentions[0]}>")
+                        
+                    dr = DateParser.parse_date_range(date_part)
+                    result = await handler.schedule_clear(team_name, dr.start, dr.end, target_user)
 
                 else:
                     period = parts[1] if len(parts) > 1 else "week"
@@ -489,7 +498,8 @@ class SlackHandler:
                             raise CommandError(f"User not found: <@{mention}>")
                         users.append(user)
 
-                    result = await handler.shift_set(team_name, date_part, users, force=force)
+                    dr = DateParser.parse_date_range(date_part)
+                    result = await handler.shift_set(team_name, dr.start, dr.end, users, force=force)
 
                 elif "add" in text and len(parts) >= 3:
                     # Check admin permission
@@ -535,7 +545,8 @@ class SlackHandler:
 
                     date_idx = text.find("clear") + 5
                     date_part = text[date_idx:].split()[0]
-                    result = await handler.shift_clear(team_name, date_part)
+                    dr = DateParser.parse_date_range(date_part)
+                    result = await handler.shift_clear(team_name, dr.start, dr.end)
 
                 else:
                     period = parts[1] if len(parts) > 1 else "week"

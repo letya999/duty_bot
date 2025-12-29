@@ -7,13 +7,13 @@ from fastapi.staticfiles import StaticFiles
 import json
 import secrets
 from urllib.parse import urlencode
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.config import get_settings
 from app.auth import (
     TelegramOAuth, SlackOAuth, session_manager
 )
-from app.models import Workspace, User
+from app.models import Workspace, User, UserAccount
 from app.database import AsyncSessionLocal
 from app.middleware.rate_limiter import limiter, get_rate_limit
 from app.middleware.csrf_protection import csrf_protection
@@ -31,7 +31,7 @@ slack_oauth = SlackOAuth()
 pending_states = {}
 
 
-def get_session_from_cookie(request: Request) -> dict:
+async def get_session_from_cookie(request: Request) -> dict:
     """Extract session from cookies or Authorization header"""
     token = request.cookies.get('session_token')
     
@@ -44,7 +44,7 @@ def get_session_from_cookie(request: Request) -> dict:
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    session = session_manager.validate_session(token)
+    session = await session_manager.validate_session(token)
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
@@ -149,7 +149,10 @@ async def telegram_callback(request: Request):
         # Get or create user and workspace
         async with AsyncSessionLocal() as db:
             # 1. Try to find an existing user record with this telegram_id
-            user_stmt = select(User).where(User.telegram_id == user_info['user_id']).order_by(User.is_superadmin.desc(), User.is_admin.desc())
+            user_stmt = select(User).join(UserAccount).where(
+                UserAccount.provider == 'telegram', 
+                UserAccount.provider_id == str(user_info['user_id'])
+            ).order_by(User.is_superadmin.desc(), User.is_admin.desc())
             result = await db.execute(user_stmt)
             existing_user = result.scalars().first()
 
@@ -184,9 +187,10 @@ async def telegram_callback(request: Request):
 
             # Get or create user with workspace_id set
             # First try to find by telegram_id
-            user_stmt = select(User).where(
-                (User.telegram_id == user_info['user_id']) &
-                (User.workspace_id == workspace.id)
+            user_stmt = select(User).join(UserAccount).where(
+                UserAccount.provider == 'telegram',
+                UserAccount.provider_id == str(user_info['user_id']),
+                User.workspace_id == workspace.id
             )
             result = await db.execute(user_stmt)
             user = result.scalars().first()
@@ -194,16 +198,25 @@ async def telegram_callback(request: Request):
             # If not found by ID, try to find by username (for backwards compatibility)
             if not user and user_info.get('username'):
                 logger.info(f"User not found by telegram_id, trying by username: {user_info.get('username')}")
-                user_stmt = select(User).where(
-                    (User.telegram_username == user_info.get('username')) &
-                    (User.workspace_id == workspace.id)
+                user_stmt = select(User).join(UserAccount).where(
+                    UserAccount.provider == 'telegram',
+                    func.lower(UserAccount.username) == user_info.get('username').lower(),
+                    User.workspace_id == workspace.id
                 )
                 result = await db.execute(user_stmt)
                 user = result.scalars().first()
 
                 if user:
-                    logger.info(f"Found existing user by username: {user.id}, updating telegram_id")
-                    user.telegram_id = user_info['user_id']
+                    logger.info(f"Found existing user by username: {user.id}, linking Telegram ID {user_info['user_id']}")
+                    # Create UserAccount
+                    ua = UserAccount(
+                        user_id=user.id,
+                        workspace_id=workspace.id,
+                        provider='telegram',
+                        provider_id=str(user_info['user_id']),
+                        username=user_info.get('username')
+                    )
+                    db.add(ua)
                     await db.commit()
                     await db.refresh(user)
 
@@ -215,8 +228,6 @@ async def telegram_callback(request: Request):
                 
                 user = User(
                     workspace_id=workspace.id,
-                    telegram_id=user_info['user_id'],
-                    telegram_username=username,
                     username=username or str(user_info['user_id']),
                     first_name=first_name,
                     last_name=last_name,
@@ -225,12 +236,23 @@ async def telegram_callback(request: Request):
                 db.add(user)
                 await db.commit()
                 await db.refresh(user)
-                logger.info(f"Created user: {user.id}")
+                
+                # Create UserAccount
+                user_account = UserAccount(
+                    user_id=user.id,
+                    workspace_id=workspace.id,
+                    provider='telegram',
+                    provider_id=str(user_info['user_id']),
+                    username=username
+                )
+                db.add(user_account)
+                await db.commit()
+                logger.info(f"Created user: {user.id} and linked Telegram account")
             else:
                 logger.info(f"Found existing user: {user.id}")
 
         # Create session
-        session_token = session_manager.create_session(
+        session_token = await session_manager.create_session(
             user.id,
             workspace.id,
             'telegram'
@@ -338,7 +360,10 @@ async def telegram_widget_callback(
             # 1. Try to find an existing user record with this telegram_id
             # Order by is_admin desc to prefer workspaces where the user is an admin
             # Order by created_at desc to prefer more recently created/active profiles as a tie-breaker
-            user_stmt = select(User).where(User.telegram_id == user_info['user_id']).order_by(User.is_superadmin.desc(), User.is_admin.desc(), User.created_at.desc())
+            user_stmt = select(User).join(UserAccount).where(
+                UserAccount.provider == 'telegram',
+                UserAccount.provider_id == str(user_info['user_id'])
+            ).order_by(User.is_superadmin.desc(), User.is_admin.desc(), User.created_at.desc())
             result = await db.execute(user_stmt)
             existing_user = result.scalars().first()
 
@@ -365,7 +390,7 @@ async def telegram_widget_callback(
                 raise HTTPException(status_code=403, detail="User not found. Please ask your administrator to add you to a team first.")
 
         # Create session
-        session_token = session_manager.create_session(
+        session_token = await session_manager.create_session(
             user.id,
             workspace.id,
             'telegram'
@@ -495,9 +520,10 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
 
             # Get or create user with workspace_id set
             # First try to find by slack_user_id
-            user_stmt = select(User).where(
-                (User.slack_user_id == user_info['user_id']) &
-                (User.workspace_id == workspace.id)
+            user_stmt = select(User).join(UserAccount).where(
+                UserAccount.provider == 'slack',
+                UserAccount.provider_id == user_info['user_id'],
+                User.workspace_id == workspace.id
             )
             result = await db.execute(user_stmt)
             user = result.scalars().first()
@@ -513,17 +539,23 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
                 user = result.scalars().first()
 
                 if user:
-                    logger.info(f"Found existing user by username: {user.id}, updating slack_user_id")
-                    user.slack_user_id = user_info['user_id']
+                    logger.info(f"Found existing user by username: {user.id}, linking Slack ID {user_info['user_id']}")
+                    # Create UserAccount
+                    ua = UserAccount(
+                        user_id=user.id,
+                        workspace_id=workspace.id,
+                        provider='slack',
+                        provider_id=user_info['user_id'],
+                        username=user_info.get('username')
+                    )
+                    db.add(ua)
                     await db.commit()
                     await db.refresh(user)
 
             if not user:
                 logger.info(f"Creating new user for Slack user ID {user_info['user_id']}")
-                
                 user = User(
                     workspace_id=workspace.id,
-                    slack_user_id=user_info['user_id'],
                     username=user_info.get('username'),
                     first_name=user_info.get('first_name'),
                     last_name=user_info.get('last_name'),
@@ -532,7 +564,18 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
                 db.add(user)
                 await db.commit()
                 await db.refresh(user)
-                logger.info(f"Created user: {user.id}")
+                
+                # Create UserAccount
+                user_account = UserAccount(
+                    user_id=user.id,
+                    workspace_id=workspace.id,
+                    provider='slack',
+                    provider_id=user_info['user_id'],
+                    username=user_info.get('username')
+                )
+                db.add(user_account)
+                await db.commit()
+                logger.info(f"Created user: {user.id} and linked Slack account")
             else:
                 logger.info(f"Found existing user: {user.id}")
                 # Update names if missing
@@ -552,7 +595,7 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
                     await db.refresh(user)
 
         # Create session
-        session_token = session_manager.create_session(
+        session_token = await session_manager.create_session(
             user.id,
             workspace.id,
             'slack'
@@ -698,9 +741,15 @@ async def list_workspaces(request: Request, session: dict = Depends(get_session_
             )
 
             if current_user.telegram_id:
-                stmt = select(User).where(User.telegram_id == current_user.telegram_id)
+                stmt = select(User).join(UserAccount).where(
+                    UserAccount.provider == 'telegram',
+                    UserAccount.provider_id == str(current_user.telegram_id)
+                )
             elif current_user.slack_user_id:
-                stmt = select(User).where(User.slack_user_id == current_user.slack_user_id)
+                stmt = select(User).join(UserAccount).where(
+                    UserAccount.provider == 'slack',
+                    UserAccount.provider_id == current_user.slack_user_id
+                )
             else:
                 raise HTTPException(status_code=400, detail="User has no platform ID")
 
@@ -785,13 +834,15 @@ async def switch_workspace(request: Request, session: dict = Depends(get_session
 
             # Find user record in target workspace with same platform ID
             if current_user.telegram_id:
-                target_user_stmt = select(User).where(
-                    User.telegram_id == current_user.telegram_id,
+                target_user_stmt = select(User).join(UserAccount).where(
+                    UserAccount.provider == 'telegram',
+                    UserAccount.provider_id == str(current_user.telegram_id),
                     User.workspace_id == target_workspace_id
                 )
             elif current_user.slack_user_id:
-                target_user_stmt = select(User).where(
-                    User.slack_user_id == current_user.slack_user_id,
+                target_user_stmt = select(User).join(UserAccount).where(
+                    UserAccount.provider == 'slack',
+                    UserAccount.provider_id == current_user.slack_user_id,
                     User.workspace_id == target_workspace_id
                 )
             else:

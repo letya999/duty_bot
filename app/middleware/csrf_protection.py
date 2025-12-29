@@ -125,6 +125,12 @@ class CSRFProtection:
         if request.headers.get('X-API-Key'):
             return True
 
+        # Exempt requests with Bearer authentication
+        # Bearer tokens are not automatically sent by browsers, making them CSRF-safe
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            return True
+
         return False
 
     async def validate_request(self, request: Request) -> None:

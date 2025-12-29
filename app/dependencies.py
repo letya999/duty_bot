@@ -43,7 +43,7 @@ async def get_current_user(
         raise AuthenticationError("Missing or invalid authorization header")
 
     token = authorization.split(" ", 1)[1]
-    session = session_manager.validate_session(token)
+    session = await session_manager.validate_session(token)
 
     if not session:
         raise AuthenticationError("Invalid or expired token")

@@ -144,7 +144,7 @@ async def validate_token(authorization: str = None):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
 
     token = authorization.split(" ", 1)[1]
-    session = session_manager.validate_session(token)
+    session = await session_manager.validate_session(token)
 
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired token")

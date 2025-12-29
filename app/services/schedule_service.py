@@ -90,9 +90,9 @@ class ScheduleService:
         """Get duties for a date range"""
         return await self.schedule_repo.list_by_team_and_date_range(team_id, start_date, end_date)
 
-    async def clear_duty(self, team_id: int, duty_date: date) -> bool:
-        """Clear duty for a date"""
-        return await self.schedule_repo.delete_by_team_and_date(team_id, duty_date)
+    async def clear_duty(self, team_id: int, duty_date: date, user_id: int | None = None) -> bool:
+        """Clear duty for a date. Optional user_id filter."""
+        return await self.schedule_repo.delete_by_team_and_date(team_id, duty_date, user_id=user_id)
 
     async def get_today_duty(self, team_id: int, today: date) -> User | None:
         """Get today's primary duty person (returns first found)"""

@@ -5,7 +5,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db, get_current_user
-from app.models import User
+from app.models import User, UserAccount
 from app.services.team_service import TeamService
 from app.services.user_service import UserService
 from app.repositories import TeamRepository, UserRepository
@@ -433,19 +433,15 @@ async def import_team_member(
                 except Exception as e:
                     logger.warning(f"Failed to fetch Slack info for {slack_user_id}: {e}")
 
-        # Try to find existing user
+        # Try to find existing user by various identifiers
         user_service = UserService(UserRepository(db))
-
-        conditions = [
-            (User.telegram_username == imported_info["username"]),
-            (User.username == imported_info["username"])
-        ]
-        if imported_info["slack_id"]:
-            conditions.append(User.slack_user_id == imported_info["slack_id"])
-
-        stmt = select(User).where(
-            (User.workspace_id == user.workspace_id) &
-            or_(*conditions)
+        stmt = select(User).outerjoin(UserAccount).where(
+            User.workspace_id == user.workspace_id,
+            or_(
+                User.username == imported_info["username"],
+                (UserAccount.provider == 'telegram') & (UserAccount.username == imported_info["username"]) if imported_info["username"] and source == "telegram" else False,
+                (UserAccount.provider == 'slack') & (UserAccount.provider_id == imported_info["slack_id"]) if imported_info["slack_id"] else False
+            )
         )
         result = await db.execute(stmt)
         target_user = result.scalars().first()
@@ -466,7 +462,15 @@ async def import_team_member(
             # Update existing user info if it was missing
             updated = False
             if imported_info["telegram_id"] and not target_user.telegram_id:
-                target_user.telegram_id = int(imported_info["telegram_id"])
+                # Link to Telegram account
+                ua = UserAccount(
+                    user_id=target_user.id,
+                    workspace_id=user.workspace_id,
+                    provider='telegram',
+                    provider_id=str(imported_info["telegram_id"]),
+                    username=imported_info["username"]
+                )
+                db.add(ua)
                 updated = True
             if imported_info["first_name"] and not target_user.first_name:
                 target_user.first_name = imported_info["first_name"]

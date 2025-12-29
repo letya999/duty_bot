@@ -10,7 +10,7 @@ from app.commands.parser import CommandParser, DateParser, CommandError
 from app.services.user_service import UserService
 from app.repositories import (
     UserRepository, TeamRepository, ScheduleRepository,
-    EscalationRepository, RotationConfigRepository, AdminLogRepository
+    EscalationRepository, RotationConfigRepository, AdminLogRepository, UserAccountRepository
 )
 from app.models import Workspace
 from app.config import get_settings
@@ -64,7 +64,11 @@ class TelegramHandler:
             update.effective_chat.id,
             update.effective_chat.title
         )
-        user_service = UserService(UserRepository(db))
+        user_service = UserService(
+            UserRepository(db),
+            AdminLogRepository(db),
+            UserAccountRepository(db)
+        )
         user_info = update.effective_user
         user = await user_service.get_or_create_by_telegram(
             workspace_id,
@@ -170,7 +174,11 @@ class TelegramHandler:
             async with get_db_with_retry() as db:
                 workspace_id, user = await self._get_workspace_and_user(update, db)
                 handler = BotCommandHandler(db, workspace_id)
-                user_service = UserService(UserRepository(db))
+                user_service = UserService(
+                    UserRepository(db),
+                    AdminLogRepository(db),
+                    UserAccountRepository(db)
+                )
                 admin_service = AdminService(AdminLogRepository(db), UserRepository(db))
 
                 args = context.args
@@ -322,7 +330,11 @@ class TelegramHandler:
             async with get_db_with_retry() as db:
                 workspace_id, user = await self._get_workspace_and_user(update, db)
                 handler = BotCommandHandler(db, workspace_id)
-                user_service = UserService(UserRepository(db))
+                user_service = UserService(
+                    UserRepository(db),
+                    AdminLogRepository(db),
+                    UserAccountRepository(db)
+                )
                 admin_service = AdminService(AdminLogRepository(db), UserRepository(db))
 
                 args = context.args
@@ -393,7 +405,8 @@ class TelegramHandler:
                     if not target_user:
                         raise CommandError(f"User not found: @{mentions[0]}")
 
-                    result = await handler.schedule_set(team_name, date_part, target_user, force=force)
+                    dr = DateParser.parse_date_range(date_part)
+                    result = await handler.schedule_set(team_name, dr.start, dr.end, target_user, force=force)
 
                 elif "clear" in full_text and len(args) >= 3:
                     # Check admin permission
@@ -403,7 +416,14 @@ class TelegramHandler:
 
                     date_idx = full_text.find("clear") + 5
                     date_part = full_text[date_idx:].split()[0]
-                    result = await handler.schedule_clear(team_name, date_part)
+                    mentions = CommandParser.extract_mentions(full_text)
+                    if not mentions:
+                        raise CommandError("Usage: /schedule <team> clear <date> @user")
+                    target_user = await user_service.get_user_by_telegram(workspace_id, mentions[0])
+                    if not target_user:
+                        raise CommandError(f"User not found: @{mentions[0]}")
+                    dr = DateParser.parse_date_range(date_part)
+                    result = await handler.schedule_clear(team_name, dr.start, dr.end, target_user)
 
                 else:
                     period = args[1] if len(args) > 1 else "week"
@@ -425,7 +445,11 @@ class TelegramHandler:
             async with get_db_with_retry() as db:
                 workspace_id, user = await self._get_workspace_and_user(update, db)
                 handler = BotCommandHandler(db, workspace_id)
-                user_service = UserService(UserRepository(db))
+                user_service = UserService(
+                    UserRepository(db),
+                    AdminLogRepository(db),
+                    UserAccountRepository(db)
+                )
                 admin_service = AdminService(AdminLogRepository(db), UserRepository(db))
 
                 args = context.args
@@ -456,7 +480,8 @@ class TelegramHandler:
                             raise CommandError(f"User not found: @{mention}")
                         users.append(target_user)
 
-                    result = await handler.shift_set(team_name, date_part, users, force=force)
+                    dr = DateParser.parse_date_range(date_part)
+                    result = await handler.shift_set(team_name, dr.start, dr.end, users, force=force)
 
                 elif "add" in full_text and len(args) >= 3:
                     # Check admin permission
@@ -505,7 +530,8 @@ class TelegramHandler:
 
                     date_idx = full_text.find("clear") + 5
                     date_part = full_text[date_idx:].split()[0]
-                    result = await handler.shift_clear(team_name, date_part)
+                    dr = DateParser.parse_date_range(date_part)
+                    result = await handler.shift_clear(team_name, dr.start, dr.end)
 
                 else:
                     period = args[1] if len(args) > 1 else "week"
@@ -527,7 +553,11 @@ class TelegramHandler:
             async with get_db_with_retry() as db:
                 workspace_id, user = await self._get_workspace_and_user(update, db)
                 handler = BotCommandHandler(db, workspace_id)
-                user_service = UserService(UserRepository(db))
+                user_service = UserService(
+                    UserRepository(db),
+                    AdminLogRepository(db),
+                    UserAccountRepository(db)
+                )
                 admin_service = AdminService(AdminLogRepository(db), UserRepository(db))
 
                 args = context.args
@@ -652,7 +682,11 @@ class TelegramHandler:
 
             async with get_db_with_retry() as db:
                 workspace_id, user = await self._get_workspace_and_user(update, db)
-                user_service = UserService(UserRepository(db))
+                user_service = UserService(
+                    UserRepository(db),
+                    AdminLogRepository(db),
+                    UserAccountRepository(db)
+                )
                 admin_service = AdminService(AdminLogRepository(db), UserRepository(db))
 
                 args = context.args

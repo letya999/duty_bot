@@ -44,10 +44,13 @@ class MetricsService:
             end_time
         )
 
+        # Count total new incidents in period
+        new_incidents = [i for i in all_incidents if i.start_time >= start_time]
+
         return {
             'mtr': mtr,  # in seconds
             'daysWithoutIncidents': days_without_incidents,
-            'totalIncidents': len(all_incidents),
+            'totalIncidents': len(new_incidents),
             'averageIncidentDuration': avg_duration,  # in seconds
             'period': period,
             'startTime': start_time.isoformat(),
@@ -90,19 +93,46 @@ class MetricsService:
         start_time: datetime,
         end_time: datetime
     ) -> int:
-        """Calculate number of days without any incidents since the last one in the period."""
-        # 1. Check for active incidents
-        active_incidents = [i for i in incidents if i.status == 'active' or i.end_time is None]
-        if active_incidents:
-            return 0
-
-        # 2. If no incidents in the period, return total days in period
+        """Calculate number of total days without any incidents in the period."""
+        period_days = (end_time - start_time).days
         if not incidents:
-            return (end_time - start_time).days
+            return period_days
 
-        # 3. Find the latest end_time among incidents in the period
-        latest_end = max(i.end_time for i in incidents if i.end_time)
+        # Set of dates (YYYY-MM-DD) that had incidents
+        dirty_dates = set()
         
-        # 4. Calculate days from latest incident end to the end of period
-        days_since = (end_time - latest_end).days
-        return max(0, days_since)
+        # Normalize range to dates
+        curr_date = end_time.date()
+        start_date = start_time.date()
+        
+        for inc in incidents:
+            # Determine intersection of incident duration and period
+            # Use safe defaults if times are missing (though they shouldn't be for valid incidents)
+            inc_start = inc.start_time.date() if inc.start_time else start_date
+            
+            if inc.end_time:
+                inc_end = inc.end_time.date()
+            else:
+                # If active (no end_time), assume it continues up to today
+                inc_end = curr_date
+            
+            # Optimization: Only care about dates >= start_date - 1 (to be safe)
+            # We add all dates the incident covers
+            d = inc_start
+            while d <= inc_end:
+                if d >= start_date: # Only track relevant dirty dates
+                     dirty_dates.add(d)
+                d += timedelta(days=1)
+        
+        # Count backwards from today to find the consecutive incident-free days
+        days_without = 0
+        check_date = curr_date
+        
+        # We check exactly 'period_days' number of days backwards
+        for _ in range(period_days):
+            if check_date in dirty_dates:
+                break
+            days_without += 1
+            check_date -= timedelta(days=1)
+            
+        return days_without

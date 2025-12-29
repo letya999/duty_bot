@@ -20,7 +20,7 @@ router = APIRouter(prefix="/web/reports", tags=["reports"])
 api_router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
-def get_session_from_cookie(request: Request):
+async def get_session_from_cookie(request: Request):
     """Extract and validate session from cookies or Authorization header"""
     token = request.cookies.get('session_token')
     
@@ -33,7 +33,7 @@ def get_session_from_cookie(request: Request):
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    session = session_manager.validate_session(token)
+    session = await session_manager.validate_session(token)
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 

@@ -72,9 +72,9 @@ class ScheduleRepository(BaseRepository[Schedule]):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def delete_by_team_and_date(self, team_id: int, duty_date: date) -> bool:
-        """Delete schedule for team on specific date."""
-        schedule = await self.get_by_team_and_date(team_id, duty_date)
+    async def delete_by_team_and_date(self, team_id: int, duty_date: date, user_id: int | None = None) -> bool:
+        """Delete schedule for team on specific date. Optional user_id filter."""
+        schedule = await self.get_by_team_and_date(team_id, duty_date, user_id=user_id)
         if schedule:
             await self.db.delete(schedule)
             await self.db.commit()

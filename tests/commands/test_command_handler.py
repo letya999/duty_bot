@@ -1,5 +1,6 @@
 import pytest
 from datetime import date, timedelta
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.commands.handlers import CommandHandler
 from app.commands.parser import CommandError
@@ -10,46 +11,46 @@ from app.repositories import RotationConfigRepository
 class TestCommandHandlerDuty:
     """Test duty-related commands"""
 
-    @pytest.fixture
-    async def setup_duty_team(self, db_session: AsyncSession):
-        """Setup workspace, users and team for duty tests"""
-        workspace_id = 1
+@pytest.fixture
+async def setup_duty_team(db_session: AsyncSession):
+    """Setup workspace, users and team for duty tests"""
+    workspace_id = 1
 
-        # Create users
-        user1 = User(
-            workspace_id=workspace_id,
-            username="user1",
-            first_name="John",
-            last_name="Doe",
-            display_name="John Doe"
-        )
-        user2 = User(
-            workspace_id=workspace_id,
-            username="user2",
-            first_name="Jane",
-            last_name="Smith",
-            display_name="Jane Smith"
-        )
+    # Create users
+    user1 = User(
+        workspace_id=workspace_id,
+        username="user1",
+        first_name="John",
+        last_name="Doe",
+        display_name="John Doe"
+    )
+    user2 = User(
+        workspace_id=workspace_id,
+        username="user2",
+        first_name="Jane",
+        last_name="Smith",
+        display_name="Jane Smith"
+    )
 
-        db_session.add(user1)
-        db_session.add(user2)
-        await db_session.flush()
-        await db_session.refresh(user1)
-        await db_session.refresh(user2)
+    db_session.add(user1)
+    db_session.add(user2)
+    await db_session.flush()
+    await db_session.refresh(user1)
+    await db_session.refresh(user2)
 
-        # Create team
-        team = Team(
-            workspace_id=workspace_id,
-            name="backend",
-            display_name="Backend Team",
-            members=[user1, user2]
-        )
-        db_session.add(team)
-        await db_session.flush()
-        await db_session.refresh(team)
-        await db_session.flush()
+    # Create team
+    team = Team(
+        workspace_id=workspace_id,
+        name="backend",
+        display_name="Backend Team",
+        members=[user1, user2]
+    )
+    db_session.add(team)
+    await db_session.flush()
+    await db_session.refresh(team)
+    await db_session.flush()
 
-        return workspace_id, team, user1, user2
+    return workspace_id, team, user1, user2
 
     @pytest.mark.asyncio
     async def test_duty_today_no_teams(self, db_session: AsyncSession):
@@ -518,9 +519,38 @@ class TestCommandHandlerSchedule:
         await db_session.flush()
 
         handler = CommandHandler(db_session, workspace_id=workspace_id)
-        result = await handler.schedule_clear("backend", today, today, today=today)
+        result = await handler.schedule_clear("backend", today, today, user, today=today)
 
         assert "cleared" in result.lower()
+        
+    @pytest.mark.asyncio
+    async def test_schedule_clear_specific_user(self, db_session: AsyncSession, setup_duty_team):
+        """Test schedule_clear only removes duty for the specified user"""
+        workspace_id, team, user1, user2 = setup_duty_team
+        today = date.today()
+ 
+        # Set duties for both users (needs shift mode or separate teams, but here we just test repo/service)
+        # Actually, if is_shift=False, the repo ONLY allows 1 record.
+        # So we test with is_shift=True to have multiple records on same day.
+        s1 = Schedule(team_id=team.id, user_id=user1.id, date=today, is_shift=True)
+        s2 = Schedule(team_id=team.id, user_id=user2.id, date=today, is_shift=True)
+        db_session.add(s1)
+        db_session.add(s2)
+        await db_session.flush()
+ 
+        handler = CommandHandler(db_session, workspace_id=workspace_id)
+        
+        # Clear only user1
+        result = await handler.schedule_clear("backend", today, today, user1, today=today)
+        assert "cleared" in result.lower()
+        assert user1.display_name in result
+ 
+        # Check that user2 still has duty
+        stmt = select(Schedule).where(Schedule.team_id == team.id, Schedule.date == today)
+        res = await db_session.execute(stmt)
+        remaining = res.scalars().all()
+        assert len(remaining) == 1
+        assert remaining[0].user_id == user2.id
 
 
 class TestCommandHandlerShift:

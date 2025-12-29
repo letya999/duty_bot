@@ -99,7 +99,8 @@ class TestMetricsService:
 
         assert metrics['totalIncidents'] == 1
         assert metrics['mtr'] == 0  # Active incidents don't contribute to MTR
-        assert metrics['daysWithoutIncidents'] == 0  # Active incident means 0 days
+        # With 1 active incident today in a 7-day period, we should have 6 incident-free days
+        assert metrics['daysWithoutIncidents'] == 6
 
     @pytest.mark.asyncio
     async def test_calculate_metrics_days_without_incidents_resolved(self, setup_metrics_service):
@@ -120,9 +121,10 @@ class TestMetricsService:
 
         metrics = await service.calculate_metrics(workspace.id, 'week')
 
-        # Should be approximately 3 days since last incident
-        assert metrics['daysWithoutIncidents'] >= 2
-        assert metrics['daysWithoutIncidents'] <= 4
+        # Total 7 days in period. Incident lasted from 5 days ago to 3 days ago.
+        # This covers dates: now-5, now-4, now-3 (3 days).
+        # 7 - 3 = 4 incident-free days.
+        assert metrics['daysWithoutIncidents'] == 4
 
     @pytest.mark.asyncio
     async def test_calculate_metrics_days_without_incidents_no_incidents(self, setup_metrics_service):
@@ -366,9 +368,9 @@ class TestMetricsService:
         ]
 
         days = await service._calculate_days_without_incidents(incidents, start_time, now)
-
-        # Active incident means 0 days
-        assert days == 0
+        
+        # 7 day period, 1 day with incident (today/last hour) = 6 free days
+        assert days == 6
 
     @pytest.mark.asyncio
     async def test_calculate_days_without_incidents_no_incidents(self, setup_metrics_service):
@@ -400,10 +402,10 @@ class TestMetricsService:
         ]
 
         days = await service._calculate_days_without_incidents(incidents, start_time, now)
-
-        # Should be approximately 3 days since last incident end
-        assert days >= 2
-        assert days <= 4
+        
+        # 7 day period. Incident from 5 days ago to 3 days ago covers 3 dates.
+        # 7 - 3 = 4
+        assert days == 4
 
     @pytest.mark.asyncio
     async def test_calculate_days_without_incidents_multiple_resolved(self, setup_metrics_service, incident_factory):
@@ -428,10 +430,12 @@ class TestMetricsService:
         ]
 
         days = await service._calculate_days_without_incidents(incidents, start_time, now)
-
-        # Should use latest end_time (2 days ago)
-        assert days >= 1
-        assert days <= 3
+        
+        # Incident 1: -6 to -5 (2 days)
+        # Incident 2: -3 to -2 (2 days)
+        # Total dates with incidents: 4
+        # 7 - 4 = 3
+        assert days == 3
 
     @pytest.mark.asyncio
     async def test_calculate_metrics_complete_workflow(self, setup_metrics_service):

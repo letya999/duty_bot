@@ -11,17 +11,61 @@ This guide provides detailed instructions for configuring Telegram, Slack, and G
    - Set the URL to your hosted webapp (e.g., `https://yourdomain.com/webapp`).
 
 ## 2. Slack Bot Setup
-1. **Create App**: Visit [Slack API](https://api.slack.com/apps) and create "From scratch".
-2. **Scopes**: Add `chat:write`, `users:read`, `commands`, and `app_mentions:read` to Bot Token Scopes.
-3. **Install**: Install to your workspace and copy the "Bot User OAuth Token" (`SLACK_BOT_TOKEN`).
-4. **Slash Commands (Important)**:
-   - Go to **Slash Commands** in the sidebar.
-   - For **EACH** registered command (e.g., `/duty`, `/team`), you must set the **Request URL**.
-   - Set the URL to: `https://yourdomain.com/slack/events` (e.g., your ngrok URL + `/slack/events`).
-   - *Note*: This is the same URL used for Event Subscriptions, but it must be explicitly set for each command.
-5. **Events**: Enable "Event Subscriptions" and set Request URL to `https://yourdomain.com/slack/events`.
-6. **Reinstall**: After changing any URLs or Scopes, go to **Install App** and click **Reinstall to Workspace**.
-7. **Channel ID**: Right-click a channel in Slack -> "View channel details" -> Copy ID from the bottom.
+
+### 2.1 Create Slack App
+1. Visit [Slack API](https://api.slack.com/apps) and click **Create New App** -> **From scratch**.
+2. Enter an app name (e.g., "duty_bot") and select your workspace.
+3. You'll get your **App ID**, **Client ID**, and other credentials in the **App Credentials** section.
+
+### 2.2 Configure OAuth & Permissions
+1. Go to **OAuth & Permissions** in the left sidebar.
+2. Under **Redirect URLs**, add your OAuth callback URL:
+   - `https://yourdomain.com/api/admin/auth/slack/callback` (e.g., `https://your-ngrok-url.ngrok-free.dev/api/admin/auth/slack/callback`)
+   - Click **Save URLs**
+3. Under **Bot Token Scopes**, add the following scopes:
+   - `chat:write` - Send messages as the bot
+   - `commands` - Add shortcuts and slash commands
+   - `groups:read` - View basic information about private channels
+   - `users.profile:read` - View profile details about people
+   - `users:read` - View people in the workspace
+   - `users:read.email` - View email addresses of people
+
+### 2.3 Install to Workspace
+1. Go to **Install App** in the sidebar.
+2. Click **Install to Workspace** (or **Reinstall to Workspace** if you've made changes).
+3. Copy the **Bot User OAuth Token** (starts with `xoxb-`) and save it as `SLACK_BOT_TOKEN` in your `.env` file.
+
+### 2.4 Configure Slash Commands
+1. Go to **Slash Commands** in the left sidebar.
+2. Click **Create New Command** for each command you need (e.g., `/duty`).
+3. For each command, set:
+   - **Command**: `/duty` (or your command name)
+   - **Request URL**: `https://yourdomain.com/slack/events` (same ngrok URL + `/slack/events`)
+   - **Short Description**: Brief description (e.g., "Show all on-duty today")
+   - **Usage Hint**: Optional hint for parameters (e.g., "[which rocket to launch]")
+4. Click **Save**.
+
+### 2.5 Configure Event Subscriptions
+1. Go to **Event Subscriptions** in the left sidebar.
+2. Toggle **Enable Events** to ON.
+3. Under **Request URL**, enter: `https://yourdomain.com/slack/events`
+4. Slack will verify the URL by sending a challenge request.
+5. Under **Subscribe to bot events**, add the events you need (e.g., `app_mention`, `message.channels`).
+
+### 2.6 Get Signing Secret
+1. Go to **Basic Information** in the sidebar.
+2. Under **App Credentials**, copy the **Signing Secret** and save it as `SLACK_SIGNING_SECRET` in your `.env` file.
+3. Also copy:
+   - **Client ID** → `SLACK_CLIENT_ID`
+   - **Client Secret** → `SLACK_CLIENT_SECRET`
+
+### 2.7 Channel Setup
+1. Right-click a channel in Slack -> **View channel details** -> Copy the channel ID from the bottom.
+2. Save this as `SLACK_CHANNEL_ID` in your `.env` file.
+
+### 2.8 Final Steps
+- After making any changes to URLs, Scopes, or Permissions, return to **Install App** and click **Reinstall to Workspace**.
+- Verify that all environment variables are set correctly in your `.env` file.
 
 ## 3. Google Calendar Integration
 1. **Google Cloud**: Create a project in [Google Cloud Console](https://console.cloud.google.com/).

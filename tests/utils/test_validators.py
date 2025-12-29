@@ -161,7 +161,7 @@ class TestFieldValidators:
 
     def test_validate_date_not_past_datetime(self):
         """Test with datetime objects"""
-        now = datetime.utcnow()
+        now = datetime.now()
         tomorrow = now + timedelta(days=1)
         yesterday = now - timedelta(days=1)
 

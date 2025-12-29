@@ -8,6 +8,8 @@ from app.models import Workspace, User, Team
 class TestUserService:
     """Test UserService methods"""
 
+
+
     @pytest.fixture
     async def setup_user_service(self, db_session: AsyncSession):
         """Setup user service with test data"""
@@ -21,7 +23,9 @@ class TestUserService:
         await db_session.refresh(workspace)
 
         user_repo = UserRepository(db_session)
-        service = UserService(user_repo)
+        from app.repositories import UserAccountRepository
+        user_account_repo = UserAccountRepository(db_session)
+        service = UserService(user_repo, user_account_repo=user_account_repo)
 
         return service, workspace
 
@@ -29,6 +33,9 @@ class TestUserService:
     async def test_create_user(self, setup_user_service):
         """Test creating a user"""
         service, workspace = setup_user_service
+        # Need to import UserAccount to query it
+        from app.models import UserAccount
+        from sqlalchemy import select
 
         user = await service.create_user(
             workspace_id=workspace.id,
@@ -40,8 +47,15 @@ class TestUserService:
         )
 
         assert user.id is not None
-        assert user.telegram_username == "newuser"
-        assert user.telegram_id == 123456789
+        # Check UserAccount creation
+        stmt = select(UserAccount).where(UserAccount.user_id == user.id)
+        result = await service.user_repo.db.execute(stmt)
+        accounts = result.scalars().all()
+        assert len(accounts) > 0
+        tg_acc = next((a for a in accounts if a.provider == 'telegram'), None)
+        assert tg_acc is not None
+        assert tg_acc.username == "newuser"
+        assert tg_acc.provider_id == "123456789"
 
     @pytest.mark.asyncio
     async def test_get_user_by_id(self, setup_user_service):
@@ -57,7 +71,8 @@ class TestUserService:
 
         retrieved = await service.get_user(user.id)
         assert retrieved is not None
-        assert retrieved.telegram_username == "getuser"
+        # Verify it resembles the user we created
+        assert retrieved.username == user.username
 
     @pytest.mark.asyncio
     async def test_get_user_by_telegram_username(self, setup_user_service):
@@ -76,7 +91,10 @@ class TestUserService:
             "tguser"
         )
         assert user is not None
-        assert user.telegram_username == "tguser"
+        # We can't check specific user attributes easily without fetching account info, 
+        # but finding the user implies success.
+        assert user.username == "tguser" 
+
 
     @pytest.mark.asyncio
     async def test_update_user(self, setup_user_service):

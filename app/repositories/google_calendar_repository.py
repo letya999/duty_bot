@@ -13,13 +13,20 @@ class GoogleCalendarRepository(BaseRepository[GoogleCalendarIntegration]):
     def __init__(self, db: AsyncSession):
         super().__init__(db, GoogleCalendarIntegration)
 
-    async def get_by_workspace(self, workspace_id: int) -> Optional[GoogleCalendarIntegration]:
-        """Get Google Calendar integration for workspace."""
+    async def list_by_workspace(self, workspace_id: int) -> list[GoogleCalendarIntegration]:
+        """Get all Google Calendar integrations for workspace."""
         stmt = select(GoogleCalendarIntegration).where(
             GoogleCalendarIntegration.workspace_id == workspace_id
         )
         result = await self.db.execute(stmt)
-        return result.scalars().first()
+        return result.scalars().all()
+
+    async def add_teams(self, integration: GoogleCalendarIntegration, teams: list) -> GoogleCalendarIntegration:
+        """Add teams to integration."""
+        integration.teams.extend(teams)
+        await self.db.commit()
+        await self.db.refresh(integration)
+        return integration
 
     async def get_by_calendar_id(self, calendar_id: str) -> Optional[GoogleCalendarIntegration]:
         """Get Google Calendar integration by Google Calendar ID."""

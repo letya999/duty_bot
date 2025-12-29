@@ -15,51 +15,65 @@ class UserRepository(BaseRepository[User]):
         super().__init__(db, User)
 
     async def get_by_telegram_username(self, workspace_id: int, telegram_username: str) -> Optional[User]:
-        """Get user by Telegram username in workspace (case-insensitive)."""
+        """Get user by Telegram username in workspace (case-insensitive) via UserAccount."""
+        from app.models import UserAccount
         from sqlalchemy import func
-        stmt = select(User).where(
+        stmt = select(User).join(UserAccount).where(
             User.workspace_id == workspace_id,
-            func.lower(User.telegram_username) == telegram_username.lower()
-        )
+            UserAccount.provider == 'telegram',
+            func.lower(UserAccount.username) == telegram_username.lower()
+        ).options(selectinload(User.user_accounts))
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
     async def find_anywhere_by_telegram_username(self, telegram_username: str) -> Optional[User]:
-        """Find user by Telegram username across all workspaces (case-insensitive)."""
+        """Find user by Telegram username across all workspaces (case-insensitive) via UserAccount."""
+        from app.models import UserAccount
         from sqlalchemy import func
-        stmt = select(User).where(
-            func.lower(User.telegram_username) == telegram_username.lower()
-        ).limit(1)
+        stmt = select(User).join(UserAccount).where(
+            UserAccount.provider == 'telegram',
+            func.lower(UserAccount.username) == telegram_username.lower()
+        ).limit(1).options(selectinload(User.user_accounts))
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
     async def get_by_telegram_id(self, workspace_id: int, telegram_id: int) -> Optional[User]:
-        """Get user by Telegram ID in workspace."""
-        stmt = select(User).where(
+        """Get user by Telegram ID in workspace via UserAccount."""
+        from app.models import UserAccount
+        stmt = select(User).join(UserAccount).where(
             User.workspace_id == workspace_id,
-            User.telegram_id == telegram_id
-        )
+            UserAccount.provider == 'telegram',
+            UserAccount.provider_id == str(telegram_id)
+        ).options(selectinload(User.user_accounts))
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     async def get_by_slack_user_id(self, workspace_id: int, slack_user_id: str) -> Optional[User]:
-        """Get user by Slack user ID in workspace."""
-        stmt = select(User).where(
+        """Get user by Slack user ID in workspace via UserAccount."""
+        from app.models import UserAccount
+        stmt = select(User).join(UserAccount).where(
             User.workspace_id == workspace_id,
-            User.slack_user_id == slack_user_id
-        )
+            UserAccount.provider == 'slack',
+            UserAccount.provider_id == slack_user_id
+        ).options(selectinload(User.user_accounts))
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        return result.scalars().first()
+
+    async def get_by_id(self, user_id: int) -> Optional[User]:
+        """Get user by ID with user_accounts loaded."""
+        stmt = select(User).where(User.id == user_id).options(selectinload(User.user_accounts))
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
     async def get_by_id_with_teams(self, user_id: int) -> Optional[User]:
         """Get user with loaded teams relationship."""
-        stmt = select(User).where(User.id == user_id).options(selectinload(User.teams))
+        stmt = select(User).where(User.id == user_id).options(selectinload(User.teams), selectinload(User.user_accounts))
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
     async def list_by_workspace(self, workspace_id: int, skip: int = 0, limit: int = 100) -> List[User]:
         """List all users in workspace."""
-        stmt = select(User).where(User.workspace_id == workspace_id).offset(skip).limit(limit)
+        stmt = select(User).where(User.workspace_id == workspace_id).offset(skip).limit(limit).options(selectinload(User.user_accounts))
         result = await self.db.execute(stmt)
         return result.scalars().all()
 

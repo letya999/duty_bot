@@ -18,16 +18,14 @@ class TestCommandHandlerDuty:
         # Create users
         user1 = User(
             workspace_id=workspace_id,
-            telegram_id=123,
-            telegram_username="user1",
+            username="user1",
             first_name="John",
             last_name="Doe",
             display_name="John Doe"
         )
         user2 = User(
             workspace_id=workspace_id,
-            telegram_id=124,
-            telegram_username="user2",
+            username="user2",
             first_name="Jane",
             last_name="Smith",
             display_name="Jane Smith"
@@ -146,16 +144,14 @@ class TestCommandHandlerTeam:
         # Create users
         user1 = User(
             workspace_id=workspace_id,
-            telegram_id=201,
-            telegram_username="user_lead",
+            username="user_lead",
             first_name="Lead",
             last_name="User",
             display_name="Lead User"
         )
         user2 = User(
             workspace_id=workspace_id,
-            telegram_id=202,
-            telegram_username="user_member",
+            username="user_member",
             first_name="Member",
             last_name="User",
             display_name="Member User"
@@ -452,8 +448,7 @@ class TestCommandHandlerSchedule:
 
         user = User(
             workspace_id=workspace_id,
-            telegram_id=301,
-            telegram_username="user",
+            username="user",
             first_name="Test",
             last_name="User",
             display_name="Test User"
@@ -538,16 +533,14 @@ class TestCommandHandlerShift:
 
         user1 = User(
             workspace_id=workspace_id,
-            telegram_id=401,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One",
             display_name="User One"
         )
         user2 = User(
             workspace_id=workspace_id,
-            telegram_id=402,
-            telegram_username="user2",
+            username="user2",
             first_name="User",
             last_name="Two",
             display_name="User Two"
@@ -657,16 +650,14 @@ class TestCommandHandlerEscalation:
 
         user1 = User(
             workspace_id=workspace_id,
-            telegram_id=501,
-            telegram_username="lead",
+            username="lead",
             first_name="Team",
             last_name="Lead",
             display_name="Team Lead"
         )
         user2 = User(
             workspace_id=workspace_id,
-            telegram_id=502,
-            telegram_username="cto",
+            username="cto",
             first_name="CTO",
             last_name="User",
             display_name="CTO User"
@@ -749,16 +740,14 @@ class TestCommandHandlerRotation:
 
         user1 = User(
             workspace_id=workspace_id,
-            telegram_id=601,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One",
             display_name="User One"
         )
         user2 = User(
             workspace_id=workspace_id,
-            telegram_id=602,
-            telegram_username="user2",
+            username="user2",
             first_name="User",
             last_name="Two",
             display_name="User Two"

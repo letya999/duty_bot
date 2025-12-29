@@ -136,17 +136,36 @@ def user_factory():
         user = User(
             workspace_id=workspace_id,
             organization_id=organization_id,
-            telegram_id=telegram_id,
-            telegram_username=telegram_username,
-            slack_user_id=slack_user_id,
             first_name=first_name,
             last_name=last_name,
             display_name=display_name,
+            username=telegram_username or (slack_user_id if slack_user_id else "testuser"),
             is_admin=is_admin,
             created_at=datetime.utcnow()
         )
         if id:
             user.id = id
+
+        # Add UserAccounts if provider IDs are supplied
+        if telegram_id:
+            account = UserAccount(
+                provider='telegram',
+                provider_id=str(telegram_id),
+                username=telegram_username,
+                workspace_id=workspace_id
+            )
+            user.user_accounts.append(account)
+        
+        if slack_user_id:
+            account = UserAccount(
+                provider='slack',
+                provider_id=slack_user_id,
+                # Slack username logic varies, but we can set it if needed or leave None
+                username=telegram_username if not telegram_id else None, 
+                workspace_id=workspace_id
+            )
+            user.user_accounts.append(account)
+
         return user
 
     return create

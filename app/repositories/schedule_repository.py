@@ -18,7 +18,9 @@ class ScheduleRepository(BaseRepository[Schedule]):
 
     async def get_by_team_and_date(self, team_id: int, duty_date: date, user_id: int | None = None) -> Optional[Schedule]:
         """Get schedule for team on specific date. Optional user_id for many-to-many lookup."""
-        stmt = select(Schedule).options(joinedload(Schedule.user)).where(
+        from app.models import User
+        from sqlalchemy.orm import selectinload
+        stmt = select(Schedule).options(joinedload(Schedule.user).selectinload(User.user_accounts)).where(
             Schedule.team_id == team_id,
             Schedule.date == duty_date
         )
@@ -30,7 +32,9 @@ class ScheduleRepository(BaseRepository[Schedule]):
 
     async def list_by_team_and_date_range(self, team_id: int, start_date: date, end_date: date) -> List[Schedule]:
         """Get schedules for team in date range."""
-        stmt = select(Schedule).options(joinedload(Schedule.user)).where(
+        from app.models import User
+        from sqlalchemy.orm import selectinload
+        stmt = select(Schedule).options(joinedload(Schedule.user).selectinload(User.user_accounts)).where(
             Schedule.team_id == team_id,
             Schedule.date >= start_date,
             Schedule.date <= end_date
@@ -40,7 +44,9 @@ class ScheduleRepository(BaseRepository[Schedule]):
 
     async def list_by_user_and_date_range(self, user_id: int, start_date: date, end_date: date, workspace_id: int = None) -> List[Schedule]:
         """Get schedules assigned to user in date range. If workspace_id provided, filters to that workspace only."""
-        stmt = select(Schedule).join(Team).options(joinedload(Schedule.user)).where(
+        from app.models import User
+        from sqlalchemy.orm import selectinload
+        stmt = select(Schedule).join(Team).options(joinedload(Schedule.user).selectinload(User.user_accounts)).where(
             Schedule.user_id == user_id,
             Schedule.date >= start_date,
             Schedule.date <= end_date
@@ -55,7 +61,9 @@ class ScheduleRepository(BaseRepository[Schedule]):
 
     async def list_by_date(self, duty_date: date, workspace_id: int = None) -> List[Schedule]:
         """Get all schedules for a specific date. If workspace_id provided, filters to that workspace only."""
-        stmt = select(Schedule).join(Team).options(joinedload(Schedule.user)).where(Schedule.date == duty_date)
+        from app.models import User
+        from sqlalchemy.orm import selectinload
+        stmt = select(Schedule).join(Team).options(joinedload(Schedule.user).selectinload(User.user_accounts)).where(Schedule.date == duty_date)
 
         if workspace_id is not None:
             stmt = stmt.where(Team.workspace_id == workspace_id)

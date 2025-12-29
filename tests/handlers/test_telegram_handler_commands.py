@@ -25,22 +25,27 @@ class TestTelegramDutyCommand:
 
         user1 = User(
             workspace_id=workspace.id,
-            telegram_id=1,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One",
             display_name="User One"
         )
         user2 = User(
             workspace_id=workspace.id,
-            telegram_id=2,
-            telegram_username="user2",
+            username="user2",
             first_name="User",
             last_name="Two",
             display_name="User Two"
         )
         db_session.add(user1)
         db_session.add(user2)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc1 = UserAccount(user_id=user1.id, workspace_id=workspace.id, provider="telegram", provider_id="1", username="user1")
+        acc2 = UserAccount(user_id=user2.id, workspace_id=workspace.id, provider="telegram", provider_id="2", username="user2")
+        db_session.add(acc1)
+        db_session.add(acc2)
         await db_session.commit()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
@@ -182,8 +187,7 @@ class TestTelegramTeamCommand:
 
         lead = User(
             workspace_id=workspace.id,
-            telegram_id=100,
-            telegram_username="lead",
+            username="lead",
             first_name="Lead",
             last_name="User",
             display_name="Lead User",
@@ -191,14 +195,20 @@ class TestTelegramTeamCommand:
         )
         member = User(
             workspace_id=workspace.id,
-            telegram_id=101,
-            telegram_username="member",
+            username="member",
             first_name="Member",
             last_name="User",
             display_name="Member User"
         )
         db_session.add(lead)
         db_session.add(member)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc_lead = UserAccount(user_id=lead.id, workspace_id=workspace.id, provider="telegram", provider_id="100", username="lead")
+        acc_mem = UserAccount(user_id=member.id, workspace_id=workspace.id, provider="telegram", provider_id="101", username="member")
+        db_session.add(acc_lead)
+        db_session.add(acc_mem)
         await db_session.commit()
         await db_session.refresh(lead)
         await db_session.refresh(member)
@@ -296,13 +306,17 @@ class TestTelegramScheduleCommand:
 
         user = User(
             workspace_id=workspace.id,
-            telegram_id=200,
-            telegram_username="user",
+            username="user",
             first_name="Test",
             last_name="User",
             display_name="Test User"
         )
         db_session.add(user)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc = UserAccount(user_id=user.id, workspace_id=workspace.id, provider="telegram", provider_id="200", username="user")
+        db_session.add(acc)
         await db_session.commit()
         await db_session.refresh(user)
 
@@ -377,22 +391,27 @@ class TestTelegramShiftCommand:
 
         user1 = User(
             workspace_id=workspace.id,
-            telegram_id=300,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One",
             display_name="User One"
         )
         user2 = User(
             workspace_id=workspace.id,
-            telegram_id=301,
-            telegram_username="user2",
+            username="user2",
             first_name="User",
             last_name="Two",
             display_name="User Two"
         )
         db_session.add(user1)
         db_session.add(user2)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc1 = UserAccount(user_id=user1.id, workspace_id=workspace.id, provider="telegram", provider_id="300", username="user1")
+        acc2 = UserAccount(user_id=user2.id, workspace_id=workspace.id, provider="telegram", provider_id="301", username="user2")
+        db_session.add(acc1)
+        db_session.add(acc2)
         await db_session.commit()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
@@ -470,22 +489,27 @@ class TestTelegramEscalationCommand:
 
         lead = User(
             workspace_id=workspace.id,
-            telegram_id=400,
-            telegram_username="lead",
+            username="lead",
             first_name="Lead",
             last_name="User",
             display_name="Lead User"
         )
         cto = User(
             workspace_id=workspace.id,
-            telegram_id=401,
-            telegram_username="cto",
+            username="cto",
             first_name="CTO",
             last_name="User",
             display_name="CTO User"
         )
         db_session.add(lead)
         db_session.add(cto)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc_lead = UserAccount(user_id=lead.id, workspace_id=workspace.id, provider="telegram", provider_id="400", username="lead")
+        acc_cto = UserAccount(user_id=cto.id, workspace_id=workspace.id, provider="telegram", provider_id="401", username="cto")
+        db_session.add(acc_lead)
+        db_session.add(acc_cto)
         await db_session.commit()
         await db_session.refresh(lead)
         await db_session.refresh(cto)
@@ -566,13 +590,17 @@ class TestTelegramIncidentCommand:
 
         user = User(
             workspace_id=workspace.id,
-            telegram_id=500,
-            telegram_username="user",
+            username="user",
             first_name="Test",
             last_name="User",
             display_name="Test User"
         )
         db_session.add(user)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc = UserAccount(user_id=user.id, workspace_id=workspace.id, provider="telegram", provider_id="500", username="user")
+        db_session.add(acc)
         await db_session.commit()
         await db_session.refresh(user)
 
@@ -674,13 +702,17 @@ class TestTelegramHelpCommand:
 
         user = User(
             workspace_id=workspace.id,
-            telegram_id=600,
-            telegram_username="user",
+            username="user",
             first_name="Test",
             last_name="User",
             display_name="Test User"
         )
         db_session.add(user)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc = UserAccount(user_id=user.id, workspace_id=workspace.id, provider="telegram", provider_id="600", username="user")
+        db_session.add(acc)
         await db_session.commit()
 
         return workspace, user, db_session

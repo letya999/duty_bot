@@ -30,7 +30,7 @@ class TestDutyStatsRepository:
 
         user = User(
             workspace_id=workspace.id,
-            telegram_username="user1",
+            username="user1",
             first_name="User"
         )
         db_session.add(user)

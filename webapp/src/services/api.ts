@@ -288,15 +288,16 @@ export const apiService = {
     return response.data;
   },
 
-  setupGoogleCalendar: async (serviceAccountKey: Record<string, any>): Promise<any> => {
+  setupGoogleCalendar: async (serviceAccountKey: Record<string, any>, teamIds?: number[]): Promise<any> => {
     const response = await api.post('/settings/google-calendar/setup', {
       service_account_key: serviceAccountKey,
+      team_ids: teamIds,
     });
     return response.data;
   },
 
-  disconnectGoogleCalendar: async (): Promise<any> => {
-    const response = await api.delete('/settings/google-calendar');
+  disconnectGoogleCalendar: async (integrationId: number): Promise<any> => {
+    const response = await api.delete(`/settings/google-calendar/${integrationId}`);
     return response.data;
   },
 

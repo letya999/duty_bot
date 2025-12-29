@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Building2, Plus, Users, Globe, Trash2, FolderTree, Shield, GitMerge, Check, AlertCircle } from 'lucide-react';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+
+interface TeamMember {
+    id: number;
+    username: string | null;
+    display_name: string | null;
+}
 
 interface Team {
     id: number;
@@ -8,6 +15,7 @@ interface Team {
     display_name: string;
     member_count: number;
     workspace_id?: number;
+    members?: TeamMember[];
 }
 
 interface Workspace {
@@ -37,10 +45,16 @@ interface UserInOrg {
     id: number;
     display_name: string | null;
     is_superadmin: boolean;
+    is_admin: boolean;
     user_accounts: UserAccount[];
 }
 
+import { ConsolidationWizard } from '../components/organizations/ConsolidationWizard';
+import { UserConsolidationWizard } from '../components/organizations/UserConsolidationWizard';
+
 const OrganizationsPage: React.FC = () => {
+    const { t } = useTranslation();
+
     // Data State
     const [organizations, setOrganizations] = useState<Organization[]>([]);
     const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
@@ -52,12 +66,15 @@ const OrganizationsPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [isLoadingAllWorkspaces, setIsLoadingAllWorkspaces] = useState(false);
     const [openWorkspaces, setOpenWorkspaces] = useState<Set<number>>(new Set());
+    const [openTeams, setOpenTeams] = useState<Set<number>>(new Set());
 
     // Modal States
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [newOrgName, setNewOrgName] = useState('');
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
     const [accountModalUser, setAccountModalUser] = useState<number | null>(null);
+    const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [isUserWizardOpen, setIsUserWizardOpen] = useState(false);
 
     // Merge States
     const [isUserMergeModalOpen, setIsUserMergeModalOpen] = useState(false);
@@ -155,6 +172,17 @@ const OrganizationsPage: React.FC = () => {
             fetchWorkspaceTeams(workspaceId);
         }
         setOpenWorkspaces(newOpen);
+    };
+
+    const toggleTeamExpansion = (teamId: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const newOpen = new Set(openTeams);
+        if (newOpen.has(teamId)) {
+            newOpen.delete(teamId);
+        } else {
+            newOpen.add(teamId);
+        }
+        setOpenTeams(newOpen);
     };
 
     const handleCreateOrg = async (e: React.FormEvent) => {
@@ -288,15 +316,15 @@ const OrganizationsPage: React.FC = () => {
         <div className="p-6 max-w-7xl mx-auto space-y-8">
             <div className="flex justify-between items-end">
                 <div>
-                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Organizations</h1>
-                    <p className="text-gray-500 mt-1">Multi-workspace management & centralized infrastructure control</p>
+                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">{t('organizations.title')}</h1>
+                    <p className="text-gray-500 mt-1">{t('organizations.subtitle')}</p>
                 </div>
                 <button
                     onClick={() => setIsCreateModalOpen(true)}
                     className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 font-bold"
                 >
                     <Plus size={20} />
-                    New Organization
+                    {t('organizations.new_org')}
                 </button>
             </div>
 
@@ -304,11 +332,11 @@ const OrganizationsPage: React.FC = () => {
                 <div className="lg:col-span-1 space-y-4">
                     <div className="flex items-center gap-2 px-1">
                         <Building2 size={18} className="text-blue-500" />
-                        <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest">Select Organization</h2>
+                        <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest">{t('organizations.select_header')}</h2>
                     </div>
                     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden divide-y divide-gray-100">
                         {organizations.length === 0 ? (
-                            <div className="p-8 text-center text-gray-400 text-sm italic">No organizations</div>
+                            <div className="p-8 text-center text-gray-400 text-sm italic">{t('organizations.no_orgs')}</div>
                         ) : (
                             organizations.map(org => (
                                 <button
@@ -318,8 +346,8 @@ const OrganizationsPage: React.FC = () => {
                                         fetchOrgDetails(org.id);
                                     }}
                                     className={`w-full text-left px-5 py-4 transition-all group ${selectedOrg?.id === org.id
-                                            ? 'bg-blue-50 border-l-4 border-l-blue-600'
-                                            : 'hover:bg-gray-50'
+                                        ? 'bg-blue-50 border-l-4 border-l-blue-600'
+                                        : 'hover:bg-gray-50'
                                         }`}
                                 >
                                     <div className="font-bold text-gray-900 group-hover:text-blue-700 transition-colors">{org.name}</div>
@@ -341,14 +369,49 @@ const OrganizationsPage: React.FC = () => {
                                 <div className="bg-gradient-to-r from-gray-900 to-gray-800 p-8 text-white">
                                     <div className="flex items-center gap-2 text-blue-400 mb-2">
                                         <Shield size={16} />
-                                        <span className="text-xs font-bold uppercase tracking-widest">Active Organization</span>
+                                        <span className="text-xs font-bold uppercase tracking-widest">{t('organizations.active_label')}</span>
                                     </div>
                                     <h2 className="text-4xl font-black">{selectedOrg.name}</h2>
                                     <div className="mt-4 flex gap-6 text-sm text-gray-400">
-                                        <div className="flex items-center gap-2"><Globe size={14} /> {workspaces.length} Workspaces</div>
-                                        <div className="flex items-center gap-2"><Users size={14} /> {orgUsers.length} Team Members</div>
+                                        <div className="flex items-center gap-2"><Globe size={14} /> {workspaces.length} {t('organizations.workspaces')}</div>
+                                        <div className="flex items-center gap-2"><Users size={14} /> {orgUsers.length} {t('organizations.team_members')}</div>
+                                    </div>
+
+                                    <div className="mt-8 flex gap-4">
+                                        <button
+                                            onClick={() => setIsWizardOpen(true)}
+                                            className="px-6 py-3 bg-white text-gray-900 rounded-xl font-bold uppercase tracking-widest hover:bg-gray-100 transition-all flex items-center gap-2 shadow-lg"
+                                        >
+                                            <GitMerge size={18} />
+                                            {t('organizations.consolidate_btn')}
+                                        </button>
+                                        <button
+                                            onClick={() => setIsUserWizardOpen(true)}
+                                            className="px-6 py-3 bg-white text-gray-900 rounded-xl font-bold uppercase tracking-widest hover:bg-gray-100 transition-all flex items-center gap-2 shadow-lg"
+                                        >
+                                            <Users size={18} />
+                                            {t('organizations.unify_ids_btn')}
+                                        </button>
                                     </div>
                                 </div>
+                                <ConsolidationWizard
+                                    isOpen={isWizardOpen}
+                                    onClose={() => setIsWizardOpen(false)}
+                                    organization={selectedOrg}
+                                    onComplete={() => {
+                                        setIsWizardOpen(false);
+                                        fetchOrgDetails(selectedOrg.id);
+                                    }}
+                                />
+                                <UserConsolidationWizard
+                                    isOpen={isUserWizardOpen}
+                                    onClose={() => setIsUserWizardOpen(false)}
+                                    organization={selectedOrg}
+                                    onComplete={() => {
+                                        setIsUserWizardOpen(false);
+                                        fetchOrgDetails(selectedOrg.id);
+                                    }}
+                                />
 
                                 <div className="p-8 space-y-10">
                                     <section>
@@ -387,16 +450,37 @@ const OrganizationsPage: React.FC = () => {
                                                         <div className="px-4 pb-4 bg-white border-t border-gray-50 pt-4">
                                                             <div className="grid grid-cols-2 gap-2">
                                                                 {ws.teams?.map(team => (
-                                                                    <div key={team.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 group/team relative">
+                                                                    <div
+                                                                        key={team.id}
+                                                                        className={`p-3 bg-gray-50 rounded-xl border border-gray-100 group/team relative cursor-pointer hover:bg-white hover:border-blue-100 transition-all ${openTeams.has(team.id) ? 'ring-2 ring-blue-500/20 bg-blue-50/10' : ''}`}
+                                                                        onClick={(e) => toggleTeamExpansion(team.id, e)}
+                                                                    >
                                                                         <div className="text-xs font-bold text-gray-800 truncate">{team.display_name}</div>
                                                                         <div className="text-[10px] text-gray-400 mt-1">{team.member_count} members</div>
                                                                         <button
-                                                                            onClick={() => { setMergeSourceTeam(team); setIsTeamMergeModalOpen(true); }}
-                                                                            className="absolute top-2 right-2 p-1 text-gray-300 hover:text-purple-600 opacity-0 group-hover/team:opacity-100 transition-all"
+                                                                            onClick={(e) => { e.stopPropagation(); setMergeSourceTeam(team); setIsTeamMergeModalOpen(true); }}
+                                                                            className="absolute top-2 right-2 p-1 text-gray-400 hover:text-purple-600 transition-all z-10"
                                                                             title="Merge Team"
                                                                         >
                                                                             <GitMerge size={12} />
                                                                         </button>
+
+                                                                        {openTeams.has(team.id) && team.members && (
+                                                                            <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                                                                                {team.members.length > 0 ? (
+                                                                                    team.members.map(member => (
+                                                                                        <div key={member.id} className="flex items-center gap-2 text-[10px] text-gray-600 bg-white p-1.5 rounded-lg border border-gray-100">
+                                                                                            <div className="w-5 h-5 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center text-[8px] font-bold text-blue-700">
+                                                                                                {member.display_name?.[0]?.toUpperCase() || '?'}
+                                                                                            </div>
+                                                                                            <span className="truncate">{member.display_name || 'Unknown'}</span>
+                                                                                        </div>
+                                                                                    ))
+                                                                                ) : (
+                                                                                    <div className="text-[10px] text-gray-400 italic px-1">No members</div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 ))}
                                                                 {!ws.teams && <div className="col-span-2 py-4 flex justify-center"><LoadingSpinner size="sm" /></div>}
@@ -414,10 +498,10 @@ const OrganizationsPage: React.FC = () => {
                                             <table className="min-w-full divide-y divide-gray-100">
                                                 <thead className="bg-gray-50">
                                                     <tr>
-                                                        <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Member</th>
-                                                        <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Identity Links</th>
-                                                        <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Clearance</th>
-                                                        <th className="px-6 py-3 text-right text-[10px] font-black text-gray-400 uppercase tracking-widest">Actions</th>
+                                                        <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('organizations.officers.member_col')}</th>
+                                                        <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('organizations.officers.identity_col')}</th>
+                                                        <th className="px-6 py-3 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('organizations.officers.roles_col')}</th>
+                                                        <th className="px-6 py-3 text-right text-[10px] font-black text-gray-400 uppercase tracking-widest">{t('organizations.officers.actions_col')}</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100 bg-white">
@@ -443,9 +527,14 @@ const OrganizationsPage: React.FC = () => {
                                                                 </button>
                                                             </td>
                                                             <td className="px-6 py-4">
-                                                                {user.is_superadmin && (
-                                                                    <span className="px-3 py-1 bg-red-600 text-white text-[10px] font-black rounded-full shadow-lg shadow-red-100 uppercase tracking-widest">SUPER</span>
-                                                                )}
+                                                                <div className="flex flex-col gap-1.5 items-start">
+                                                                    {user.is_superadmin && (
+                                                                        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[9px] font-black rounded-md border border-red-200 uppercase tracking-widest">SUPER</span>
+                                                                    )}
+                                                                    {user.is_admin && (
+                                                                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md border border-indigo-200 uppercase tracking-widest">ADMIN</span>
+                                                                    )}
+                                                                </div>
                                                             </td>
                                                             <td className="px-6 py-4 text-right">
                                                                 <button
@@ -468,8 +557,8 @@ const OrganizationsPage: React.FC = () => {
                             <div className="bg-white rounded-3xl border border-gray-200 shadow-xl p-8">
                                 <div className="flex items-center justify-between mb-8">
                                     <div>
-                                        <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tight">Infrastructure Hub</h3>
-                                        <p className="text-sm text-gray-500">Cross-organization workspace management & routing</p>
+                                        <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tight">{t('organizations.infrastructure_hub.title')}</h3>
+                                        <p className="text-sm text-gray-500">{t('organizations.infrastructure_hub.subtitle')}</p>
                                     </div>
                                     <Globe size={40} className="text-gray-100" />
                                 </div>
@@ -488,7 +577,7 @@ const OrganizationsPage: React.FC = () => {
                                                         <div>
                                                             <div className="text-xl font-bold text-gray-900">{ws.name}</div>
                                                             <div className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-3 mt-1">
-                                                                <span>{ws.workspace_type} Cluster</span>
+                                                                <span>{ws.workspace_type} {t('organizations.infrastructure_hub.cluster')}</span>
                                                                 <span className="w-1 h-1 bg-gray-300 rounded-full" />
                                                                 <span>CID: {ws.external_id}</span>
                                                             </div>
@@ -498,13 +587,13 @@ const OrganizationsPage: React.FC = () => {
                                                     <div className="flex items-center gap-4">
                                                         {ws.organization_id ? (
                                                             <div className="text-right">
-                                                                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Assigned to</div>
+                                                                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{t('organizations.infrastructure_hub.assigned_to')}</div>
                                                                 <div className="px-3 py-1 bg-emerald-50 text-emerald-600 text-sm font-bold rounded-lg border border-emerald-100">
                                                                     {organizations.find(o => o.id === ws.organization_id)?.name || `Org #${ws.organization_id}`}
                                                                 </div>
                                                             </div>
                                                         ) : (
-                                                            <div className="px-3 py-1 bg-yellow-50 text-yellow-600 text-[10px] font-black rounded-lg border border-yellow-100 uppercase tracking-widest">Unassigned Hub</div>
+                                                            <div className="px-3 py-1 bg-yellow-50 text-yellow-600 text-[10px] font-black rounded-lg border border-yellow-100 uppercase tracking-widest">{t('organizations.infrastructure_hub.unassigned')}</div>
                                                         )}
 
                                                         <div className="h-10 w-[1px] bg-gray-100 mx-2" />
@@ -539,14 +628,15 @@ const OrganizationsPage: React.FC = () => {
                                                                     </div>
                                                                     <button
                                                                         onClick={() => { setMergeSourceTeam({ ...team, workspace_id: ws.id }); setIsTeamMergeModalOpen(true); }}
-                                                                        className="absolute top-4 right-4 p-2 text-gray-300 hover:text-purple-600 opacity-0 group-hover/team:opacity-100 transition-all bg-white rounded-lg border border-gray-100 shadow-sm"
+                                                                        className="absolute top-4 right-4 p-2 text-gray-400 hover:text-purple-600 transition-all bg-white rounded-lg border border-gray-100 shadow-sm"
                                                                         title="Merge Team"
                                                                     >
                                                                         <GitMerge size={16} />
                                                                     </button>
+                                                                    {/* This simplified team view in All Hubs doesn't need expansion yet, or can follow same pattern if prioritized */}
                                                                 </div>
                                                             ))}
-                                                            {!ws.teams && <div className="col-span-full py-12 flex flex-col items-center gap-4 text-blue-500 font-bold"><LoadingSpinner size="md" /><span>SYNCING INFRASTRUCTURE...</span></div>}
+                                                            {!ws.teams && <div className="col-span-full py-12 flex flex-col items-center gap-4 text-blue-500 font-bold"><LoadingSpinner size="md" /><span>{t('organizations.infrastructure_hub.syncing')}</span></div>}
                                                         </div>
                                                     </div>
                                                 )}
@@ -559,7 +649,7 @@ const OrganizationsPage: React.FC = () => {
                     ) : (
                         <div className="h-[600px] flex flex-col items-center justify-center text-gray-400 bg-gray-50 border-4 border-dashed border-gray-200 rounded-[3rem] animate-pulse">
                             <Building2 size={80} className="mb-4 opacity-10" />
-                            <p className="text-xl font-black uppercase tracking-widest opacity-20">Select Strategic Entity</p>
+                            <p className="text-xl font-black uppercase tracking-widest opacity-20">{t('organizations.infrastructure_hub.select_entity')}</p>
                         </div>
                     )}
                 </div>

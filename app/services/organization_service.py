@@ -113,7 +113,7 @@ class OrganizationService:
 
     async def get_organization_teams(self, organization_id: int) -> List[Team]:
         """Get all teams in an organization."""
-        org = await self.org_repo.get_by_id(organization_id)
+        org = await self.org_repo.get_with_teams(organization_id)
         if not org:
             raise NotFoundError(f"Organization {organization_id} not found")
 
@@ -122,11 +122,28 @@ class OrganizationService:
         return teams
 
     async def get_organization_users(self, organization_id: int) -> List[User]:
-        """Get all users in an organization."""
-        org = await self.org_repo.get_by_id(organization_id)
+        """Get all users in an organization (across all workspaces)."""
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        # Get workspaces in org
+        org = await self.org_repo.get_with_workspaces(organization_id)
         if not org:
             raise NotFoundError(f"Organization {organization_id} not found")
-        return org.users
+
+        workspace_ids = [ws.id for ws in org.workspaces]
+        
+        if not workspace_ids:
+            return []
+
+        # Find all users in these workspaces
+        stmt = (
+            select(User)
+            .where(User.workspace_id.in_(workspace_ids))
+            .options(selectinload(User.user_accounts))
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
 
     async def delete_organization(self, organization_id: int) -> bool:
         """Delete an organization."""

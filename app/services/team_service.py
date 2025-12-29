@@ -15,8 +15,11 @@ class TeamService:
         team_lead_id: int | None = None
     ) -> Team:
         """Create a new team in workspace"""
+        org_id = await self.team_repo.get_organization_id_by_workspace(workspace_id)
+        
         return await self.team_repo.create({
             'workspace_id': workspace_id,
+            'organization_id': org_id,
             'name': name,
             'display_name': display_name,
             'has_shifts': has_shifts,
@@ -84,7 +87,19 @@ class TeamService:
         return team
 
     async def add_member(self, team_id: int, user: User) -> Team | None:
-        """Add member to team"""
+        """Add member to team with validation (1 user per team in organization)"""
+        team = await self.team_repo.get_by_id(team_id)
+        if not team:
+            return None
+
+        # Validation: 1 user per team in organization
+        if team.organization_id:
+            existing_teams = await self.team_repo.get_user_teams_in_organization(user.id, team.organization_id)
+            # If user is in existing teams, make sure we aren't just adding them to the same team (idempotency check is inside repo, but here we check for *other* teams)
+            for et in existing_teams:
+                if et.id != team_id:
+                    raise ValueError(f"User is already in team '{et.display_name}' in this organization. A user can only be in one team per organization.")
+
         return await self.team_repo.add_member(team_id, user)
 
     async def remove_member(self, team_id: int, user: User) -> Team | None:
@@ -143,9 +158,6 @@ class TeamService:
             else:
                 await self.team_repo.db.delete(source_config)
 
-        # 5. Incidents
-        stmt = update(Incident).where(Incident.team_id == source_team_id).values(team_id=target_team_id)
-        await self.team_repo.db.execute(stmt)
 
         # 6. Delete source team
         await self.team_repo.delete(source_team_id)

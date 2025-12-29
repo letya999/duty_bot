@@ -49,3 +49,19 @@ class OrganizationRepository(BaseRepository[Organization]):
         )
         result = await self.db.execute(stmt)
         return result.scalars().all()
+
+    async def get_with_users(self, organization_id: int) -> Optional[Organization]:
+        """Get organization with loaded users."""
+        stmt = select(Organization).where(
+            Organization.id == organization_id
+        ).options(selectinload(Organization.users))
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_with_teams(self, organization_id: int) -> Optional[Organization]:
+        """Get organization with loaded teams."""
+        stmt = select(Organization).where(
+            Organization.id == organization_id
+        ).options(selectinload(Organization.teams))
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()

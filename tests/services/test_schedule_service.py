@@ -39,18 +39,25 @@ class TestScheduleService:
         # Create users
         user1 = User(
             workspace_id=workspace.id,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One"
         )
         user2 = User(
             workspace_id=workspace.id,
-            telegram_username="user2",
+            username="user2",
             first_name="User",
             last_name="Two"
         )
         db_session.add(user1)
         db_session.add(user2)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc1 = UserAccount(user_id=user1.id, workspace_id=workspace.id, provider="telegram", provider_id="123", username="user1")
+        acc2 = UserAccount(user_id=user2.id, workspace_id=workspace.id, provider="telegram", provider_id="456", username="user2")
+        db_session.add(acc1)
+        db_session.add(acc2)
         await db_session.commit()
         await db_session.refresh(user1)
         await db_session.refresh(user2)

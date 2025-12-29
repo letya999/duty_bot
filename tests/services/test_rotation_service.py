@@ -39,21 +39,21 @@ class TestRotationService:
         # Create users
         user1 = User(
             workspace_id=workspace.id,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One",
             display_name="User One"
         )
         user2 = User(
             workspace_id=workspace.id,
-            telegram_username="user2",
+            username="user2",
             first_name="User",
             last_name="Two",
             display_name="User Two"
         )
         user3 = User(
             workspace_id=workspace.id,
-            telegram_username="user3",
+            username="user3",
             first_name="User",
             last_name="Three",
             display_name="User Three"
@@ -61,6 +61,15 @@ class TestRotationService:
         db_session.add(user1)
         db_session.add(user2)
         db_session.add(user3)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc1 = UserAccount(user_id=user1.id, workspace_id=workspace.id, provider="telegram", provider_id="300", username="user1")
+        acc2 = UserAccount(user_id=user2.id, workspace_id=workspace.id, provider="telegram", provider_id="301", username="user2")
+        acc3 = UserAccount(user_id=user3.id, workspace_id=workspace.id, provider="telegram", provider_id="302", username="user3")
+        db_session.add(acc1)
+        db_session.add(acc2)
+        db_session.add(acc3)
         await db_session.commit()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
@@ -244,14 +253,20 @@ class TestRotationService:
         service, workspace, team, user1, user2, user3 = setup_rotation_service
 
         # Create another user not in the rotation
+        # Create another user not in the rotation
         user4 = User(
             workspace_id=workspace.id,
-            telegram_username="user4",
+            username="user4",
             first_name="User",
             last_name="Four",
             display_name="User Four"
         )
         db_session.add(user4)
+        await db_session.flush()
+        
+        from app.models import UserAccount
+        acc4 = UserAccount(user_id=user4.id, workspace_id=workspace.id, provider="telegram", provider_id="303", username="user4")
+        db_session.add(acc4)
         await db_session.commit()
         await db_session.refresh(user4)
 

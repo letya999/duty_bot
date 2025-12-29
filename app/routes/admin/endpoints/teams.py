@@ -81,6 +81,14 @@ async def get_workspace_teams(
                 "display_name": team.display_name,
                 "has_shifts": team.has_shifts,
                 "team_lead_id": team.team_lead_id,
+                "members": [
+                    {
+                        "id": m.id,
+                        "username": m.username,
+                        "display_name": m.display_name,
+                    }
+                    for m in (team.members or [])
+                ],
                 "member_count": len(team.members or [])
             })
         return result_list

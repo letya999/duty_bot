@@ -30,13 +30,24 @@ class TestTelegramHandler:
 
         user = User(
             workspace_id=workspace.id,
-            telegram_id=123456789,
-            telegram_username="testuser",
+            username="testuser",
             first_name="Test",
             last_name="User",
             display_name="Test User"
         )
         db_session.add(user)
+        await db_session.flush()
+
+        # Add UserAccount
+        from app.models import UserAccount
+        account = UserAccount(
+            user_id=user.id,
+            workspace_id=workspace.id,
+            provider='telegram',
+            provider_id='123456789',
+            username='testuser'
+        )
+        db_session.add(account)
         await db_session.commit()
         await db_session.refresh(user)
 
@@ -123,7 +134,7 @@ class TestTelegramHandler:
 
         assert workspace_id is not None
         assert retrieved_user is not None
-        assert retrieved_user.telegram_id == mock_update.effective_user.id
+        assert retrieved_user.username == mock_update.effective_user.username
 
     @pytest.mark.asyncio
     async def test_duty_command_no_args(self, db_session: AsyncSession, setup_handler, mock_update, mock_context):
@@ -380,6 +391,5 @@ class TestTelegramHandler:
         """Test user creation from Telegram message"""
         handler, workspace, user, team, db = setup_handler
 
-        assert user.telegram_id is not None
-        assert user.telegram_username is not None
+        assert user.username is not None
         assert user.workspace_id == workspace.id

@@ -250,6 +250,59 @@
         "reports": "Reports",
         "settings": "Settings",
         "logout": "Logout",
-        "workspace": "Workspace"
+        "workspace": "Workspace",
+        "organizations": "Organizations"
+    },
+    "organizations": {
+        "title": "Organizations",
+        "subtitle": "Multi-workspace management & centralized infrastructure control",
+        "new_org": "New Organization",
+        "select_header": "SELECT ORGANIZATION",
+        "no_orgs": "No organizations",
+        "active_label": "Active Organization",
+        "workspaces": "Workspaces",
+        "team_members": "Team Members",
+        "consolidate_btn": "Consolidate Infrastructure",
+        "unify_ids_btn": "Unify Identities",
+        "infrastructure_hub": {
+            "title": "Infrastructure Hub",
+            "subtitle": "Cross-organization workspace management & routing",
+            "cluster": "Cluster",
+            "assigned_to": "ASSIGNED TO",
+            "unassigned": "Unassigned Hub",
+            "move_to": "Move to",
+            "syncing": "SYNCING INFRASTRUCTURE...",
+            "select_entity": "SELECT STRATEGIC ENTITY"
+        },
+        "officers": {
+            "title": "Organization Officers",
+            "member_col": "MEMBER",
+            "identity_col": "IDENTITY LINKS",
+            "roles_col": "ROLES",
+            "actions_col": "ACTIONS",
+            "anonymous": "Anonymous",
+            "map_account": "+ Map Account",
+            "super_badge": "SUPER",
+            "admin_badge": "ADMIN",
+            "merge_btn": "Merge"
+        },
+        "modals": {
+            "create_title": "New Strategic Entity",
+            "create_name_label": "Entity Name",
+            "create_placeholder": "Enter Organization Name",
+            "create_btn": "Initialize Entity",
+            "map_title": "MAP IDENTITY",
+            "provider_label": "NETWORK PROVIDER",
+            "id_label": "PHYSICAL IDENTITY ID",
+            "alias_label": "ALIAS (OPTIONAL)",
+            "establish_btn": "Establish Link",
+            "merge_user_title": "CONSOLIDATE IDENTITY",
+            "merge_user_subtitle": "Merge User #{id} into another record",
+            "merge_warning": "Warning: All accounts, schedules, and team memberships will be transferred to the target user. The source user will be deleted.",
+            "initiate_merge": "INITIATE MERGE",
+            "merge_team_title": "UNIFY FORMATIONS",
+            "merge_team_subtitle": "Merge \"{name}\" into target team",
+            "merge_team_warning": "All members, schedules, and configurations will be moved to the target team. Source team will be decommissioned."
+        }
     }
 }

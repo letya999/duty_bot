@@ -104,13 +104,19 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
     organization_id = Column(Integer, ForeignKey('organization.id'), nullable=True)
-    telegram_id = Column(BigInteger, nullable=True, index=True) # Note: SQLAlchemy Integer might be too small for some TG IDs, but let's stick to what's likely intended or use BigInteger
-    telegram_username = Column(String, nullable=True, index=True)
+    # Removed provider-specific fields
+    # telegram_id = Column(BigInteger, nullable=True, index=True)
+    # telegram_username = Column(String, nullable=True, index=True)
+    # slack_user_id = Column(String, nullable=True, index=True)
+    
     username = Column(String, nullable=True, index=True)
-    slack_user_id = Column(String, nullable=True, index=True)
+
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
-    display_name = Column(String, nullable=True) # Allow null during migration transition
+    
+    # display_name restored as Column
+    display_name = Column(String, nullable=True) 
+
     is_admin = Column(Boolean, default=False)
     is_superadmin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -118,7 +124,7 @@ class User(Base):
     # Relationships
     workspace = relationship('Workspace', back_populates='users')
     organization = relationship('Organization', back_populates='users', foreign_keys=[organization_id])
-    user_accounts = relationship('UserAccount', back_populates='user', cascade='all, delete-orphan')
+    user_accounts = relationship('UserAccount', back_populates='user', cascade='all, delete-orphan', lazy='selectin')
     teams = relationship('Team', secondary=team_members, back_populates='members')
     led_teams = relationship('Team', back_populates='team_lead_user', foreign_keys='Team.team_lead_id')
     schedules = relationship('Schedule', back_populates='user')
@@ -127,9 +133,38 @@ class User(Base):
     admin_logs_by_target = relationship('AdminLog', back_populates='target_user', foreign_keys='AdminLog.target_user_id')
 
     __table_args__ = (
-        UniqueConstraint('workspace_id', 'telegram_username', name='user_workspace_telegram_username_unique'),
-        UniqueConstraint('workspace_id', 'slack_user_id', name='user_workspace_slack_user_id_unique'),
+        # Unique constraints removed as fields were removed
     )
+
+    @property
+    def telegram_id(self):
+        """Retrieve telegram_id from linked UserAccounts"""
+        if self.user_accounts:
+            for account in self.user_accounts:
+                if account.provider == 'telegram':
+                    try:
+                        return int(account.provider_id)
+                    except (ValueError, TypeError):
+                        return None
+        return None
+
+    @property
+    def telegram_username(self):
+        """Retrieve telegram_username from linked UserAccounts or fallback to generic username"""
+        if self.user_accounts:
+            for account in self.user_accounts:
+                if account.provider == 'telegram':
+                    return account.username
+        return self.username
+
+    @property
+    def slack_user_id(self):
+        """Retrieve slack_user_id from linked UserAccounts"""
+        if self.user_accounts:
+            for account in self.user_accounts:
+                if account.provider == 'slack':
+                    return account.provider_id
+        return None
 
 
 class Team(Base):
@@ -300,12 +335,24 @@ class Incident(Base):
     organization = relationship('Organization', back_populates='incidents')
 
 
+# Association table for Google Calendar Teams
+google_calendar_teams = Table(
+    'google_calendar_teams',
+    Base.metadata,
+    Column('integration_id', Integer, ForeignKey('google_calendar_integration.id', ondelete='CASCADE'), primary_key=True),
+    Column('team_id', Integer, ForeignKey('team.id', ondelete='CASCADE'), primary_key=True),
+)
+
+
 class GoogleCalendarIntegration(Base):
     """Google Calendar integration for workspace"""
     __tablename__ = 'google_calendar_integration'
 
     id = Column(Integer, primary_key=True)
-    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, unique=True, index=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    id = Column(Integer, primary_key=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+    # team_id removed in favor of M2M relationship
 
     # Encrypted Service Account key
     service_account_key_encrypted = Column(Text, nullable=False)
@@ -324,3 +371,6 @@ class GoogleCalendarIntegration(Base):
 
     # Relationships
     workspace = relationship('Workspace', back_populates='google_calendar_integration')
+    # Relationships
+    workspace = relationship('Workspace', back_populates='google_calendar_integration')
+    teams = relationship('Team', secondary=google_calendar_teams, lazy='selectin')

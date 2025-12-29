@@ -30,8 +30,7 @@ class TestAdminService:
 
         admin_user = User(
             workspace_id=workspace.id,
-            telegram_id=111111,
-            telegram_username="admin",
+            username="admin",
             first_name="Admin",
             last_name="User",
             display_name="Admin User",
@@ -40,8 +39,7 @@ class TestAdminService:
 
         regular_user = User(
             workspace_id=workspace.id,
-            telegram_id=222222,
-            telegram_username="regular",
+            username="regular",
             first_name="Regular",
             last_name="User",
             display_name="Regular User",
@@ -49,6 +47,13 @@ class TestAdminService:
         )
 
         db_session.add_all([admin_user, regular_user])
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc_admin = UserAccount(user_id=admin_user.id, workspace_id=workspace.id, provider="telegram", provider_id="111111", username="admin")
+        acc_reg = UserAccount(user_id=regular_user.id, workspace_id=workspace.id, provider="telegram", provider_id="222222", username="regular")
+        db_session.add(acc_admin)
+        db_session.add(acc_reg)
         await db_session.commit()
         await db_session.refresh(admin_user)
         await db_session.refresh(regular_user)

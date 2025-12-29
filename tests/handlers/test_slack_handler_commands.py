@@ -23,7 +23,6 @@ class TestSlackDutyCommand:
 
         user1 = User(
             workspace_id=workspace.id,
-            slack_user_id="U1",
             username="user1",
             first_name="User",
             last_name="One",
@@ -31,7 +30,6 @@ class TestSlackDutyCommand:
         )
         user2 = User(
             workspace_id=workspace.id,
-            slack_user_id="U2",
             username="user2",
             first_name="User",
             last_name="Two",
@@ -39,6 +37,13 @@ class TestSlackDutyCommand:
         )
         db_session.add(user1)
         db_session.add(user2)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc1 = UserAccount(user_id=user1.id, workspace_id=workspace.id, provider="slack", provider_id="U1", username="user1")
+        acc2 = UserAccount(user_id=user2.id, workspace_id=workspace.id, provider="slack", provider_id="U2", username="user2")
+        db_session.add(acc1)
+        db_session.add(acc2)
         await db_session.commit()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
@@ -136,7 +141,6 @@ class TestSlackTeamCommand:
 
         lead = User(
             workspace_id=workspace.id,
-            slack_user_id="U100",
             username="lead",
             first_name="Lead",
             last_name="User",
@@ -145,7 +149,6 @@ class TestSlackTeamCommand:
         )
         member = User(
             workspace_id=workspace.id,
-            slack_user_id="U101",
             username="member",
             first_name="Member",
             last_name="User",
@@ -153,6 +156,13 @@ class TestSlackTeamCommand:
         )
         db_session.add(lead)
         db_session.add(member)
+        await db_session.flush()
+        
+        from app.models import UserAccount
+        acc_lead = UserAccount(user_id=lead.id, workspace_id=workspace.id, provider="slack", provider_id="U100", username="lead")
+        acc_member = UserAccount(user_id=member.id, workspace_id=workspace.id, provider="slack", provider_id="U101", username="member")
+        db_session.add(acc_lead)
+        db_session.add(acc_member)
         await db_session.commit()
         await db_session.refresh(lead)
         await db_session.refresh(member)
@@ -238,13 +248,17 @@ class TestSlackScheduleCommand:
 
         user = User(
             workspace_id=workspace.id,
-            slack_user_id="U200",
             username="user",
             first_name="Test",
             last_name="User",
             display_name="Test User"
         )
         db_session.add(user)
+        await db_session.flush()
+        
+        from app.models import UserAccount
+        acc = UserAccount(user_id=user.id, workspace_id=workspace.id, provider="slack", provider_id="U200", username="user")
+        db_session.add(acc)
         await db_session.commit()
         await db_session.refresh(user)
 
@@ -315,7 +329,6 @@ class TestSlackShiftCommand:
 
         user1 = User(
             workspace_id=workspace.id,
-            slack_user_id="U300",
             username="user1",
             first_name="User",
             last_name="One",
@@ -323,7 +336,6 @@ class TestSlackShiftCommand:
         )
         user2 = User(
             workspace_id=workspace.id,
-            slack_user_id="U301",
             username="user2",
             first_name="User",
             last_name="Two",
@@ -331,6 +343,13 @@ class TestSlackShiftCommand:
         )
         db_session.add(user1)
         db_session.add(user2)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc1 = UserAccount(user_id=user1.id, workspace_id=workspace.id, provider="slack", provider_id="U300", username="user1")
+        acc2 = UserAccount(user_id=user2.id, workspace_id=workspace.id, provider="slack", provider_id="U301", username="user2")
+        db_session.add(acc1)
+        db_session.add(acc2)
         await db_session.commit()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
@@ -404,7 +423,6 @@ class TestSlackEscalationCommand:
 
         lead = User(
             workspace_id=workspace.id,
-            slack_user_id="U400",
             username="lead",
             first_name="Lead",
             last_name="User",
@@ -412,7 +430,6 @@ class TestSlackEscalationCommand:
         )
         cto = User(
             workspace_id=workspace.id,
-            slack_user_id="U401",
             username="cto",
             first_name="CTO",
             last_name="User",
@@ -420,6 +437,13 @@ class TestSlackEscalationCommand:
         )
         db_session.add(lead)
         db_session.add(cto)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc_lead = UserAccount(user_id=lead.id, workspace_id=workspace.id, provider="slack", provider_id="U400", username="lead")
+        acc_cto = UserAccount(user_id=cto.id, workspace_id=workspace.id, provider="slack", provider_id="U401", username="cto")
+        db_session.add(acc_lead)
+        db_session.add(acc_cto)
         await db_session.commit()
         await db_session.refresh(lead)
         await db_session.refresh(cto)
@@ -496,7 +520,6 @@ class TestSlackEscalateCommand:
 
         lead = User(
             workspace_id=workspace.id,
-            slack_user_id="U410",
             username="lead",
             first_name="Lead",
             last_name="User",
@@ -504,7 +527,6 @@ class TestSlackEscalateCommand:
         )
         cto = User(
             workspace_id=workspace.id,
-            slack_user_id="U411",
             username="cto",
             first_name="CTO",
             last_name="User",
@@ -512,6 +534,13 @@ class TestSlackEscalateCommand:
         )
         db_session.add(lead)
         db_session.add(cto)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc_lead = UserAccount(user_id=lead.id, workspace_id=workspace.id, provider="slack", provider_id="U410", username="lead")
+        acc_cto = UserAccount(user_id=cto.id, workspace_id=workspace.id, provider="slack", provider_id="U411", username="cto")
+        db_session.add(acc_lead)
+        db_session.add(acc_cto)
         await db_session.commit()
         await db_session.refresh(lead)
         await db_session.refresh(cto)
@@ -588,13 +617,17 @@ class TestSlackIncidentCommand:
 
         user = User(
             workspace_id=workspace.id,
-            slack_user_id="U500",
             username="user",
             first_name="Test",
             last_name="User",
             display_name="Test User"
         )
         db_session.add(user)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc = UserAccount(user_id=user.id, workspace_id=workspace.id, provider="slack", provider_id="U500", username="user")
+        db_session.add(acc)
         await db_session.commit()
         await db_session.refresh(user)
 
@@ -665,7 +698,6 @@ class TestSlackAdminCommand:
 
         admin = User(
             workspace_id=workspace.id,
-            slack_user_id="U600",
             username="admin",
             first_name="Admin",
             last_name="User",
@@ -674,7 +706,6 @@ class TestSlackAdminCommand:
         )
         regular = User(
             workspace_id=workspace.id,
-            slack_user_id="U601",
             username="regular",
             first_name="Regular",
             last_name="User",
@@ -682,6 +713,13 @@ class TestSlackAdminCommand:
         )
         db_session.add(admin)
         db_session.add(regular)
+        await db_session.flush()
+        
+        from app.models import UserAccount
+        acc_admin = UserAccount(user_id=admin.id, workspace_id=workspace.id, provider="slack", provider_id="U600", username="admin")
+        acc_reg = UserAccount(user_id=regular.id, workspace_id=workspace.id, provider="slack", provider_id="U601", username="regular")
+        db_session.add(acc_admin)
+        db_session.add(acc_reg)
         await db_session.commit()
 
         return workspace, admin, regular, db_session
@@ -739,13 +777,17 @@ class TestSlackHelpCommand:
 
         user = User(
             workspace_id=workspace.id,
-            slack_user_id="U700",
             username="user",
             first_name="Test",
             last_name="User",
             display_name="Test User"
         )
         db_session.add(user)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc = UserAccount(user_id=user.id, workspace_id=workspace.id, provider="slack", provider_id="U700", username="user")
+        db_session.add(acc)
         await db_session.commit()
 
         return workspace, user, db_session

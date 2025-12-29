@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Shield, ShieldOff, AlertCircle, Calendar, Copy, Check } from 'lucide-react';
+import { Shield, ShieldOff, Calendar, Copy, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Alert } from '../components/ui/Alert';
 import { apiService } from '../services/api';
-import { User } from '../types';
+import { User, Team } from '../types';
 
 const SettingsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -14,6 +14,7 @@ const SettingsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loadingAction, setLoadingAction] = useState<number | null>(null);
 
@@ -22,8 +23,9 @@ const SettingsPage: React.FC = () => {
   const [googleCalLoading, setGoogleCalLoading] = useState(false);
   const [googleCalUploading, setGoogleCalUploading] = useState(false);
   const [showGoogleCalInstructions, setShowGoogleCalInstructions] = useState(false);
-  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState<number | null>(null);
   const [googleCalSyncing, setGoogleCalSyncing] = useState(false);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
 
   useEffect(() => {
     loadData();
@@ -34,6 +36,9 @@ const SettingsPage: React.FC = () => {
       setLoading(true);
       const usersData = await apiService.getAllUsers();
       setUsers(usersData);
+
+      const teamsData = await apiService.getTeams();
+      setTeams(teamsData);
 
       const userData = localStorage.getItem('user');
       if (userData) {
@@ -100,8 +105,15 @@ const SettingsPage: React.FC = () => {
       setGoogleCalUploading(true);
       const content = await file.text();
       const serviceAccountKey = JSON.parse(content);
+      // Convert selected IDs to numbers. If array empty, pass empty array (or handle backend interpretation)
+      // Backend: If team_ids provided, use them. If None, Global?
+      // Let's assume empty list = Global/All Teams? Or maybe specific "All" option needed.
+      // Current UX: "All Teams" was an option. With multi-select, empty -> Global is reasonable OR strict "None".
+      // Let's interpret empty -> Global for now, strictly following previous logic "All Teams (Global)".
+      // But wait, user might want to select multiple.
 
-      const result = await apiService.setupGoogleCalendar(serviceAccountKey);
+      const teamIds = selectedTeamIds.map(id => parseInt(id));
+      await apiService.setupGoogleCalendar(serviceAccountKey, teamIds.length > 0 ? teamIds : undefined);
       setSuccess(t('settings.google_calendar.setup_success'));
       await loadGoogleCalendarStatus();
       setTimeout(() => setSuccess(null), 3000);
@@ -113,11 +125,11 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleGoogleCalendarDisconnect = async () => {
+  const handleGoogleCalendarDisconnect = async (integrationId: number) => {
     if (!window.confirm(t('settings.google_calendar.disconnect_confirm'))) return;
 
     try {
-      await apiService.disconnectGoogleCalendar();
+      await apiService.disconnectGoogleCalendar(integrationId);
       setSuccess(t('settings.google_calendar.disconnect_success'));
       await loadGoogleCalendarStatus();
       setTimeout(() => setSuccess(null), 3000);
@@ -127,11 +139,11 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleCopyCalendarUrl = () => {
-    if (googleCalStatus?.public_calendar_url) {
-      navigator.clipboard.writeText(googleCalStatus.public_calendar_url);
-      setCopiedUrl(true);
-      setTimeout(() => setCopiedUrl(false), 2000);
+  const handleCopyCalendarUrl = (url: string, id: number) => {
+    if (url) {
+      navigator.clipboard.writeText(url);
+      setCopiedUrl(id);
+      setTimeout(() => setCopiedUrl(null), 2000);
     }
   };
 
@@ -282,161 +294,189 @@ const SettingsPage: React.FC = () => {
           {googleCalLoading && <LoadingSpinner size="sm" />}
         </CardHeader>
         <CardBody>
-          {googleCalStatus && googleCalStatus.is_active ? (
-            <>
-              <Alert
-                type="success"
-                message={t('settings.google_calendar.connected')}
-              />
+          {googleCalStatus && googleCalStatus.integrations && googleCalStatus.integrations.length > 0 ? (
+            <div className="space-y-8">
+              {googleCalStatus.integrations.map((integration: any) => (
+                <div key={integration.id} className="border border-gray-200 rounded-lg p-6 bg-gray-50">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
+                        {integration.team_name || "All Teams"}
+                        {integration.is_active && <span className="text-green-600 text-xs bg-green-100 px-2 py-0.5 rounded-full">Active</span>}
+                      </h3>
+                      <p className="text-sm text-gray-500">Service Email: {integration.service_account_email}</p>
+                    </div>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleGoogleCalendarDisconnect(integration.id)}
+                    >
+                      {t('settings.google_calendar.disconnect')}
+                    </Button>
+                  </div>
 
-              {googleCalStatus.needs_reauth && (
-                <div className="mt-4">
-                  <Alert
-                    type="error"
-                    message={t('settings.google_calendar.credentials_error')}
-                  />
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        {t('settings.google_calendar.public_url')}
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={integration.public_calendar_url}
+                          className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-600 outline-none"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="border border-gray-300 bg-white"
+                          onClick={() => handleCopyCalendarUrl(integration.public_calendar_url, integration.id)}
+                        >
+                          {copiedUrl === integration.id ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {integration.last_sync_at && (
+                      <div className="text-sm text-gray-600">
+                        <strong>{t('settings.google_calendar.last_sync')}:</strong> {new Date(integration.last_sync_at).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleGoogleCalendarSync}
+                  disabled={googleCalSyncing}
+                >
+                  {googleCalSyncing ? t('settings.google_calendar.syncing') : t('settings.google_calendar.sync_now')}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Alert
+              type="info"
+              message={t('settings.google_calendar.not_connected')}
+            />
+          )}
+
+          {/* Add New Calendar Section */}
+          <div className="mt-8 border-t border-gray-200 pt-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              {googleCalStatus && googleCalStatus.integrations && googleCalStatus.integrations.length > 0
+                ? "Add Another Calendar"
+                : "Setup Google Calendar"}
+            </h3>
+
+            <div className="space-y-4">
+              <button
+                onClick={() => setShowGoogleCalInstructions(!showGoogleCalInstructions)}
+                className="text-blue-600 hover:text-blue-800 font-semibold text-sm flex items-center gap-2"
+              >
+                {showGoogleCalInstructions ? '▼' : '▶'} 📘 {t('settings.google_calendar.setup_instructions')}
+              </button>
+
+              {showGoogleCalInstructions && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2 text-sm text-gray-700">
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>{t('settings.google_calendar.step_1')} <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{t('settings.google_calendar.step_1_link')}</a></li>
+                    <li>{t('settings.google_calendar.step_2')}</li>
+                    <li>{t('settings.google_calendar.step_3')}</li>
+                    <li>{t('settings.google_calendar.step_4')}
+                      <ul className="list-disc list-inside ml-4 mt-1">
+                        <li>{t('settings.google_calendar.step_4_1')}</li>
+                        <li>{t('settings.google_calendar.step_4_2')}</li>
+                      </ul>
+                    </li>
+                    <li>{t('settings.google_calendar.step_5')}
+                      <ul className="list-disc list-inside ml-4 mt-1">
+                        <li>{t('settings.google_calendar.step_5_1')}</li>
+                        <li>{t('settings.google_calendar.step_5_2')}</li>
+                        <li>{t('settings.google_calendar.step_5_3')}</li>
+                        <li>{t('settings.google_calendar.step_5_4')}</li>
+                      </ul>
+                    </li>
+                    <li>{t('settings.google_calendar.step_6')}</li>
+                  </ol>
                 </div>
               )}
 
-              <div className="mt-6 space-y-6">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    {t('settings.google_calendar.public_url')}
-                  </label>
-                  <div className="flex gap-2">
+              {/* Team Selection */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Select Teams
+                </label>
+                <div className="border border-gray-300 rounded-lg p-2 max-h-48 overflow-y-auto bg-white">
+                  <div className="flex items-center p-2 hover:bg-gray-50 rounded">
                     <input
-                      type="text"
-                      readOnly
-                      value={googleCalStatus.public_calendar_url}
-                      className="flex-1 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-600 outline-none"
+                      type="checkbox"
+                      className="mr-2"
+                      checked={selectedTeamIds.length === 0}
+                      onChange={() => setSelectedTeamIds([])}
                     />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="border border-gray-300"
-                      onClick={handleCopyCalendarUrl}
-                    >
-                      {copiedUrl ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                    </Button>
+                    <span className="text-sm text-gray-700 font-medium">All Teams (Global)</span>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {t('settings.google_calendar.public_url_hint')}
-                  </p>
+                  {teams.map(team => (
+                    <div key={team.id} className="flex items-center p-2 hover:bg-gray-50 rounded">
+                      <input
+                        type="checkbox"
+                        className="mr-2"
+                        checked={selectedTeamIds.includes(String(team.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedTeamIds([...selectedTeamIds, String(team.id)]);
+                          } else {
+                            setSelectedTeamIds(selectedTeamIds.filter(id => id !== String(team.id)));
+                          }
+                        }}
+                      />
+                      <span className="text-sm text-gray-700">{team.display_name}</span>
+                    </div>
+                  ))}
                 </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Select teams for this calendar. Select "All Teams" (or uncheck specific teams) to make it global.
+                </p>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    {t('settings.google_calendar.service_email')}
-                  </label>
-                  <p className="text-sm font-mono text-gray-600 bg-gray-50 p-2 rounded border border-gray-200">
-                    {googleCalStatus.service_account_email}
-                  </p>
-                </div>
-
-                {googleCalStatus.last_sync_at && (
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      {t('settings.google_calendar.last_sync')}
-                    </label>
-                    <p className="text-sm text-gray-600">
-                      {new Date(googleCalStatus.last_sync_at).toLocaleString()}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  {t('settings.google_calendar.upload_label')}
+                </label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 transition-colors">
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleGoogleCalendarFileUpload}
+                    disabled={googleCalUploading}
+                    className="hidden"
+                    id="google-key-upload"
+                  />
+                  <label
+                    htmlFor="google-key-upload"
+                    className="cursor-pointer block w-full h-full"
+                  >
+                    <p className="text-sm text-gray-600 mb-2">
+                      {t('settings.google_calendar.upload_hint')}
                     </p>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleGoogleCalendarSync}
-                    disabled={googleCalSyncing}
-                  >
-                    {googleCalSyncing ? t('settings.google_calendar.syncing') : t('settings.google_calendar.sync_now')}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={handleGoogleCalendarDisconnect}
-                  >
-                    {t('settings.google_calendar.disconnect')}
-                  </Button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <Alert
-                type="info"
-                message={t('settings.google_calendar.not_connected')}
-              />
-
-              <div className="mt-6 space-y-4">
-                <button
-                  onClick={() => setShowGoogleCalInstructions(!showGoogleCalInstructions)}
-                  className="text-blue-600 hover:text-blue-800 font-semibold text-sm flex items-center gap-2"
-                >
-                  {showGoogleCalInstructions ? '▼' : '▶'} 📘 {t('settings.google_calendar.setup_instructions')}
-                </button>
-
-                {showGoogleCalInstructions && (
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2 text-sm text-gray-700">
-                    <ol className="list-decimal list-inside space-y-2">
-                      <li>{t('settings.google_calendar.step_1')} <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{t('settings.google_calendar.step_1_link')}</a></li>
-                      <li>{t('settings.google_calendar.step_2')}</li>
-                      <li>{t('settings.google_calendar.step_3')}</li>
-                      <li>{t('settings.google_calendar.step_4')}
-                        <ul className="list-disc list-inside ml-4 mt-1">
-                          <li>{t('settings.google_calendar.step_4_1')}</li>
-                          <li>{t('settings.google_calendar.step_4_2')}</li>
-                        </ul>
-                      </li>
-                      <li>{t('settings.google_calendar.step_5')}
-                        <ul className="list-disc list-inside ml-4 mt-1">
-                          <li>{t('settings.google_calendar.step_5_1')}</li>
-                          <li>{t('settings.google_calendar.step_5_2')}</li>
-                          <li>{t('settings.google_calendar.step_5_3')}</li>
-                          <li>{t('settings.google_calendar.step_5_4')}</li>
-                        </ul>
-                      </li>
-                      <li>{t('settings.google_calendar.step_6')}</li>
-                    </ol>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    {t('settings.google_calendar.upload_label')}
+                    <p className="text-xs text-gray-500">
+                      {t('settings.google_calendar.json_only')}
+                    </p>
+                    {googleCalUploading && (
+                      <div className="mt-2 flex justify-center">
+                        <LoadingSpinner size="sm" />
+                      </div>
+                    )}
                   </label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleGoogleCalendarFileUpload}
-                      disabled={googleCalUploading}
-                      className="hidden"
-                      id="google-key-upload"
-                    />
-                    <label
-                      htmlFor="google-key-upload"
-                      className="cursor-pointer"
-                    >
-                      <p className="text-sm text-gray-600 mb-2">
-                        {t('settings.google_calendar.upload_hint')}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {t('settings.google_calendar.json_only')}
-                      </p>
-                      {googleCalUploading && (
-                        <div className="mt-2 flex justify-center">
-                          <LoadingSpinner size="sm" />
-                        </div>
-                      )}
-                    </label>
-                  </div>
                 </div>
               </div>
-            </>
-          )}
+            </div>
+          </div>
         </CardBody>
       </Card>
 

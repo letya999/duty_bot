@@ -26,13 +26,24 @@ class TestSlackHandler:
 
         user = User(
             workspace_id=workspace.id,
-            slack_user_id="U12345678",
             username="testuser",
             first_name="Test",
             last_name="User",
             display_name="Test User"
         )
         db_session.add(user)
+        await db_session.flush()
+
+        # Create UserAccount
+        from app.models import UserAccount
+        account = UserAccount(
+            user_id=user.id,
+            workspace_id=workspace.id,
+            provider='slack',
+            provider_id='U12345678',
+            username='testuser'
+        )
+        db_session.add(account)
         await db_session.commit()
         await db_session.refresh(user)
 
@@ -98,7 +109,7 @@ class TestSlackHandler:
             "command": "/duty",
             "text": "backend",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -118,7 +129,7 @@ class TestSlackHandler:
             "command": "/team",
             "text": "",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -137,7 +148,7 @@ class TestSlackHandler:
             "command": "/team",
             "text": "backend",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -156,7 +167,7 @@ class TestSlackHandler:
             "command": "/schedule",
             "text": "backend",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -175,7 +186,7 @@ class TestSlackHandler:
             "command": "/shift",
             "text": "backend",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -194,7 +205,7 @@ class TestSlackHandler:
             "command": "/escalation",
             "text": "",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -221,7 +232,7 @@ class TestSlackHandler:
             "command": "/escalate",
             "text": "backend",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -240,7 +251,7 @@ class TestSlackHandler:
             "command": "/incident",
             "text": "",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -259,7 +270,7 @@ class TestSlackHandler:
             "command": "/incident",
             "text": "start Database failure",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -283,7 +294,7 @@ class TestSlackHandler:
             "command": "/admin",
             "text": "",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -302,7 +313,7 @@ class TestSlackHandler:
             "command": "/help",
             "text": "",
             "team_id": workspace.external_id,
-            "user_id": user.slack_user_id,
+            "user": "U12345678",
             "channel_id": "C12345678",
             "response_url": "https://hooks.slack.com/commands/mock"
         }
@@ -319,7 +330,7 @@ class TestSlackHandler:
 
         event = {
             "type": "app_mention",
-            "user": user.slack_user_id,
+            "user": "U12345678",
             "text": "<@bot> show schedule",
             "channel": "C12345678"
         }
@@ -338,7 +349,7 @@ class TestSlackHandler:
             "type": "button",
             "action_id": "confirm_duty",
             "team": {"id": workspace.external_id},
-            "user": {"id": user.slack_user_id}
+            "user": {"id": "U12345678"}
         }
 
         assert handler is not None
@@ -353,7 +364,7 @@ class TestSlackHandler:
 
         event = {
             "type": "reaction_added",
-            "user": user.slack_user_id,
+            "user": "U12345678",
             "reaction": "thumbsup",
             "item": {"type": "message", "channel": "C12345678"}
         }
@@ -370,7 +381,7 @@ class TestSlackHandler:
 
         event = {
             "type": "message",
-            "user": user.slack_user_id,
+            "user": "U12345678",
             "text": "show me today's duty",
             "channel": "D12345678"
         }
@@ -390,5 +401,5 @@ class TestSlackHandler:
         """Test user creation from Slack"""
         handler, workspace, user, team, db = setup_handler
 
-        assert user.slack_user_id is not None
+        assert user.username == "testuser"
         assert user.workspace_id == workspace.id

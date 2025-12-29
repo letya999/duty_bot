@@ -60,6 +60,7 @@ class UserInOrganization(BaseModel):
     id: int
     display_name: Optional[str]
     is_superadmin: bool
+    is_admin: bool
     user_accounts: List[UserAccountResponse]
 
 
@@ -332,6 +333,7 @@ async def get_organization_users(
                 id=u.id,
                 display_name=u.display_name,
                 is_superadmin=u.is_superadmin,
+                is_admin=u.is_admin,
                 user_accounts=[
                     UserAccountResponse(
                         id=acc['id'],

@@ -14,6 +14,16 @@ class TeamRepository(BaseRepository[Team]):
     def __init__(self, db: AsyncSession):
         super().__init__(db, Team)
 
+    async def get_user_teams_in_organization(self, user_id: int, organization_id: int) -> List[Team]:
+        """Get all teams a user belongs to in a specific organization."""
+        from app.models import team_members
+        stmt = select(Team).join(team_members).where(
+            team_members.c.user_id == user_id,
+            Team.organization_id == organization_id
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
     async def get_by_id_with_members(self, team_id: int) -> Optional[Team]:
         """Get team with loaded members relationship."""
         stmt = select(Team).where(Team.id == team_id)
@@ -29,16 +39,41 @@ class TeamRepository(BaseRepository[Team]):
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_by_workspace(self, workspace_id: int, skip: int = 0, limit: int = 100) -> List[Team]:
-        """List all teams in workspace with members loaded."""
-        stmt = (
-            select(Team)
-            .where(Team.workspace_id == workspace_id)
-            .offset(skip)
-            .limit(limit)
-        )
+    async def get_organization_id_by_workspace(self, workspace_id: int) -> Optional[int]:
+        """Get organization ID for a workspace."""
+        from app.models import Workspace
+        stmt = select(Workspace.organization_id).where(Workspace.id == workspace_id)
         result = await self.db.execute(stmt)
-        return result.scalars().all()
+        return result.scalar_one_or_none()
+
+    async def list_by_workspace(self, workspace_id: int, skip: int = 0, limit: int = 100) -> List[Team]:
+        """List all teams in workspace (or shared organization) with members loaded."""
+        from app.models import Workspace
+        from sqlalchemy import or_
+
+        # First get the organization_id of the workspace
+        organization_id = await self.get_organization_id_by_workspace(workspace_id)
+        
+        query = select(Team)
+        
+        if organization_id:
+            # If workspace is in an org, show teams from this workspace OR from the organization
+            query = query.where(
+                or_(
+                    Team.workspace_id == workspace_id,
+                    Team.organization_id == organization_id
+                )
+            )
+        else:
+            # Standard behavior
+            query = query.where(Team.workspace_id == workspace_id)
+            
+        stmt = query.offset(skip).limit(limit)
+        
+        result = await self.db.execute(stmt)
+        # Deduplication is handled by sqlalchemy identity map usually, but distinct might be safer if we had joins.
+        # Here we use OR on the same table so result should be unique entities.
+        return result.unique().scalars().all()
 
     async def update_team_info(self, team_id: int, name: str, display_name: str, has_shifts: bool) -> Optional[Team]:
         """Update team basic information."""

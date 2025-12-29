@@ -53,13 +53,17 @@ class TestCommandHandlerEdgeCases:
 
         user = User(
             workspace_id=workspace_id,
-            telegram_id=100,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One",
             display_name="User One"
         )
         db_session.add(user)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc = UserAccount(user_id=user.id, workspace_id=workspace_id, provider="telegram", provider_id="111", username="user1")
+        db_session.add(acc)
         await db_session.commit()
         await db_session.refresh(user)
 
@@ -83,13 +87,17 @@ class TestCommandHandlerEdgeCases:
 
         user = User(
             workspace_id=workspace_id,
-            telegram_id=101,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One",
             display_name="User One"
         )
         db_session.add(user)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc = UserAccount(user_id=user.id, workspace_id=workspace_id, provider="telegram", provider_id="222", username="user1")
+        db_session.add(acc)
         await db_session.commit()
         await db_session.refresh(user)
 
@@ -155,22 +163,27 @@ class TestCommandHandlerEdgeCases:
 
         user1 = User(
             workspace_id=workspace_id,
-            telegram_id=201,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One",
             display_name="User One"
         )
         user2 = User(
             workspace_id=workspace_id,
-            telegram_id=202,
-            telegram_username="user2",
+            username="user2",
             first_name="User",
             last_name="Two",
             display_name="User Two"
         )
         db_session.add(user1)
         db_session.add(user2)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc1 = UserAccount(user_id=user1.id, workspace_id=workspace_id, provider="telegram", provider_id="333", username="user1")
+        acc2 = UserAccount(user_id=user2.id, workspace_id=workspace_id, provider="telegram", provider_id="444", username="user2")
+        db_session.add(acc1)
+        db_session.add(acc2)
         await db_session.commit()
         await db_session.refresh(user1)
         await db_session.refresh(user2)
@@ -342,13 +355,17 @@ class TestTelegramHandlerEdgeCases:
 
         lead = User(
             workspace_id=workspace_id,
-            telegram_id=301,
-            telegram_username="lead_user",
+            username="lead_user",
             first_name="Lead",
             last_name="User",
             display_name="Lead User"
         )
         db_session.add(lead)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc = UserAccount(user_id=lead.id, workspace_id=workspace_id, provider="telegram", provider_id="555", username="lead_user")
+        db_session.add(acc)
         await db_session.commit()
         await db_session.refresh(lead)
 
@@ -428,22 +445,27 @@ class TestTelegramHandlerEdgeCases:
         # Create users
         user1 = User(
             workspace_id=workspace_id,
-            telegram_id=401,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One",
             display_name="User One"
         )
         user2 = User(
             workspace_id=workspace_id,
-            telegram_id=402,
-            telegram_username="user2",
+            username="user2",
             first_name="User",
             last_name="Two",
             display_name="User Two"
         )
         db_session.add(user1)
         db_session.add(user2)
+        await db_session.flush()
+
+        from app.models import UserAccount
+        acc1 = UserAccount(user_id=user1.id, workspace_id=workspace_id, provider="telegram", provider_id="666", username="user1")
+        acc2 = UserAccount(user_id=user2.id, workspace_id=workspace_id, provider="telegram", provider_id="777", username="user2")
+        db_session.add(acc1)
+        db_session.add(acc2)
         await db_session.commit()
         await db_session.refresh(user1)
         await db_session.refresh(user2)

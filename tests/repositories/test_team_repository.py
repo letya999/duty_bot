@@ -23,21 +23,21 @@ class TestTeamRepository:
         # Create users
         user1 = User(
             workspace_id=workspace.id,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One",
             display_name="User One"
         )
         user2 = User(
             workspace_id=workspace.id,
-            telegram_username="user2",
+            username="user2",
             first_name="User",
             last_name="Two",
             display_name="User Two"
         )
         user3 = User(
             workspace_id=workspace.id,
-            telegram_username="user3",
+            username="user3",
             first_name="User",
             last_name="Three",
             display_name="User Three"

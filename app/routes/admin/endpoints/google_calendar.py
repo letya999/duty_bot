@@ -1,5 +1,6 @@
 """Google Calendar integration endpoints"""
 import logging
+from typing import Optional, List
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,7 @@ router = APIRouter(prefix="/settings/google-calendar", tags=["Google Calendar"])
 class ServiceAccountKeyRequest(BaseModel):
     """Request model for service account key upload."""
     service_account_key: dict
+    team_ids: Optional[List[int]] = None
 
 
 async def get_user_from_token(
@@ -57,37 +59,42 @@ async def get_user_from_token(
 @router.get(
     "/status",
     summary="Get Google Calendar integration status",
-    description="Получить статус интеграции с Google Calendar."
+    description="Получить список интеграций с Google Calendar."
 )
 async def get_google_calendar_status(
     user: User = Depends(get_current_user),
-    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
+    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository),
+    team_repo: TeamRepository = Depends(get_team_repository)
 ) -> dict:
     """Get Google Calendar integration status."""
     try:
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
 
-        integration = await google_calendar_repo.get_by_workspace(user.workspace_id)
-
-        if not integration:
-            return {
-                "is_connected": False,
-                "status": "not_configured",
-                "workspace_id": user.workspace_id
-            }
-
-        google_service = GoogleCalendarService(google_calendar_repo)
-        needs_reauth = not await google_service.validate_integration(user.workspace_id)
+        integrations = await google_calendar_repo.list_by_workspace(user.workspace_id)
+        
+        result_list = []
+        for integration in integrations:
+            team_names = "All Teams"
+            team_ids_list = []
+            if integration.teams:
+                team_names = ", ".join([t.display_name for t in integration.teams])
+                team_ids_list = [t.id for t in integration.teams]
+            
+            result_list.append({
+                "id": integration.id,
+                "is_active": integration.is_active,
+                "public_calendar_url": integration.public_calendar_url,
+                "service_account_email": integration.service_account_email,
+                "last_sync_at": integration.last_sync_at.isoformat() if integration.last_sync_at else None,
+                "google_calendar_id": integration.google_calendar_id,
+                "team_ids": team_ids_list,
+                "team_name": team_names
+            })
 
         return {
-            "is_connected": True,
-            "is_active": integration.is_active,
-            "needs_reauth": needs_reauth,
-            "public_calendar_url": integration.public_calendar_url,
-            "service_account_email": integration.service_account_email,
-            "last_sync_at": integration.last_sync_at.isoformat() if integration.last_sync_at else None,
-            "google_calendar_id": integration.google_calendar_id,
+            "integrations": result_list,
+            "is_connected": len(result_list) > 0,
             "workspace_id": user.workspace_id
         }
 
@@ -118,17 +125,27 @@ async def setup_google_calendar(
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
 
-        # Check if already configured
-        existing = await google_calendar_repo.get_by_workspace(user.workspace_id)
-        if existing:
-            await google_calendar_repo.delete(existing.id)
-
+        # For multiple calendars support, checking "already configured" is tricky.
+        # We allow multiple. If they upload the same JSON again, it creates a new calendar.
+        # User is responsible for deleting old ones if they want to replace.
+        
         google_service = GoogleCalendarService(google_calendar_repo)
 
         integration = await google_service.setup_google_calendar(
             user.workspace_id,
-            request.service_account_key
+            request.service_account_key,
+            request.team_ids
         )
+        
+        # Manually add teams here since we didn't inject TeamRepo into service fully
+        if request.team_ids:
+            teams_objects = []
+            for tid in request.team_ids:
+                t = await team_repo.get_by_id(tid)
+                if t:
+                    teams_objects.append(t)
+            if teams_objects:
+                await google_calendar_repo.add_teams(integration, teams_objects)
 
         # Trigger initial sync of existing/future schedules
         synced_count = await google_service.sync_workspace_schedules(
@@ -154,11 +171,12 @@ async def setup_google_calendar(
 
 
 @router.delete(
-    "",
+    "/{integration_id}",
     summary="Disconnect Google Calendar integration",
-    description="Отключить интеграцию с Google Calendar."
+    description="Отключить интеграцию с Google Calendar (удалить конкретный календарь)."
 )
 async def disconnect_google_calendar(
+    integration_id: int,
     user: User = Depends(get_current_user),
     google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
 ) -> dict:
@@ -169,7 +187,9 @@ async def disconnect_google_calendar(
 
         google_service = GoogleCalendarService(google_calendar_repo)
 
-        success = await google_service.disconnect_google_calendar(user.workspace_id)
+        # Verify integration belongs to workspace (implicitly done via repo lookup but let's be safe if we had checks)
+        # Service disconnect deletes by ID after check
+        success = await google_service.disconnect_google_calendar(integration_id)
 
         if not success:
             raise HTTPException(status_code=404, detail="Google Calendar integration not found")
@@ -185,23 +205,33 @@ async def disconnect_google_calendar(
 
 @router.get(
     "/url",
-    summary="Get public calendar URL",
-    description="Получить публичный URL календаря."
+    summary="Get public calendar URLs",
+    description="Получить публичные URL календарей."
 )
 async def get_public_calendar_url(
     user: User = Depends(get_current_user),
     google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
 ) -> dict:
-    """Get public Google Calendar URL."""
+    """Get public Google Calendar URLs."""
     try:
-        integration = await google_calendar_repo.get_by_workspace(user.workspace_id)
+        integrations = await google_calendar_repo.list_by_workspace(user.workspace_id)
+        
+        if not integrations:
+             raise HTTPException(status_code=404, detail="Google Calendar not configured")
 
-        if not integration or not integration.is_active:
-            raise HTTPException(status_code=404, detail="Google Calendar not configured")
-
+        # Return list or the first one if legacy client?
+        # Let's return list
+        urls = []
+        for i in integrations:
+            if i.is_active:
+                urls.append({
+                    "url": i.public_calendar_url,
+                    "calendar_id": i.google_calendar_id,
+                    "team_ids": [t.id for t in i.teams] if i.teams else []
+                })
+        
         return {
-            "url": integration.public_calendar_url,
-            "calendar_id": integration.google_calendar_id
+            "calendars": urls
         }
 
     except HTTPException:

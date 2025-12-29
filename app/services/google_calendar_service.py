@@ -52,7 +52,8 @@ class GoogleCalendarService:
     async def setup_google_calendar(
         self,
         workspace_id: int,
-        service_account_key: Dict[str, Any]
+        service_account_key: Dict[str, Any],
+        team_ids: Optional[List[int]] = None
     ) -> GoogleCalendarIntegration:
         """Setup Google Calendar integration for workspace."""
         try:
@@ -101,10 +102,28 @@ class GoogleCalendarService:
                 "google_calendar_id": calendar_id,
                 "public_calendar_url": public_url,
                 "service_account_email": service_account_key['client_email'],
-                "is_active": True
+                "is_active": True,
+                "team_id": team_id
             }
 
-            return await self.repo.create(integration_data)
+            integration = await self.repo.create(integration_data)
+
+            # Associate teams if provided
+            if team_ids:
+                # We need to fetch team objects to associate them
+                # Ideally repo would handle this, but for now let's query repo or assume IDs are valid
+                # Let's rely on repository layer to attach by ID if possible, or fetch simple objects
+                # Since we are in service, we might need a TeamRepository passed in or use a session
+                # But notice we don't have TeamRepository in __init__.
+                # We can't easily fetch teams here without TeamRepository.
+                # Let's change signature or rely on caller to pass objects?
+                # BETTER: Just save the integration, and let caller handle team association?
+                # OR: Repo method add_teams logic.
+                
+                # To keep it clean, let's assume valid IDs are passed and use a direct DB add in repo
+                pass # We will handle this by returning the integration and letting the endpoint add teams
+                
+            return integration
 
         except HttpError as e:
             logger.error(f"Google API error: {e}")
@@ -195,10 +214,10 @@ class GoogleCalendarService:
 
         return False
 
-    async def disconnect_google_calendar(self, workspace_id: int) -> bool:
-        """Disconnect Google Calendar from workspace."""
+    async def disconnect_google_calendar(self, integration_id: int) -> bool:
+        """Disconnect specific Google Calendar integration."""
         try:
-            integration = await self.repo.get_by_workspace(workspace_id)
+            integration = await self.repo.get_by_id(integration_id)
             if not integration:
                 return False
 
@@ -219,7 +238,7 @@ class GoogleCalendarService:
 
             # ALWAYS delete integration record from local DB
             await self.repo.delete(integration.id)
-            logger.info(f"Google Calendar integration record {integration.id} deleted from DB for workspace {workspace_id}")
+            logger.info(f"Google Calendar integration record {integration.id} deleted from DB")
 
             return True
 
@@ -235,56 +254,67 @@ class GoogleCalendarService:
     ) -> int:
         """Sync all future schedules for a workspace to Google Calendar. Returns count of synced events."""
         try:
-            integration = await self.repo.get_by_workspace(workspace_id)
-            if not integration or not integration.is_active:
-                logger.warning(f"No active Google Calendar integration for workspace {workspace_id}")
+            integrations = await self.repo.list_by_workspace(workspace_id)
+            if not integrations:
+                logger.warning(f"No Google Calendar integrations for workspace {workspace_id}")
                 return 0
 
-            # Get all teams for workspace
-            teams = await team_repo.list_by_workspace(workspace_id)
+            total_synced_count = 0
             
             # Define range for initial sync: 1 day ago to 90 days in future
             start_date = date_type.today() - timedelta(days=1)
             end_date = date_type.today() + timedelta(days=90)
 
-            # Decrypt and get service once
-            try:
-                service_account_key = self._decrypt_service_account_key(
-                    integration.service_account_key_encrypted
-                )
-                service = self._get_calendar_service(service_account_key)
-            except Exception as e:
-                logger.error(f"Failed to initialize Google Calendar for workspace {workspace_id}: {e}")
-                # We don't mark it inactive automatically to avoid accidental data loss if key is temporarily missing,
-                # but we return 0 synced.
-                return 0
+            for integration in integrations:
+                if not integration.is_active:
+                    continue
 
-            synced_count = 0
-            for team in teams:
-                # Use a more efficient way to get schedules with users
-                from sqlalchemy import select
-                from sqlalchemy.orm import joinedload
+                # Determine which teams to sync for this integration
+                if integration.teams:
+                    # Sync only for specific linked teams
+                    teams_to_sync = integration.teams
+                else:
+                    # Sync for all teams (legacy/global behavior)
+                    teams_to_sync = await team_repo.list_by_workspace(workspace_id)
+
+                teams_to_sync = [t for t in teams_to_sync if t] # Filter None
+
+                # Decrypt and get service once per integration
+                try:
+                    service_account_key = self._decrypt_service_account_key(
+                        integration.service_account_key_encrypted
+                    )
+                    service = self._get_calendar_service(service_account_key)
+                except Exception as e:
+                    logger.error(f"Failed to initialize Google Calendar for integration {integration.id}: {e}")
+                    continue
+
+                for team in teams_to_sync:
+                    # Use a more efficient way to get schedules with users
+                    from sqlalchemy import select
+                    from sqlalchemy.orm import joinedload
+                    
+                    stmt = select(Schedule).options(
+                        joinedload(Schedule.user)
+                    ).where(
+                        Schedule.team_id == team.id,
+                        Schedule.date >= start_date,
+                        Schedule.date <= end_date
+                    )
+                    
+                    result = await schedule_repo.execute(stmt)
+                    schedules = result.scalars().all()
+                    
+                    for schedule in schedules:
+                        if schedule.user:
+                            event_id = await self.sync_schedule_to_calendar(integration, team, schedule, service=service)
+                            if event_id:
+                                total_synced_count += 1
                 
-                stmt = select(Schedule).options(
-                    joinedload(Schedule.user)
-                ).where(
-                    Schedule.team_id == team.id,
-                    Schedule.date >= start_date,
-                    Schedule.date <= end_date
-                )
-                
-                result = await schedule_repo.execute(stmt)
-                schedules = result.scalars().all()
-                
-                for schedule in schedules:
-                    if schedule.user:
-                        event_id = await self.sync_schedule_to_calendar(integration, team, schedule, service=service)
-                        if event_id:
-                            synced_count += 1
-            
-            await self.update_last_sync(workspace_id)
-            logger.info(f"Bulk sync completed: {synced_count} events synced for workspace {workspace_id}")
-            return synced_count
+                await self.update_last_sync(integration.id)
+
+            logger.info(f"Bulk sync completed: {total_synced_count} events synced for workspace {workspace_id}")
+            return total_synced_count
 
         except Exception as e:
             logger.error(f"Error during bulk sync for workspace {workspace_id}: {e}")
@@ -293,12 +323,18 @@ class GoogleCalendarService:
     async def validate_integration(self, workspace_id: int) -> bool:
         """Check if integration credentials can be decrypted and are valid."""
         try:
-            integration = await self.repo.get_by_workspace(workspace_id)
-            if not integration:
+            integrations = await self.repo.list_by_workspace(workspace_id)
+            if not integrations:
                 return False
             
-            # This will raise an exception if decryption fails
-            self._decrypt_service_account_key(integration.service_account_key_encrypted)
+            # Retrieve one valid integration or check all? 
+            # If any is invalid, what do we return? 
+            # For now, let's just check if we can decrypt the first one.
+            # Ideally validation should be per-integration.
+            
+            for integration in integrations:
+                 self._decrypt_service_account_key(integration.service_account_key_encrypted)
+            
             return True
         except Exception:
             return False
@@ -308,8 +344,6 @@ class GoogleCalendarService:
         colors = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]  # Available calendar colors
         return colors[team_id % len(colors)]
 
-    async def update_last_sync(self, workspace_id: int) -> None:
+    async def update_last_sync(self, integration_id: int) -> None:
         """Update last sync timestamp."""
-        integration = await self.repo.get_by_workspace(workspace_id)
-        if integration:
-            await self.repo.update(integration.id, {"last_sync_at": datetime.utcnow()})
+        await self.repo.update(integration_id, {"last_sync_at": datetime.utcnow()})

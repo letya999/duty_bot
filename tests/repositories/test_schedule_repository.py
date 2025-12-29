@@ -34,13 +34,13 @@ class TestScheduleRepository:
         # Create users
         user1 = User(
             workspace_id=workspace.id,
-            telegram_username="user1",
+            username="user1",
             first_name="User",
             last_name="One"
         )
         user2 = User(
             workspace_id=workspace.id,
-            telegram_username="user2",
+            username="user2",
             first_name="User",
             last_name="Two"
         )

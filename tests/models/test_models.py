@@ -75,12 +75,15 @@ class TestUserModel:
         """Test creating a user"""
         user = user_factory(
             workspace_id=1,
+            telegram_id=12345,
             telegram_username="testuser",
             first_name="Test",
             last_name="User"
         )
         assert user.workspace_id == 1
-        assert user.telegram_username == "testuser"
+        # telegram_username is now in UserAccount
+        assert len(user.user_accounts) > 0
+        assert user.user_accounts[0].username == "testuser"
         assert user.first_name == "Test"
         assert user.last_name == "User"
 
@@ -94,12 +97,19 @@ class TestUserModel:
     def test_user_slack_id(self, user_factory):
         """Test user with Slack ID"""
         user = user_factory(slack_user_id="U12345678")
-        assert user.slack_user_id == "U12345678"
+        assert len(user.user_accounts) > 0
+        # Find slack account
+        slack_account = next((ua for ua in user.user_accounts if ua.provider == 'slack'), None)
+        assert slack_account is not None
+        assert slack_account.provider_id == "U12345678"
 
     def test_user_telegram_id(self, user_factory):
         """Test user with Telegram ID"""
         user = user_factory(telegram_id=123456789)
-        assert user.telegram_id == 123456789
+        # Find telegram account
+        tg_account = next((ua for ua in user.user_accounts if ua.provider == 'telegram'), None)
+        assert tg_account is not None
+        assert tg_account.provider_id == "123456789"
 
 
 class TestTeamModel:

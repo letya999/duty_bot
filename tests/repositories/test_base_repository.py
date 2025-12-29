@@ -29,14 +29,14 @@ class TestBaseRepository:
         repo, workspace = user_repo
         user_data = {
             "workspace_id": workspace.id,
-            "telegram_username": "testuser",
+            "username": "testuser",
             "first_name": "Test",
             "last_name": "User",
             "display_name": "Test User"
         }
         user = await repo.create(user_data)
         assert user.id is not None
-        assert user.telegram_username == "testuser"
+        assert user.username == "testuser"
         assert user.workspace_id == workspace.id
 
     @pytest.mark.asyncio
@@ -46,7 +46,7 @@ class TestBaseRepository:
         # Create a user
         user_data = {
             "workspace_id": workspace.id,
-            "telegram_username": "gettest",
+            "username": "gettest",
             "first_name": "Get",
             "last_name": "Test"
         }
@@ -56,7 +56,7 @@ class TestBaseRepository:
         retrieved_user = await repo.get_by_id(created_user.id)
         assert retrieved_user is not None
         assert retrieved_user.id == created_user.id
-        assert retrieved_user.telegram_username == "gettest"
+        assert retrieved_user.username == "gettest"
 
     @pytest.mark.asyncio
     async def test_get_by_id_not_found(self, user_repo):
@@ -73,7 +73,7 @@ class TestBaseRepository:
         for i in range(5):
             user_data = {
                 "workspace_id": workspace.id,
-                "telegram_username": f"user{i}",
+                "username": f"user{i}",
                 "first_name": f"User{i}",
                 "last_name": "Test"
             }
@@ -91,7 +91,7 @@ class TestBaseRepository:
         for i in range(10):
             user_data = {
                 "workspace_id": workspace.id,
-                "telegram_username": f"paginated{i}",
+                "username": f"paginated{i}",
                 "first_name": f"User{i}"
             }
             await repo.create(user_data)
@@ -111,7 +111,7 @@ class TestBaseRepository:
         # Create a user
         user_data = {
             "workspace_id": workspace.id,
-            "telegram_username": "updateme",
+            "username": "updateme",
             "first_name": "Update",
             "last_name": "Me"
         }
@@ -143,7 +143,7 @@ class TestBaseRepository:
         # Create a user
         user_data = {
             "workspace_id": workspace.id,
-            "telegram_username": "deleteme",
+            "username": "deleteme",
             "first_name": "Delete",
             "last_name": "Me"
         }
@@ -174,7 +174,7 @@ class TestBaseRepository:
         # Create a user
         user_data = {
             "workspace_id": workspace.id,
-            "telegram_username": "rawstmt",
+            "username": "rawstmt",
             "first_name": "Raw",
             "last_name": "Statement"
         }
@@ -182,7 +182,7 @@ class TestBaseRepository:
 
         # Execute raw statement
         stmt = select(User).where(
-            User.telegram_username == "rawstmt",
+            User.username == "rawstmt",
             User.workspace_id == workspace.id
         )
         user = await repo.execute(stmt)

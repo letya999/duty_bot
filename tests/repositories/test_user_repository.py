@@ -28,15 +28,27 @@ class TestUserRepository:
     async def test_get_by_telegram_username(self, setup_user_repo):
         """Test getting user by Telegram username"""
         repo, workspace = setup_user_repo
+        from app.models import UserAccount
 
         # Create a user
         user = User(
             workspace_id=workspace.id,
-            telegram_username="testuser",
+            username="testuser",
             first_name="Test",
             last_name="User"
         )
         repo.db.add(user)
+        await repo.db.flush() # flush to get user.id
+
+        # Create UserAccount
+        account = UserAccount(
+            user_id=user.id,
+            workspace_id=workspace.id,
+            provider="telegram",
+            provider_id="12345",
+            username="testuser"
+        )
+        repo.db.add(account)
         await repo.db.commit()
 
         # Get user by username
@@ -44,19 +56,31 @@ class TestUserRepository:
             workspace.id, "testuser"
         )
         assert found_user is not None
-        assert found_user.telegram_username == "testuser"
+        # Verify we found the right user
+        assert found_user.id == user.id
 
     @pytest.mark.asyncio
     async def test_get_by_telegram_username_case_insensitive(self, setup_user_repo):
         """Test case-insensitive Telegram username lookup"""
         repo, workspace = setup_user_repo
+        from app.models import UserAccount
 
         user = User(
             workspace_id=workspace.id,
-            telegram_username="CaseSensitive",
+            username="CaseSensitive",
             first_name="Test"
         )
         repo.db.add(user)
+        await repo.db.flush()
+
+        account = UserAccount(
+            user_id=user.id,
+            workspace_id=workspace.id,
+            provider="telegram",
+            provider_id="99999",
+            username="CaseSensitive"
+        )
+        repo.db.add(account)
         await repo.db.commit()
 
         # Try different cases
@@ -64,7 +88,7 @@ class TestUserRepository:
             workspace.id, "casesensitive"
         )
         assert found_user is not None
-        assert found_user.telegram_username == "CaseSensitive"
+        assert found_user.id == user.id
 
     @pytest.mark.asyncio
     async def test_get_by_telegram_username_not_found(self, setup_user_repo):
@@ -79,52 +103,83 @@ class TestUserRepository:
     async def test_get_by_telegram_id(self, setup_user_repo):
         """Test getting user by Telegram ID"""
         repo, workspace = setup_user_repo
+        from app.models import UserAccount
 
         user = User(
             workspace_id=workspace.id,
-            telegram_id=123456789,
+            username="iduser",
             first_name="Test"
         )
         repo.db.add(user)
+        await repo.db.flush()
+
+        account = UserAccount(
+            user_id=user.id,
+            workspace_id=workspace.id,
+            provider="telegram",
+            provider_id="123456789",
+            username="iduser"
+        )
+        repo.db.add(account)
         await repo.db.commit()
 
         found_user = await repo.get_by_telegram_id(
             workspace.id, 123456789
         )
         assert found_user is not None
-        assert found_user.telegram_id == 123456789
+        assert found_user.id == user.id
 
     @pytest.mark.asyncio
     async def test_get_by_slack_user_id(self, setup_user_repo):
         """Test getting user by Slack user ID"""
         repo, workspace = setup_user_repo
+        from app.models import UserAccount
 
         user = User(
             workspace_id=workspace.id,
-            slack_user_id="U12345678",
+            username="slackuser",
             first_name="Test"
         )
         repo.db.add(user)
+        await repo.db.flush()
+
+        account = UserAccount(
+            user_id=user.id,
+            workspace_id=workspace.id,
+            provider="slack",
+            provider_id="U12345678",
+            username="slackuser"
+        )
+        repo.db.add(account)
         await repo.db.commit()
 
         found_user = await repo.get_by_slack_user_id(
             workspace.id, "U12345678"
         )
         assert found_user is not None
-        assert found_user.slack_user_id == "U12345678"
+        assert found_user.id == user.id
 
     @pytest.mark.asyncio
     async def test_list_by_workspace(self, setup_user_repo, db_session: AsyncSession):
         """Test listing users by workspace"""
         repo, workspace = setup_user_repo
+        from app.models import UserAccount
 
         # Create users in this workspace
         for i in range(3):
             user = User(
                 workspace_id=workspace.id,
-                telegram_username=f"user{i}",
+                username=f"user{i}",
                 first_name=f"User{i}"
             )
+            # Use relationship cascading or manual add
+            account = UserAccount(
+                provider="telegram", 
+                provider_id=f"100{i}", 
+                username=f"user{i}",
+                workspace_id=workspace.id
+            )
+            user.user_accounts.append(account)
             repo.db.add(user)
         await repo.db.commit()
 
@@ -140,7 +195,7 @@ class TestUserRepository:
 
         other_user = User(
             workspace_id=other_workspace.id,
-            telegram_username="otheruser",
+            username="otheruser",
             first_name="Other"
         )
         db_session.add(other_user)
@@ -149,6 +204,7 @@ class TestUserRepository:
         # List users in first workspace
         users = await repo.list_by_workspace(workspace.id)
         assert len(users) >= 3
+        # Direct column check
         assert all(u.workspace_id == workspace.id for u in users)
 
     @pytest.mark.asyncio
@@ -159,7 +215,7 @@ class TestUserRepository:
         # Create mix of admin and non-admin users
         admin_user = User(
             workspace_id=workspace.id,
-            telegram_username="admin1",
+            username="admin1",
             first_name="Admin",
             is_admin=True
         )
@@ -167,7 +223,7 @@ class TestUserRepository:
 
         regular_user = User(
             workspace_id=workspace.id,
-            telegram_username="regular1",
+            username="regular1",
             first_name="Regular",
             is_admin=False
         )
@@ -186,7 +242,7 @@ class TestUserRepository:
 
         user = User(
             workspace_id=workspace.id,
-            telegram_username="admintest",
+            username="admintest",
             first_name="Test",
             is_admin=False
         )
@@ -211,7 +267,7 @@ class TestUserRepository:
         # Create user and teams
         user = User(
             workspace_id=workspace.id,
-            telegram_username="teamuser",
+            username="teamuser",
             first_name="Team",
             last_name="User"
         )
@@ -222,19 +278,23 @@ class TestUserRepository:
         # Get user with teams relationship loaded
         user_with_teams = await repo.get_by_id_with_teams(user.id)
         assert user_with_teams is not None
-        assert user_with_teams.telegram_username == "teamuser"
+        assert user_with_teams.username == "teamuser"
 
     @pytest.mark.asyncio
     async def test_workspace_isolation(self, setup_user_repo, db_session: AsyncSession):
         """Test that users are isolated by workspace"""
         repo, workspace1 = setup_user_repo
+        from app.models import UserAccount
 
         # Create user in workspace 1
         user1 = User(
             workspace_id=workspace1.id,
-            telegram_username="samename",
+            username="samename",
             first_name="User"
         )
+        # Add account for lookup by username
+        acc1 = UserAccount(user_id=user1.id, workspace_id=workspace1.id, provider='telegram', provider_id='1', username='samename')
+        user1.user_accounts.append(acc1)
         repo.db.add(user1)
         await repo.db.commit()
 
@@ -250,12 +310,15 @@ class TestUserRepository:
         # Create user with same username in workspace 2
         user2 = User(
             workspace_id=workspace2.id,
-            telegram_username="samename",
+            username="samename",
             first_name="User"
         )
+        acc2 = UserAccount(user_id=user2.id, workspace_id=workspace2.id, provider='telegram', provider_id='2', username='samename')
+        user2.user_accounts.append(acc2)
         db_session.add(user2)
         await db_session.commit()
 
         # Get by username should only return user from requested workspace
         found = await repo.get_by_telegram_username(workspace1.id, "samename")
         assert found.workspace_id == workspace1.id
+        assert found.id == user1.id

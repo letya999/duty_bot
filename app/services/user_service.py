@@ -15,29 +15,63 @@ class UserService:
         self.user_account_repo = user_account_repo
 
     async def create_user(self, workspace_id: int, username: str, telegram_username: str = None, first_name: str = None, last_name: str = None, slack_user_id: str = None, telegram_id: int = None, display_name: str = None) -> User:
-        """Create a new user"""
-        return await self.user_repo.create({
+        """Create a new user and associated accounts"""
+        if not display_name:
+             if first_name and last_name:
+                 display_name = f"{first_name} {last_name}"
+             else:
+                 display_name = first_name or username
+
+        # Create base user
+        user = await self.user_repo.create({
             'workspace_id': workspace_id,
             'username': username,
-            'telegram_username': telegram_username,
             'first_name': first_name,
             'last_name': last_name,
-            'slack_user_id': slack_user_id,
-            'telegram_id': telegram_id,
-            'display_name': display_name or first_name or username
+            'display_name': display_name
         })
+        
+        # Create UserAccounts
+        if self.user_account_repo:
+            if telegram_id:
+                try:
+                    await self.user_account_repo.create({
+                        'user_id': user.id,
+                        'workspace_id': workspace_id,
+                        'provider': 'telegram',
+                        'provider_id': str(telegram_id),
+                        'username': telegram_username,
+                        'account_email': None
+                    })
+                except Exception:
+                    pass
+
+            if slack_user_id:
+                try:
+                    await self.user_account_repo.create({
+                        'user_id': user.id,
+                        'workspace_id': workspace_id,
+                        'provider': 'slack',
+                        'provider_id': slack_user_id,
+                        'username': None, # Slack username often not unique/stable or not passed here
+                        'account_email': None
+                    })
+                except Exception:
+                    pass
+                    
+        return user
+
     async def get_or_create_by_telegram(self, workspace_id: int, telegram_username: str, display_name: str, first_name: str = None, last_name: str = None, telegram_id: int = None) -> User:
         """Get or create user by Telegram username or ID in workspace"""
-        # Try to find by telegram_id first if provided (using UserAccount)
-        if telegram_id and self.user_account_repo:
-            account = await self.user_account_repo.get_by_telegram_id(str(telegram_id), workspace_id)
-            if account:
-                user = await self.user_repo.get_by_id(account.user_id)
-                if user:
-                    return user
-
-        # Try to find by telegram_username (old system)
-        user = await self.user_repo.get_by_telegram_username(workspace_id, telegram_username)
+        user = None
+        
+        # 1. Try to find by telegram_id (via UserAccount)
+        if telegram_id:
+            user = await self.user_repo.get_by_telegram_id(workspace_id, telegram_id)
+        
+        # 2. If not found, try by username
+        if not user and telegram_username:
+            user = await self.user_repo.get_by_telegram_username(workspace_id, telegram_username)
 
         if not user:
             # Use get_settings to check for master admins
@@ -47,18 +81,24 @@ class UserService:
             if telegram_id and str(telegram_id) in settings.get_admin_ids('telegram'):
                 is_master = True
 
+            # Generate display_name if missing
+            if not display_name:
+                if first_name and last_name:
+                    display_name = f"{first_name} {last_name}"
+                else:
+                     display_name = first_name or telegram_username or (str(telegram_id) if telegram_id else "Unknown")
+
+            # Create new user
             user = await self.user_repo.create({
                 'workspace_id': workspace_id,
-                'telegram_id': telegram_id,
-                'telegram_username': telegram_username,
                 'username': telegram_username or (str(telegram_id) if telegram_id else None),
-                'display_name': display_name,
                 'first_name': first_name,
                 'last_name': last_name,
+                'display_name': display_name,
                 'is_admin': is_master
             })
 
-            # Create UserAccount record for new system
+            # Create UserAccount
             if self.user_account_repo and telegram_id:
                 try:
                     await self.user_account_repo.create({
@@ -70,21 +110,25 @@ class UserService:
                         'account_email': None
                     })
                 except Exception:
-                    # Ignore if account already exists
                     pass
         else:
             # Update info if it was missing
             update_data = {}
-            if telegram_id and not user.telegram_id:
-                update_data['telegram_id'] = telegram_id
-            if telegram_username and not user.telegram_username:
-                update_data['telegram_username'] = telegram_username
-            if not user.username:
-                update_data['username'] = telegram_username or (str(telegram_id) if telegram_id else None)
+            if not user.username and telegram_username:
+                update_data['username'] = telegram_username
             if first_name and not user.first_name:
                 update_data['first_name'] = first_name
             if last_name and not user.last_name:
                 update_data['last_name'] = last_name
+            
+            # If display_name is missing/empty, try to fill it
+            if not user.display_name:
+                 if first_name and last_name:
+                     update_data['display_name'] = f"{first_name} {last_name}"
+                 elif first_name:
+                     update_data['display_name'] = first_name
+                 elif telegram_username:
+                     update_data['display_name'] = telegram_username
 
             # Sync master admin status
             from app.config import get_settings
@@ -95,9 +139,10 @@ class UserService:
             if update_data:
                 user = await self.user_repo.update(user.id, update_data)
 
-            # Create or update UserAccount record
+            # Ensure UserAccount exists or update it
             if self.user_account_repo and telegram_id:
                 try:
+                    # We might have found user by username but they missed the ID link
                     account = await self.user_account_repo.get_by_telegram_id(str(telegram_id), workspace_id)
                     if not account:
                         await self.user_account_repo.create({
@@ -108,36 +153,37 @@ class UserService:
                             'username': telegram_username,
                             'account_email': None
                         })
+                    elif telegram_username and account.username != telegram_username:
+                        # Update username in account if changed
+                         await self.user_account_repo.update(account.id, {'username': telegram_username})
                 except Exception:
-                    # Ignore if account already exists
                     pass
 
         return user
 
     async def get_or_create_by_slack(self, workspace_id: int, slack_user_id: str, display_name: str, first_name: str = None, last_name: str = None) -> User:
         """Get or create user by Slack user ID in workspace"""
-        # Try to find by slack_user_id (using UserAccount)
-        if self.user_account_repo:
-            account = await self.user_account_repo.get_by_slack_id(slack_user_id, workspace_id)
-            if account:
-                user = await self.user_repo.get_by_id(account.user_id)
-                if user:
-                    return user
-
-        # Try to find by slack_user_id (old system)
+        
+        # 1. Try to find by slack_user_id (via UserAccount)
         user = await self.user_repo.get_by_slack_user_id(workspace_id, slack_user_id)
 
         if not user:
+            # Generate default display_name if needed
+            if not display_name:
+                if first_name and last_name:
+                    display_name = f"{first_name} {last_name}"
+                else:
+                    display_name = first_name or slack_user_id
+
             user = await self.user_repo.create({
                 'workspace_id': workspace_id,
-                'slack_user_id': slack_user_id,
-                'username': slack_user_id,
-                'display_name': display_name,
+                'username': slack_user_id, # Fallback username
                 'first_name': first_name,
                 'last_name': last_name,
+                'display_name': display_name
             })
 
-            # Create UserAccount record for new system
+            # Create UserAccount record
             if self.user_account_repo:
                 try:
                     await self.user_account_repo.create({
@@ -149,8 +195,17 @@ class UserService:
                         'account_email': None
                     })
                 except Exception:
-                    # Ignore if account already exists
                     pass
+        else:
+             # Update basic info if missing
+            update_data = {}
+            if first_name and not user.first_name:
+                update_data['first_name'] = first_name
+            if last_name and not user.last_name:
+                update_data['last_name'] = last_name
+            
+            if update_data:
+                 user = await self.user_repo.update(user.id, update_data)
 
         return user
 
@@ -371,7 +426,18 @@ class UserService:
         stmt = team_members.delete().where(team_members.c.user_id == source_user_id)
         await self.user_repo.db.execute(stmt)
         
-        # 6. Delete source user
+        # 6. Transfer Admin Logs (handle history preservation)
+        from app.models import AdminLog
+        
+        # Update Admin Logs where source user was the admin
+        stmt = update(AdminLog).where(AdminLog.admin_user_id == source_user_id).values(admin_user_id=target_user_id)
+        await self.user_repo.db.execute(stmt)
+        
+        # Update Admin Logs where source user was the target
+        stmt = update(AdminLog).where(AdminLog.target_user_id == source_user_id).values(target_user_id=target_user_id)
+        await self.user_repo.db.execute(stmt)
+
+        # 7. Delete source user
         await self.user_repo.delete(source_user_id)
         
         await self.user_repo.db.commit()

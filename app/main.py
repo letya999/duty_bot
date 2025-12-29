@@ -18,7 +18,6 @@ from app.database import init_db, close_db, AsyncSessionLocal
 from app.handlers.telegram_handler import TelegramHandler
 from app.handlers.slack_handler import SlackHandler
 from app.tasks.scheduled_tasks import ScheduledTasks
-from app.routes.miniapp import router as miniapp_router
 from app.routes.admin.auth import router as auth_router
 from app.routes.admin.dashboard import router as dashboard_router
 from app.routes.admin.schedules import router as schedules_router
@@ -256,9 +255,6 @@ async def log_requests(request: Request, call_next):
         )
         raise
 
-
-# Register mini app router
-app.include_router(miniapp_router)
 
 # Register web panel routers
 app.include_router(auth_router)

@@ -1,6 +1,7 @@
 from app.models import User
 from app.repositories import UserRepository, AdminLogRepository, UserAccountRepository
-from typing import Optional
+from typing import Optional, Union
+from sqlalchemy import select, update, delete
 
 
 class UserService:
@@ -403,7 +404,6 @@ class UserService:
         if target_user_id == source_user_id:
             return await self.user_repo.get_by_id(target_user_id)
 
-        from sqlalchemy import update, delete, select
         from app.models import UserAccount, Team, Schedule, Escalation, team_members, RotationConfig, DutyStats, AdminLog, Organization
         
         target_user = await self.user_repo.get_by_id(target_user_id)

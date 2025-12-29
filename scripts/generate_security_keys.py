@@ -150,14 +150,32 @@ class SecurityKeysGenerator:
         print("   5. Rotate keys periodically (every 6-12 months)")
         print("\n" + "=" * 80)
 
+    def verify_encryption_key(self, key: str) -> bool:
+        """
+        Verify that the encryption key is a valid Fernet key.
+
+        Args:
+            key: Encryption key to verify
+
+        Returns:
+            True if valid, False otherwise
+        """
+        try:
+            from cryptography.fernet import Fernet
+            Fernet(key.encode())
+            return True
+        except Exception:
+            return False
+
     def save_to_file(self, keys: dict, filepath: str):
         """
-        Save generated keys to a file.
+        Save generated keys to a file with restricted permissions.
 
         Args:
             keys: Dictionary of generated keys
             filepath: Path to save the keys
         """
+        import os
         path = Path(filepath)
 
         # Check if file exists
@@ -181,6 +199,13 @@ class SecurityKeysGenerator:
 
             for key, value in keys.items():
                 f.write(f"{key}={value}\n")
+
+        # Set restrictive file permissions (owner read/write only)
+        try:
+            os.chmod(filepath, 0o600)
+            print(f"✅ File permissions set to 600 (owner read/write only)")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not set file permissions: {e}")
 
         print(f"\n✅ Keys saved to: {filepath}")
         print(f"   Copy these values to your .env file")
@@ -238,6 +263,14 @@ Security Best Practices:
     else:
         keys = generator.generate_all_keys()
 
+    # Verify encryption key
+    if 'ENCRYPTION_KEY' in keys:
+        if generator.verify_encryption_key(keys['ENCRYPTION_KEY']):
+            print("\n✅ ENCRYPTION_KEY verified as valid Fernet key")
+        else:
+            print("\n⚠️  Warning: ENCRYPTION_KEY verification failed")
+            print("   This may indicate a problem with the cryptography library")
+
     # Display keys
     generator.display_keys(keys, show_explanation=not args.no_explanation)
 
@@ -248,6 +281,8 @@ Security Best Practices:
         print(f"   1. Copy keys from {args.output} to your .env file")
         print(f"   2. Delete {args.output} after copying (or store securely)")
         print(f"   3. Never commit {args.output} to version control")
+        print("\n💡 Tip: Rotate keys every 6-12 months for security")
+        print("   Keep old keys archived securely for recovery purposes")
 
 
 if __name__ == '__main__':

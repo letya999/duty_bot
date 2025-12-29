@@ -350,8 +350,7 @@ class GoogleCalendarIntegration(Base):
 
     id = Column(Integer, primary_key=True)
     workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
-    id = Column(Integer, primary_key=True)
-    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False, index=True)
+
     # team_id removed in favor of M2M relationship
 
     # Encrypted Service Account key
@@ -371,6 +370,3 @@ class GoogleCalendarIntegration(Base):
 
     # Relationships
     workspace = relationship('Workspace', back_populates='google_calendar_integration')
-    # Relationships
-    workspace = relationship('Workspace', back_populates='google_calendar_integration')
-    teams = relationship('Team', secondary=google_calendar_teams, lazy='selectin')

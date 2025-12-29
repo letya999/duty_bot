@@ -68,12 +68,80 @@ This guide provides detailed instructions for configuring Telegram, Slack, and G
 - Verify that all environment variables are set correctly in your `.env` file.
 
 ## 3. Google Calendar Integration
-1. **Google Cloud**: Create a project in [Google Cloud Console](https://console.cloud.google.com/).
-2. **Enable API**: Enable the "Google Calendar API".
-3. **Service Account**: Create a Service Account, generate a **JSON key**, and download it.
-4. **Integration**:
-   - Option A: Upload the JSON key via the **Admin Panel** (Settings -> Google Calendar).
-   - Option B: Paste the JSON content directly into `GOOGLE_SERVICE_ACCOUNT_KEY` in `.env`.
+
+### 3.1 Create Google Cloud Project
+1. Go to [Google Cloud Console](https://console.cloud.google.com/).
+2. Click the **Project** dropdown at the top.
+3. Click **NEW PROJECT**.
+4. Enter a project name (e.g., "duty_bot") and click **CREATE**.
+5. Wait for the project to be created and selected.
+
+### 3.2 Enable Google Calendar API
+1. In the Google Cloud Console, go to **APIs & Services** → **Library**.
+2. Search for "Google Calendar API".
+3. Click on it and then click **ENABLE**.
+4. You should see "API enabled" confirmation.
+
+### 3.3 Create Service Account
+1. Go to **APIs & Services** → **Credentials**.
+2. Click **+ CREATE CREDENTIALS** at the top.
+3. Select **Service Account**.
+4. Fill in the details:
+   - **Service account name**: e.g., "duty-bot"
+   - **Service account ID**: Auto-generated
+   - **Description**: Optional (e.g., "Service account for duty_bot calendar integration")
+5. Click **CREATE AND CONTINUE**.
+6. On the next page, you can skip "Grant this service account access to project" for now.
+7. Click **CONTINUE** and then **DONE**.
+
+### 3.4 Generate Service Account Key (JSON)
+1. Go to **APIs & Services** → **Service Accounts**.
+2. Click on the service account you just created.
+3. Go to the **Keys** tab.
+4. Click **ADD KEY** → **Create new key**.
+5. Select **JSON** and click **CREATE**.
+6. A JSON file will be downloaded automatically. Save it securely.
+
+### 3.5 Grant Calendar Access (If Using Shared Calendar)
+If you want the service account to access a specific calendar:
+1. Open the calendar in Google Calendar.
+2. Go to **Settings & sharing** → **Calendar settings**.
+3. Scroll to **Share with specific people and groups**.
+4. Click **Add people and groups**.
+5. Add the service account email (found in the JSON file under `client_email`, looks like `name@project-id.iam.gserviceaccount.com`).
+6. Grant **Editor** or **Viewer** permissions depending on what the bot needs.
+
+### 3.6 Configure Your Application
+Choose one of the following methods to provide the service account credentials:
+
+**Option A: Upload JSON via Admin Panel (Recommended)**
+1. Start your application.
+2. Go to the **Admin Panel** → **Settings** → **Google Calendar**.
+3. Upload the downloaded JSON file.
+4. The system will automatically extract and use the credentials.
+
+**Option B: Use Environment Variable**
+1. Open the JSON key file in a text editor.
+2. Copy the entire JSON content.
+3. In your `.env` file, add:
+   ```
+   GOOGLE_SERVICE_ACCOUNT_KEY='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'
+   ```
+   (Keep it on one line, escaped properly for your shell environment, or use a heredoc).
+
+**Option C: Paste JSON Path**
+1. Save the JSON file in a secure location.
+2. In your `.env` file, add:
+   ```
+   GOOGLE_SERVICE_ACCOUNT_KEY_PATH=/path/to/service-account-key.json
+   ```
+   (Ensure the file is not accessible to unauthorized users).
+
+### 3.7 Test the Integration
+1. Restart your application.
+2. Try creating or updating an event through your app.
+3. Check if the calendar updates in Google Calendar.
+4. If there are issues, check application logs for auth errors.
 
 ## 4. Troubleshooting Common Issues
 - **Ports**: If port 8000 is taken, change `PORT` in `.env`.

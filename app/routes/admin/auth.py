@@ -1,22 +1,31 @@
 """Authentication routes for web panel"""
+
 import logging
 import os
-from fastapi import APIRouter, Request, Response, HTTPException, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
-import json
 import secrets
-from urllib.parse import urlencode
-from sqlalchemy import select, func
+from fastapi import APIRouter, Request, Response, HTTPException, Depends
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.auth import (
-    TelegramOAuth, SlackOAuth, session_manager
-)
-from app.models import Workspace, User, UserAccount
+from app.auth import TelegramOAuth, SlackOAuth, session_manager
+from app.models import User, Workspace
 from app.database import AsyncSessionLocal
 from app.middleware.rate_limiter import limiter, get_rate_limit
 from app.middleware.csrf_protection import csrf_protection
+from app.repositories import (
+    UserRepository,
+    UserAccountRepository,
+    WorkspaceRepository,
+)
+from app.services.auth_service import AuthService
+from app.utils.auth import (
+    get_session_from_cookie,
+    set_session_cookie,
+    clear_session_cookie,
+    build_user_data_json,
+)
+from app.utils.auth_templates import telegram_login_page, redirect_with_user_data
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -31,28 +40,6 @@ slack_oauth = SlackOAuth()
 pending_states = {}
 
 
-async def get_session_from_cookie(request: Request) -> dict:
-    """Extract session from cookies or Authorization header"""
-    token = request.cookies.get('session_token')
-    
-    # Also check Authorization header for flexibility
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            temp_token = auth_header.split(" ", 1)[1]
-            if temp_token and temp_token not in ("null", "undefined"):
-                token = temp_token
-            
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    session = await session_manager.validate_session(token)
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-    return session
-
-
 @router.get("/web/auth/login")
 async def login_page(request: Request):
     """Login page - Redirect to modern React dashboard"""
@@ -61,80 +48,17 @@ async def login_page(request: Request):
 
 @router.get("/web/auth/telegram-login")
 async def telegram_login(request: Request):
-    """Telegram login redirect"""
-    # In production, would use TG Login Widget or manual validation
-    # For now, show info about manual validation
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Telegram Login</title>
-        <script async src="https://telegram.org/js/telegram-web-app.js"></script>
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                padding: 20px;
-                background: #f5f5f5;
-            }
-            .container {
-                max-width: 500px;
-                margin: 0 auto;
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Telegram Login</h1>
-            <p>Opening Telegram login...</p>
-            <p id="status">Loading...</p>
-        </div>
-        <script>
-            const tg = window.Telegram.WebApp;
-
-            async function authenticate() {
-                const initData = tg.initData;
-                if (!initData) {
-                    document.getElementById('status').textContent = 'Error: initData not available';
-                    return;
-                }
-
-                try {
-                    const response = await fetch('/web/auth/telegram-callback', {
-                        method: 'POST',
-                        credentials: 'include',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: 'init_data=' + encodeURIComponent(initData)
-                    });
-
-                    if (response.ok) {
-                        window.location.href = '/web/dashboard';
-                    } else {
-                        const data = await response.json();
-                        document.getElementById('status').textContent = 'Error: ' + data.detail;
-                    }
-                } catch (error) {
-                    document.getElementById('status').textContent = 'Error: ' + error.message;
-                }
-            }
-
-            authenticate();
-        </script>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html)
+    """Telegram login redirect - show Telegram Web App login page"""
+    return HTMLResponse(content=telegram_login_page())
 
 
 @router.post("/web/auth/telegram-callback")
 @limiter.limit(get_rate_limit("auth_strict"))
 async def telegram_callback(request: Request):
-    """Handle Telegram OAuth callback"""
+    """Handle Telegram OAuth callback - validate and create/get user session"""
     try:
         form_data = await request.form()
-        init_data = form_data.get('init_data')
+        init_data = form_data.get("init_data")
 
         if not init_data:
             logger.error("No init data provided in request")
@@ -150,53 +74,24 @@ async def telegram_callback(request: Request):
 
         # Get or create user and workspace
         async with AsyncSessionLocal() as db:
-            # 1. Try to find an existing user record with this telegram_id
-            user_stmt = select(User).join(UserAccount).where(
-                UserAccount.provider == 'telegram', 
-                UserAccount.provider_id == str(user_info['user_id'])
-            ).order_by(User.is_superadmin.desc(), User.is_admin.desc())
-            result = await db.execute(user_stmt)
-            existing_user = result.scalars().first()
-
-            if existing_user:
-                logger.info(f"Found existing user {existing_user.id} in workspace {existing_user.workspace_id}")
-                user = existing_user
-                workspace = await db.get(Workspace, user.workspace_id)
-            else:
-                # 2. If no user found, look for or create a personal workspace
-                workspace_stmt = select(Workspace).where(
-                    (Workspace.workspace_type == 'telegram') &
-                    (Workspace.external_id == str(user_info['user_id']))
-                )
-                result = await db.execute(workspace_stmt)
-                workspace = result.scalars().first()
-
-                if not workspace:
-                    logger.info(f"Creating new workspace for Telegram user {user_info['user_id']}")
-                    workspace = Workspace(
-                        workspace_type='telegram',
-                        external_id=str(user_info['user_id']),
-                        name=f"Workspace for {user_info.get('first_name', 'User')}"
-                    )
-                    db.add(workspace)
-                    await db.commit()
-                    await db.refresh(workspace)
-                    logger.info(f"Created workspace: {workspace.id}")
-                else:
-                    logger.info(f"Found existing workspace: {workspace.id}")
-
-                user = None # Will be created below
-
-            # Get or create user with workspace_id set
-            # First try to find by telegram_id
-            user_stmt = select(User).join(UserAccount).where(
-                UserAccount.provider == 'telegram',
-                UserAccount.provider_id == str(user_info['user_id']),
-                User.workspace_id == workspace.id
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
             )
-            result = await db.execute(user_stmt)
-            user = result.scalars().first()
 
+<<<<<<< HEAD
+            user, workspace = await auth_service.get_or_create_user_for_provider(
+                provider="telegram",
+                provider_id=str(user_info["user_id"]),
+                user_info=user_info,
+                allow_registration=True,
+            )
+
+            if not user or not workspace:
+                raise HTTPException(status_code=401, detail="Failed to provision user")
+=======
             # If not found by ID, try to find by username
             if not user and user_info.get('username'):
                 logger.info(f"User not found by telegram_id, trying by username: {user_info.get('username')}")
@@ -254,66 +149,30 @@ async def telegram_callback(request: Request):
                 logger.info(f"Created user: {user.id} and linked Telegram account")
             else:
                 logger.info(f"Found existing user: {user.id}")
+>>>>>>> origin/main
 
         # Create session
         session_token = await session_manager.create_session(
-            user.id,
-            workspace.id,
-            'telegram'
+            user.id, workspace.id, "telegram"
         )
         logger.info(f"Created session token for user {user.id}")
 
         # Prepare user data for React
-        user_data = {
-            "id": user.id,
-            "username": user.username or user.telegram_username,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "is_admin": user.is_admin,
-            "is_superadmin": user.is_superadmin,
-            "workspace_id": user.workspace_id,
-        }
-        
-        # Master admin check
-        if user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram'):
-            user_data["is_admin"] = True
-            if not user.is_admin:
-                # Update in memory and potentially DB
-                user_data["is_admin"] = True
-        
-        # Superadmin check
-        if user.is_superadmin:
-            user_data["is_superadmin"] = True
+        async with AsyncSessionLocal() as db:
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
+            )
+            user_data = auth_service.build_user_response(user, provider="telegram")
 
         # Return bridge HTML to set user data and redirect to modern dashboard
-        # Security: Session token is stored in httpOnly cookie only (not localStorage)
-        # to protect against XSS attacks
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head><title>Redirecting...</title></head>
-        <body>
-            <script>
-                // Store only non-sensitive user data for UI state
-                localStorage.setItem('user', {json.dumps(json.dumps(user_data))});
-                // Session token is in httpOnly cookie - DO NOT store in localStorage
-                window.location.href = '/';
-            </script>
-        </body>
-        </html>
-        """
+        html = redirect_with_user_data(build_user_data_json(user_data))
         response = HTMLResponse(content=html)
+
         # Determine if we're in production (use HTTPS)
-        is_production = os.environ.get('ENVIRONMENT', 'development').lower() == 'production'
-        response.set_cookie(
-            "session_token",
-            session_token,
-            max_age=86400,
-            httponly=True,
-            samesite="Lax",
-            path="/",
-            secure=False  # Changed to False for debugging
-        )
+        set_session_cookie(response, session_token, samesite="Lax")
         logger.info(f"Setting session cookie and redirection bridge for Telegram user {user.id}")
         return response
 
@@ -326,134 +185,115 @@ async def telegram_callback(request: Request):
 
 @router.post("/web/auth/telegram-widget-callback")
 @limiter.limit(get_rate_limit("auth_strict"))
-async def telegram_widget_callback(
-    request: Request,
-    user_account_service: "UserAccountService" = Depends(lambda: None) # Will be resolved below if possible or used manually
-):
-    """Handle Telegram Login Widget callback (for web admin panel)"""
-    from app.routes.admin.dependencies import get_user_account_service
-    # We might need to resolve it manually since this is a route but let's try Depends first
-    # Actually, let's use the manual way to be safe in this complex file
-    
+async def telegram_widget_callback(request: Request):
+    """Handle Telegram Login Widget callback (for web admin panel) - admins only"""
     try:
-        logger.info("🔵 [Backend] POST /telegram-widget-callback received")
-        logger.info(f"🔵 [Backend] Request headers: {dict(request.headers)}")
+        logger.info("Telegram widget callback received")
 
         data = await request.json()
-        logger.info(f"🔵 [Backend] JSON body parsed successfully")
-        logger.info(f"🔵 [Backend] Data keys: {list(data.keys())}")
-        logger.info(f"🔵 [Backend] Data: {data}")
+        logger.info(f"Widget callback data keys: {list(data.keys())}")
 
-        if not data.get('id'):
-            logger.error("❌ [Backend] No user ID provided in widget callback")
+        if not data.get("id"):
+            logger.error("No user ID provided in widget callback")
             raise HTTPException(status_code=400, detail="No user ID provided")
 
-        logger.info(f"🔵 [Backend] User ID present: {data.get('id')}")
-
         # Validate the widget data
-        logger.info(f"🔵 [Backend] Validating widget data...")
+        logger.info("Validating widget data...")
         user_info = await telegram_oauth.validate_widget_data(data)
         if not user_info:
-            logger.error(f"❌ [Backend] Failed to validate widget data")
+            logger.error("Failed to validate widget data")
             raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
 
-        logger.info(f"✅ [Backend] Validation SUCCESS: {user_info}")
+        logger.info(f"Widget validation successful")
 
-        # Get or create user and workspace
-        # Get user
+        # Get or create user and workspace (admin panel only - no registration)
         async with AsyncSessionLocal() as db:
-            # 1. Try to find an existing user record with this telegram_id
-            # Order by is_admin desc to prefer workspaces where the user is an admin
-            # Order by created_at desc to prefer more recently created/active profiles as a tie-breaker
-            user_stmt = select(User).join(UserAccount).where(
-                UserAccount.provider == 'telegram',
-                UserAccount.provider_id == str(user_info['user_id'])
-            ).order_by(User.is_superadmin.desc(), User.is_admin.desc(), User.created_at.desc())
-            result = await db.execute(user_stmt)
-            existing_user = result.scalars().first()
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
+            )
 
-            if existing_user:
-                logger.info(f"Found existing user {existing_user.id} in workspace {existing_user.workspace_id}")
-                
-                # Verify if user is admin in THIS workspace or a master admin
-                # Since we ordered by is_admin desc, if the first result is not admin, they aren't admin anywhere
-                is_admin = existing_user.is_admin
-                from app.config import get_settings
-                settings = get_settings()
-                if existing_user.telegram_id and str(existing_user.telegram_id) in settings.get_admin_ids('telegram'):
-                    is_admin = True
-                
-                if not is_admin:
-                    logger.warning(f"User {user_info['user_id']} found but is not an admin in any workspace.")
-                    raise HTTPException(status_code=403, detail="Access denied. Only administrators can access the web panel.")
-                
-                user = existing_user
-                workspace = await db.get(Workspace, user.workspace_id)
-            else:
-                # Per user request: DO NOT CREATE NEW USERS/WORKSPACES via login
-                logger.warning(f"User {user_info['user_id']} not found in any workspace and registration is disabled.")
-                raise HTTPException(status_code=403, detail="User not found. Please ask your administrator to add you to a team first.")
+            user, workspace = await auth_service.get_or_create_user_for_provider(
+                provider="telegram",
+                provider_id=str(user_info["user_id"]),
+                user_info=user_info,
+                allow_registration=False,  # Admin panel - no auto-registration
+            )
+
+            if not user or not workspace:
+                logger.warning(
+                    f"User {user_info['user_id']} not found and registration is disabled"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="User not found. Please ask your administrator to add you to a team first.",
+                )
+
+            # Check admin status
+            if not auth_service.check_admin_status(user, provider="telegram"):
+                logger.warning(
+                    f"User {user_info['user_id']} found but is not an admin in any workspace"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access denied. Only administrators can access the web panel.",
+                )
 
         # Create session
         session_token = await session_manager.create_session(
-            user.id,
-            workspace.id,
-            'telegram'
+            user.id, workspace.id, "telegram"
         )
-        logger.info(f"✅ [Backend] Created session token for user {user.id}")
+        logger.info(f"Created session token for user {user.id}")
 
-        from fastapi.responses import JSONResponse
-        response = JSONResponse(content={
-            "success": True,
-            "session_token": session_token,
-            "user": {
-                "id": user.id,
-                "username": user.username or user.telegram_username,
-                "telegram_username": user.telegram_username,
-                "first_name": user.first_name,
-                "last_name": user.last_name,
-                "is_admin": user.is_admin or (user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram')),
-                "is_superadmin": user.is_superadmin,
-                "workspace_id": user.workspace_id,
+        # Build response
+        async with AsyncSessionLocal() as db:
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
+            )
+            user_data = auth_service.build_user_response(user, provider="telegram")
+
+        response = JSONResponse(
+            content={
+                "success": True,
+                "session_token": session_token,
+                "user": {
+                    **user_data,
+                    "telegram_username": user.telegram_username,
+                },
             }
-        })
-        
-        # Ensure UserAccount entry exists
-        try:
-            from app.repositories.user_account_repository import UserAccountRepository
-            from app.repositories.user_repository import UserRepository
-            from app.services.user_account_service import UserAccountService
-            
-            async with AsyncSessionLocal() as db:
-                ua_service = UserAccountService(UserAccountRepository(db), UserRepository(db), db)
-                await ua_service.find_or_create_account(
-                    user_id=user.id,
-                    provider='telegram',
-                    provider_id=str(user_info['user_id']),
-                    workspace_id=user.workspace_id,
-                    username=user_info.get('username')
-                )
-        except Exception as e:
-            logger.warning(f"Failed to create/update UserAccount during login: {e}")
-        
-        # Set cookie for web panel
-        response.set_cookie(
-            "session_token",
-            session_token,
-            max_age=86400,
-            httponly=True,
-            samesite="Lax",
-            path="/",
-            secure=False # Changed to False for debugging
         )
-        
-        logger.info(f"✅ [Backend] Returning success response and setting cookie")
+
+        # Ensure UserAccount entry exists
+        async with AsyncSessionLocal() as db:
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
+            )
+            await auth_service.ensure_user_account(
+                user_id=user.id,
+                provider="telegram",
+                provider_id=str(user_info["user_id"]),
+                workspace_id=user.workspace_id,
+                username=user_info.get("username"),
+            )
+
+        # Set cookie for web panel
+        set_session_cookie(response, session_token, samesite="Lax")
+
+        logger.info(f"Returning success response with session cookie")
         return response
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ [Backend] Error in Telegram widget callback: {e}", exc_info=True)
+        logger.error(f"Error in Telegram widget callback: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -472,7 +312,7 @@ async def slack_login(request: Request):
 @router.get("/api/admin/auth/slack/callback")
 @limiter.limit(get_rate_limit("auth_strict"))
 async def slack_callback(request: Request, code: str = None, state: str = None):
-    """Handle Slack OAuth callback"""
+    """Handle Slack OAuth callback - validate and create/get user session"""
     try:
         if not code or not state:
             logger.error("Missing code or state in Slack callback")
@@ -490,8 +330,7 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
 
         # Get user info - pass user_id to avoid identifying as bot
         user_info = await slack_oauth.get_user_info(
-            token_info['access_token'], 
-            token_info.get('user_id')
+            token_info["access_token"], token_info.get("user_id")
         )
         if not user_info:
             logger.error("Failed to get Slack user info")
@@ -501,29 +340,40 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
 
         # Get or create user and workspace
         async with AsyncSessionLocal() as db:
-            # Get or create workspace for this Slack team
-            workspace_stmt = select(Workspace).where(
-                (Workspace.workspace_type == 'slack') &
-                (Workspace.external_id == token_info['team_id'])
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
             )
-            result = await db.execute(workspace_stmt)
-            workspace = result.scalars().first()
 
-            if not workspace:
-                logger.info(f"Creating new workspace for Slack team {token_info['team_id']}")
-                # Create workspace for this Slack team
-                workspace = Workspace(
-                    workspace_type='slack',
-                    external_id=token_info['team_id'],
-                    name=token_info['team_name']
-                )
-                db.add(workspace)
-                await db.commit()
-                await db.refresh(workspace)
-                logger.info(f"Created workspace: {workspace.id}")
+            # Provide team info in user_info for workspace creation
+            user_info["team_name"] = token_info.get("team_name")
+
+            user, workspace = await auth_service.get_or_create_user_for_provider(
+                provider="slack",
+                provider_id=token_info["team_id"],
+                user_info=user_info,
+                allow_registration=True,
+            )
+
+            if not user or not workspace:
+                raise HTTPException(status_code=401, detail="Failed to provision user")
+
+            # Handle backwards compatibility: update names if missing
+            if user.first_name or user.last_name or user.display_name:
+                # User already has name info, skip update
+                pass
             else:
-                logger.info(f"Found existing workspace: {workspace.id}")
+                if user_info.get("first_name"):
+                    user.first_name = user_info["first_name"]
+                if user_info.get("last_name"):
+                    user.last_name = user_info["last_name"]
+                if user_info.get("display_name"):
+                    user.display_name = user_info["display_name"]
 
+<<<<<<< HEAD
+=======
             # Get or create user with workspace_id set
             # 1. Try to find an existing account ALREADY in this workspace (any identity)
             user_stmt = select(User).join(UserAccount).where(
@@ -595,116 +445,48 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
                     display_name=user_info.get('display_name') or user_info.get('real_name') or user_info.get('username')
                 )
                 db.add(user)
+>>>>>>> origin/main
                 await db.commit()
                 await db.refresh(user)
-                
-                # Create UserAccount
-                user_account = UserAccount(
-                    user_id=user.id,
-                    workspace_id=workspace.id,
-                    provider='slack',
-                    provider_id=user_info['user_id'],
-                    username=user_info.get('username')
-                )
-                db.add(user_account)
-                await db.commit()
-                logger.info(f"Created user: {user.id} and linked Slack account")
-            else:
-                logger.info(f"Found existing user: {user.id}")
-                # Update names if missing
-                updated = False
-                if not user.first_name and user_info.get('first_name'):
-                    user.first_name = user_info['first_name']
-                    updated = True
-                if not user.last_name and user_info.get('last_name'):
-                    user.last_name = user_info['last_name']
-                    updated = True
-                if not user.display_name and user_info.get('display_name'):
-                    user.display_name = user_info['display_name']
-                    updated = True
-                
-                if updated:
-                    await db.commit()
-                    await db.refresh(user)
 
         # Create session
         session_token = await session_manager.create_session(
-            user.id,
-            workspace.id,
-            'slack'
+            user.id, workspace.id, "slack"
         )
         logger.info(f"Created session token for user {user.id}")
 
         # Prepare user data for React
-        user_data = {
-            "id": user.id,
-            "username": user.username,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "is_admin": user.is_admin,
-            "is_superadmin": user.is_superadmin,
-            "workspace_id": user.workspace_id,
-        }
-        
-        # Master admin check
-        is_admin = user.is_admin
-        if user.slack_user_id and user.slack_user_id in settings.get_admin_ids('slack'):
-            is_admin = True
-            user_data["is_admin"] = True
-        if user.telegram_id and str(user.telegram_id) in settings.get_admin_ids('telegram'):
-            is_admin = True
-            user_data["is_admin"] = True
-        
-        if user.is_superadmin:
-            user_data["is_superadmin"] = True
+        async with AsyncSessionLocal() as db:
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
+            )
+            user_data = auth_service.build_user_response(user, provider="slack")
 
         # Ensure UserAccount entry exists
-        try:
-            from app.repositories.user_account_repository import UserAccountRepository
-            from app.repositories.user_repository import UserRepository
-            from app.services.user_account_service import UserAccountService
-            
-            async with AsyncSessionLocal() as db:
-                ua_service = UserAccountService(UserAccountRepository(db), UserRepository(db), db)
-                await ua_service.find_or_create_account(
-                    user_id=user.id,
-                    provider='slack',
-                    provider_id=user_info['user_id'],
-                    workspace_id=user.workspace_id,
-                    username=user_info.get('username')
-                )
-        except Exception as e:
-            logger.warning(f"Failed to create/update UserAccount during Slack login: {e}")
+        async with AsyncSessionLocal() as db:
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
+            )
+            await auth_service.ensure_user_account(
+                user_id=user.id,
+                provider="slack",
+                provider_id=user_info["user_id"],
+                workspace_id=user.workspace_id,
+                username=user_info.get("username"),
+            )
 
         # Return bridge HTML to set user data and redirect to modern dashboard
-        # Security: Session token is stored in httpOnly cookie only (not localStorage)
-        # to protect against XSS attacks
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head><title>Redirecting...</title></head>
-        <body>
-            <script>
-                // Store only non-sensitive user data for UI state
-                localStorage.setItem('user', {json.dumps(json.dumps(user_data))});
-                // Session token is in httpOnly cookie - DO NOT store in localStorage
-                window.location.href = '/';
-            </script>
-        </body>
-        </html>
-        """
+        html = redirect_with_user_data(build_user_data_json(user_data))
         response = HTMLResponse(content=html)
-        # Determine if we're in production (use HTTPS)
-        is_production = os.environ.get('ENVIRONMENT', 'development').lower() == 'production'
-        response.set_cookie(
-            "session_token",
-            session_token,
-            max_age=86400,
-            httponly=True,
-            samesite="None",
-            path="/",
-            secure=True
-        )
+
+        # Slack requires SameSite=None with Secure for cross-site cookies
+        set_session_cookie(response, session_token, samesite="None")
         logger.info(f"Setting session cookie and redirection bridge for Slack user {user.id}")
 
         # Clean up state
@@ -723,13 +505,13 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
 @router.get("/web/auth/logout")
 @limiter.limit(get_rate_limit("auth_normal"))
 async def logout(request: Request):
-    """Logout user"""
-    token = request.cookies.get('session_token')
+    """Logout user - revoke session and clear cookies"""
+    token = request.cookies.get("session_token")
     if token:
         await session_manager.revoke_session(token)
 
     response = RedirectResponse(url="/web/auth/login", status_code=302)
-    response.delete_cookie("session_token")
+    clear_session_cookie(response)
     return response
 
 
@@ -751,82 +533,91 @@ async def get_csrf_token(request: Request):
 
 
 @router.get("/web/auth/workspaces")
-async def list_workspaces(request: Request, session: dict = Depends(get_session_from_cookie)):
-    """Get list of available workspaces for current user.
-
-    Returns workspaces where the user has access (is a member or admin).
-    If user is only in one workspace, return that single workspace.
-    """
+async def list_workspaces(
+    request: Request, session: dict = Depends(get_session_from_cookie)
+):
+    """Get list of workspaces where current user has admin/superadmin access"""
     try:
-        user_id = session['user_id']
-        current_workspace_id = session['workspace_id']
+        user_id = session["user_id"]
+        current_workspace_id = session["workspace_id"]
 
         async with AsyncSessionLocal() as db:
-            # Get current user to access their telegram_id or slack_user_id
+            # Get current user
             current_user = await db.get(User, user_id)
             if not current_user:
                 raise HTTPException(status_code=404, detail="User not found")
 
-            # Find all workspaces where this user exists with same platform ID
-            # This ensures we only list workspaces where the user actually belongs
-            stmt = select(User).where(
-                User.telegram_id == current_user.telegram_id if current_user.telegram_id else None or
-                User.slack_user_id == current_user.slack_user_id if current_user.slack_user_id else None
+            # Find all user records for this user (across all workspaces)
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
             )
 
+            # Build list of all user records for this platform ID
+            user_records = []
+
             if current_user.telegram_id:
-                stmt = select(User).join(UserAccount).where(
-                    UserAccount.provider == 'telegram',
-                    UserAccount.provider_id == str(current_user.telegram_id)
+                stmt = (
+                    select(User)
+                    .join(UserAccount)
+                    .where(
+                        UserAccount.provider == "telegram",
+                        UserAccount.provider_id == str(current_user.telegram_id),
+                    )
                 )
             elif current_user.slack_user_id:
-                stmt = select(User).join(UserAccount).where(
-                    UserAccount.provider == 'slack',
-                    UserAccount.provider_id == current_user.slack_user_id
+                stmt = (
+                    select(User)
+                    .join(UserAccount)
+                    .where(
+                        UserAccount.provider == "slack",
+                        UserAccount.provider_id == current_user.slack_user_id,
+                    )
                 )
             else:
                 raise HTTPException(status_code=400, detail="User has no platform ID")
 
             result = await db.execute(stmt)
-            all_user_records = result.scalars().all()
+            user_records = result.scalars().all()
 
-            # Build workspace list from all user records
+            # Build workspace list
             workspaces = []
             workspace_ids = set()
 
-            admin_telegram_ids = settings.get_admin_ids('telegram')
-            admin_slack_ids = settings.get_admin_ids('slack')
+            for user_record in user_records:
+                if user_record.workspace_id in workspace_ids:
+                    continue
 
-            for user_record in all_user_records:
-                if user_record.workspace_id not in workspace_ids:
-                    workspace_ids.add(user_record.workspace_id)
-                    workspace = await db.get(Workspace, user_record.workspace_id)
-                    if workspace:
-                        is_admin = user_record.is_admin
-                        
-                        # Master admin bypass
-                        if user_record.telegram_id and str(user_record.telegram_id) in admin_telegram_ids:
-                            is_admin = True
-                        if user_record.slack_user_id and user_record.slack_user_id in admin_slack_ids:
-                            is_admin = True
-                        
-                        # Superadmin privilege: allow access to all their workspaces
-                        is_allowed = is_admin or user_record.is_superadmin
+                workspace_ids.add(user_record.workspace_id)
+                workspace = await db.get(Workspace, user_record.workspace_id)
+                if not workspace:
+                    continue
 
-                        # Filter: only show if admin, superadmin or master admin
-                        if is_allowed:
-                            workspaces.append({
-                                'id': workspace.id,
-                                'name': workspace.name,
-                                'type': workspace.workspace_type,
-                                'is_current': workspace.id == current_workspace_id,
-                                'is_admin': is_admin,
-                                'is_superadmin': user_record.is_superadmin,
-                                'role': 'superadmin' if user_record.is_superadmin else ('admin' if is_admin else 'member')
-                            })
+                # Check if user has access (admin, superadmin, or master admin)
+                is_admin = auth_service.check_admin_status(user_record)
+
+                if is_admin or user_record.is_superadmin:
+                    role = (
+                        "superadmin"
+                        if user_record.is_superadmin
+                        else ("admin" if is_admin else "member")
+                    )
+                    workspaces.append(
+                        {
+                            "id": workspace.id,
+                            "name": workspace.name,
+                            "type": workspace.workspace_type,
+                            "is_current": workspace.id == current_workspace_id,
+                            "is_admin": is_admin,
+                            "is_superadmin": user_record.is_superadmin,
+                            "role": role,
+                        }
+                    )
 
             logger.info(f"User {user_id} has access to {len(workspaces)} workspace(s)")
-            return {'workspaces': workspaces}
+            return {"workspaces": workspaces}
 
     except HTTPException:
         raise
@@ -837,18 +628,20 @@ async def list_workspaces(request: Request, session: dict = Depends(get_session_
 
 @router.post("/web/auth/switch-workspace")
 @limiter.limit(get_rate_limit("auth_normal"))
-async def switch_workspace(request: Request, session: dict = Depends(get_session_from_cookie)):
+async def switch_workspace(
+    request: Request, session: dict = Depends(get_session_from_cookie)
+):
     """Switch to a different workspace.
 
     Request body: {"workspace_id": <id>}
-    Response: New session token
+    Response: New session token for target workspace
     """
     try:
-        user_id = session['user_id']
-        current_workspace_id = session['workspace_id']
+        user_id = session["user_id"]
+        current_workspace_id = session["workspace_id"]
 
         data = await request.json()
-        target_workspace_id = data.get('workspace_id')
+        target_workspace_id = data.get("workspace_id")
 
         if not target_workspace_id:
             raise HTTPException(status_code=400, detail="Missing workspace_id")
@@ -856,8 +649,8 @@ async def switch_workspace(request: Request, session: dict = Depends(get_session
         if target_workspace_id == current_workspace_id:
             logger.info(f"User {user_id} already in workspace {target_workspace_id}")
             return {
-                'session_token': request.cookies.get('session_token'),
-                'message': 'Already in this workspace'
+                "session_token": request.cookies.get("session_token"),
+                "message": "Already in this workspace",
             }
 
         async with AsyncSessionLocal() as db:
@@ -866,18 +659,33 @@ async def switch_workspace(request: Request, session: dict = Depends(get_session
             if not current_user:
                 raise HTTPException(status_code=404, detail="User not found")
 
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
+            )
+
             # Find user record in target workspace with same platform ID
             if current_user.telegram_id:
-                target_user_stmt = select(User).join(UserAccount).where(
-                    UserAccount.provider == 'telegram',
-                    UserAccount.provider_id == str(current_user.telegram_id),
-                    User.workspace_id == target_workspace_id
+                target_user_stmt = (
+                    select(User)
+                    .join(UserAccount)
+                    .where(
+                        UserAccount.provider == "telegram",
+                        UserAccount.provider_id == str(current_user.telegram_id),
+                        User.workspace_id == target_workspace_id,
+                    )
                 )
             elif current_user.slack_user_id:
-                target_user_stmt = select(User).join(UserAccount).where(
-                    UserAccount.provider == 'slack',
-                    UserAccount.provider_id == current_user.slack_user_id,
-                    User.workspace_id == target_workspace_id
+                target_user_stmt = (
+                    select(User)
+                    .join(UserAccount)
+                    .where(
+                        UserAccount.provider == "slack",
+                        UserAccount.provider_id == current_user.slack_user_id,
+                        User.workspace_id == target_workspace_id,
+                    )
                 )
             else:
                 raise HTTPException(status_code=400, detail="User has no platform ID")
@@ -886,67 +694,61 @@ async def switch_workspace(request: Request, session: dict = Depends(get_session
             target_user = result.scalar_one_or_none()
 
             if not target_user:
-                logger.warning(f"User {user_id} not found in target workspace {target_workspace_id}")
+                logger.warning(
+                    f"User {user_id} not found in target workspace {target_workspace_id}"
+                )
                 raise HTTPException(status_code=403, detail="Access denied to this workspace")
 
-            # Verify admin status for the target workspace
-            from app.config import get_settings
-            settings = get_settings()
-            is_admin = target_user.is_admin
-            
-            # Master admin bypass
-            if target_user.telegram_id and str(target_user.telegram_id) in settings.get_admin_ids('telegram'):
-                is_admin = True
-            if target_user.slack_user_id and target_user.slack_user_id in settings.get_admin_ids('slack'):
-                is_admin = True
+            # Check admin status for the target workspace
+            is_admin = auth_service.check_admin_status(target_user)
 
-            if not is_admin:
-                logger.warning(f"User {user_id} attempted to switch to workspace {target_workspace_id} without admin rights")
-                raise HTTPException(status_code=403, detail="You do not have administrator permissions in this workspace")
+            if not is_admin and not target_user.is_superadmin:
+                logger.warning(
+                    f"User {user_id} attempted to switch to workspace {target_workspace_id} without admin rights"
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="You do not have administrator permissions in this workspace",
+                )
 
             # Verify workspace exists
             target_workspace = await db.get(Workspace, target_workspace_id)
             if not target_workspace:
                 raise HTTPException(status_code=404, detail="Workspace not found")
 
-            logger.info(f"Switching user {user_id} from workspace {current_workspace_id} to {target_workspace_id}")
+            logger.info(
+                f"Switching user {user_id} from workspace {current_workspace_id} to {target_workspace_id}"
+            )
 
         # Create new session for target workspace
         new_token = await session_manager.create_session(
-            target_user.id,
-            target_workspace_id,
-            target_workspace.workspace_type
+            target_user.id, target_workspace_id, target_workspace.workspace_type
         )
 
-        from fastapi.responses import JSONResponse
-        response = JSONResponse(content={
-            'success': True,
-            'session_token': new_token,
-            'user': {
-                'id': target_user.id,
-                'username': target_user.username or target_user.telegram_username,
-                'first_name': target_user.first_name,
-                'last_name': target_user.last_name,
-                'is_admin': is_admin,
-                'is_superadmin': target_user.is_superadmin,
-                'workspace_id': target_workspace_id,
-            },
-            'workspace': {
-                'id': target_workspace_id,
-                'name': target_workspace.name,
-                'type': target_workspace.workspace_type
+        async with AsyncSessionLocal() as db:
+            auth_service = AuthService(
+                UserRepository(db),
+                UserAccountRepository(db),
+                WorkspaceRepository(db),
+                db,
+            )
+            user_data = auth_service.build_user_response(target_user)
+
+        response = JSONResponse(
+            content={
+                "success": True,
+                "session_token": new_token,
+                "user": user_data,
+                "workspace": {
+                    "id": target_workspace_id,
+                    "name": target_workspace.name,
+                    "type": target_workspace.workspace_type,
+                },
             }
-        })
-        
-        response.set_cookie(
-            "session_token",
-            new_token,
-            max_age=86400,
-            httponly=True,
-            samesite="Lax",
-            secure=True
         )
-        
+
+        set_session_cookie(response, new_token, samesite="Lax")
+
         return response
 
     except HTTPException:

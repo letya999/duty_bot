@@ -23,12 +23,28 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const sessionToken = localStorage.getItem('session_token');
-    if (sessionToken) {
-      setIsAuthenticated(true);
-    } else {
-      setIsAuthenticated(false);
-    }
+    const checkAuth = async () => {
+      try {
+        // Try to fetch user info to validate session (relies on httpOnly cookie)
+        const response = await fetch('/api/admin/users/info', { credentials: 'include' });
+
+        if (response.ok) {
+          setIsAuthenticated(true);
+          const userData = await response.json();
+          localStorage.setItem('user', JSON.stringify(userData));
+        } else {
+          setIsAuthenticated(false);
+          // Clear stale data
+          localStorage.removeItem('session_token');
+          localStorage.removeItem('user');
+        }
+      } catch (error) {
+        console.error("Auth check failed:", error);
+        setIsAuthenticated(false);
+      }
+    };
+
+    checkAuth();
   }, []);
 
   if (isAuthenticated === null) {

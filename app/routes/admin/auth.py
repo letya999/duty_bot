@@ -307,7 +307,8 @@ async def telegram_callback(request: Request):
             max_age=86400,
             httponly=True,
             samesite="Lax",
-            secure=True  # Usually HTTPS via ngrok or prod
+            path="/",
+            secure=False  # Changed to False for debugging
         )
         logger.info(f"Setting session cookie and redirection bridge for Telegram user {user.id}")
         return response
@@ -438,7 +439,8 @@ async def telegram_widget_callback(
             max_age=86400,
             httponly=True,
             samesite="Lax",
-            secure=True # ngrok uses https
+            path="/",
+            secure=False # Changed to False for debugging
         )
         
         logger.info(f"✅ [Backend] Returning success response and setting cookie")
@@ -668,8 +670,9 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
             session_token,
             max_age=86400,
             httponly=True,
-            samesite="Lax",
-            secure=True  # Usually HTTPS via ngrok
+            samesite="None",
+            path="/",
+            secure=True
         )
         logger.info(f"Setting session cookie and redirection bridge for Slack user {user.id}")
 

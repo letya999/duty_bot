@@ -10,12 +10,51 @@ const api = axios.create({
   },
 });
 
-// Add session token to all requests
-api.interceptors.request.use((config) => {
+// CSRF Token handling
+let csrfTokenPromise: Promise<string | null> | null = null;
+let lastCsrfFetch = 0;
+const CSRF_CACHE_TIME = 1000 * 60 * 5; // 5 minutes
+
+async function getCsrfToken(): Promise<string | null> {
+  const now = Date.now();
+  if (csrfTokenPromise && (now - lastCsrfFetch < CSRF_CACHE_TIME)) {
+    return csrfTokenPromise;
+  }
+
+  lastCsrfFetch = now;
+  csrfTokenPromise = (async () => {
+    try {
+      const response = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        return data.csrf_token;
+      }
+    } catch (error) {
+      console.error('Failed to fetch CSRF token:', error);
+    }
+    return null;
+  })();
+
+  return csrfTokenPromise;
+}
+
+// Add session token and CSRF token to all requests
+api.interceptors.request.use(async (config) => {
+  // Add session token
   const sessionToken = localStorage.getItem('session_token');
   if (sessionToken) {
     config.headers['Authorization'] = `Bearer ${sessionToken}`;
   }
+
+  // Add CSRF token for state-changing methods
+  const protectedMethods = ['post', 'put', 'delete', 'patch'];
+  if (config.method && protectedMethods.includes(config.method.toLowerCase())) {
+    const csrfToken = await getCsrfToken();
+    if (csrfToken) {
+      config.headers['X-CSRF-Token'] = csrfToken;
+    }
+  }
+
   return config;
 });
 

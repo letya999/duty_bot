@@ -104,11 +104,14 @@ export const UserConsolidationWizard: React.FC<UserConsolidationWizardProps> = (
     const saveName = async (userId: number) => {
         setSavingName(true);
         try {
+            const csrfRes = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+            const csrfToken = csrfRes.ok ? (await csrfRes.json()).csrf_token : '';
             const token = localStorage.getItem('session_token');
             const res = await fetch(`/api/admin/users/${userId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
                     'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ display_name: editNameValue })
@@ -130,6 +133,9 @@ export const UserConsolidationWizard: React.FC<UserConsolidationWizardProps> = (
         setLoading(true);
         const token = localStorage.getItem('session_token');
         try {
+            const csrfRes = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+            const csrfToken = csrfRes.ok ? (await csrfRes.json()).csrf_token : '';
+
             for (const [targetIdStr, sourceIds] of Object.entries(userMerges)) {
                 const targetId = Number(targetIdStr);
                 for (const sourceId of sourceIds) {
@@ -137,6 +143,7 @@ export const UserConsolidationWizard: React.FC<UserConsolidationWizardProps> = (
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'X-CSRF-Token': csrfToken,
                             'Authorization': `Bearer ${token}`
                         },
                         body: JSON.stringify({

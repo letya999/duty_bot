@@ -114,6 +114,9 @@ export const ConsolidationWizard: React.FC<ConsolidationWizardProps> = ({
         setLoading(true);
         const token = localStorage.getItem('session_token');
         try {
+            const csrfRes = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+            const csrfToken = csrfRes.ok ? (await csrfRes.json()).csrf_token : '';
+
             for (const [targetIdStr, sourceIds] of Object.entries(teamMerges)) {
                 const targetId = Number(targetIdStr);
                 for (const sourceId of sourceIds) {
@@ -121,6 +124,7 @@ export const ConsolidationWizard: React.FC<ConsolidationWizardProps> = ({
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'X-CSRF-Token': csrfToken,
                             'Authorization': `Bearer ${token}`
                         },
                         body: JSON.stringify({

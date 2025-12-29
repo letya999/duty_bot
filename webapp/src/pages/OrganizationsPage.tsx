@@ -100,9 +100,8 @@ const OrganizationsPage: React.FC = () => {
     const fetchOrganizations = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('session_token');
             const response = await fetch('/api/admin/organizations', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                credentials: 'include'
             });
             if (response.ok) {
                 setOrganizations(await response.json());
@@ -117,9 +116,8 @@ const OrganizationsPage: React.FC = () => {
     const fetchAllWorkspaces = async () => {
         setIsLoadingAllWorkspaces(true);
         try {
-            const token = localStorage.getItem('session_token');
             const response = await fetch('/api/admin/organizations/workspaces/all', {
-                headers: { 'Authorization': `Bearer ${token}` }
+                credentials: 'include'
             });
             if (response.ok) {
                 setAllWorkspaces(await response.json());
@@ -132,11 +130,10 @@ const OrganizationsPage: React.FC = () => {
     };
 
     const fetchOrgDetails = async (orgId: number) => {
-        const token = localStorage.getItem('session_token');
         try {
             const [wsRes, usersRes] = await Promise.all([
-                fetch(`/api/admin/organizations/${orgId}/workspaces`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`/api/admin/organizations/${orgId}/users`, { headers: { 'Authorization': `Bearer ${token}` } })
+                fetch(`/api/admin/organizations/${orgId}/workspaces`, { credentials: 'include' }),
+                fetch(`/api/admin/organizations/${orgId}/users`, { credentials: 'include' })
             ]);
 
             if (wsRes.ok) setWorkspaces(await wsRes.json());
@@ -147,10 +144,9 @@ const OrganizationsPage: React.FC = () => {
     };
 
     const fetchWorkspaceTeams = async (workspaceId: number) => {
-        const token = localStorage.getItem('session_token');
         try {
             const response = await fetch(`/api/admin/teams/workspace/${workspaceId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                credentials: 'include'
             });
             if (response.ok) {
                 const teams = await response.json();
@@ -188,10 +184,18 @@ const OrganizationsPage: React.FC = () => {
     const handleCreateOrg = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
+            const csrfRes = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+            const csrfToken = csrfRes.ok ? (await csrfRes.json()).csrf_token : '';
             const token = localStorage.getItem('session_token');
+
             const response = await fetch('/api/admin/organizations', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include',
                 body: JSON.stringify({ name: newOrgName })
             });
             if (response.ok) {
@@ -206,10 +210,17 @@ const OrganizationsPage: React.FC = () => {
 
     const handleConnectWorkspace = async (workspaceId: number, orgId: number) => {
         try {
+            const csrfRes = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+            const csrfToken = csrfRes.ok ? (await csrfRes.json()).csrf_token : '';
             const token = localStorage.getItem('session_token');
+
             const response = await fetch(`/api/admin/organizations/${orgId}/workspaces/${workspaceId}`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'X-CSRF-Token': csrfToken,
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include'
             });
             if (response.ok) {
                 await fetchAllWorkspaces();
@@ -223,10 +234,17 @@ const OrganizationsPage: React.FC = () => {
     const handleDisconnectWorkspace = async (workspaceId: number) => {
         if (!selectedOrg) return;
         try {
+            const csrfRes = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+            const csrfToken = csrfRes.ok ? (await csrfRes.json()).csrf_token : '';
             const token = localStorage.getItem('session_token');
+
             const response = await fetch(`/api/admin/organizations/${selectedOrg.id}/workspaces/${workspaceId}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: {
+                    'X-CSRF-Token': csrfToken,
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include'
             });
             if (response.ok) {
                 await fetchAllWorkspaces();
@@ -241,10 +259,18 @@ const OrganizationsPage: React.FC = () => {
         e.preventDefault();
         if (!selectedOrg || !accountModalUser) return;
         try {
+            const csrfRes = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+            const csrfToken = csrfRes.ok ? (await csrfRes.json()).csrf_token : '';
             const token = localStorage.getItem('session_token');
+
             const response = await fetch(`/api/admin/organizations/${selectedOrg.id}/users/${accountModalUser}/accounts`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include',
                 body: JSON.stringify({
                     provider: newAccountProvider,
                     provider_id: newAccountProviderId,
@@ -265,10 +291,18 @@ const OrganizationsPage: React.FC = () => {
     const handleMergeUsers = async () => {
         if (!selectedOrg || !mergeSourceUser || !mergeTargetUser) return;
         try {
+            const csrfRes = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+            const csrfToken = csrfRes.ok ? (await csrfRes.json()).csrf_token : '';
             const token = localStorage.getItem('session_token');
+
             const response = await fetch(`/api/admin/organizations/${selectedOrg.id}/users/merge`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include',
                 body: JSON.stringify({
                     target_user_id: mergeTargetUser,
                     source_user_id: mergeSourceUser
@@ -288,10 +322,18 @@ const OrganizationsPage: React.FC = () => {
     const handleMergeTeams = async () => {
         if (!selectedOrg || !mergeSourceTeam || !mergeTargetTeam) return;
         try {
+            const csrfRes = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+            const csrfToken = csrfRes.ok ? (await csrfRes.json()).csrf_token : '';
             const token = localStorage.getItem('session_token');
+
             const response = await fetch(`/api/admin/organizations/${selectedOrg.id}/teams/merge`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken,
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include',
                 body: JSON.stringify({
                     target_team_id: mergeTargetTeam,
                     source_team_id: mergeSourceTeam.id

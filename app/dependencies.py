@@ -18,7 +18,7 @@ from app.repositories import (
 )
 
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from app.auth import session_manager
 from app.models import User
 from app.config import get_settings
@@ -35,14 +35,24 @@ async def get_user_repository(db: AsyncSession = Depends(get_db)) -> UserReposit
     return UserRepository(db)
 
 async def get_current_user(
+    request: Request,
     authorization: str = Header(None),
     user_repo: UserRepository = Depends(get_user_repository)
 ) -> User:
-    """Extract and verify user from Bearer token"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise AuthenticationError("Missing or invalid authorization header")
+    """Extract and verify user from Bearer token or session cookie"""
+    token = None
+    
+    # 1. Try Authorization header
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+    
+    # 2. Try session_token cookie
+    if not token:
+        token = request.cookies.get("session_token")
 
-    token = authorization.split(" ", 1)[1]
+    if not token:
+        raise AuthenticationError("Missing authentication token")
+
     session = await session_manager.validate_session(token)
 
     if not session:

@@ -53,12 +53,15 @@ const Navigation: React.FC = () => {
 
   const handleSwitchWorkspace = async (workspaceId: number) => {
     try {
+      const csrfRes = await fetch('/web/auth/csrf-token', { credentials: 'include' });
+      const csrfToken = csrfRes.ok ? (await csrfRes.json()).csrf_token : '';
       const token = localStorage.getItem('session_token');
       const response = await fetch('/web/auth/switch-workspace', {
         method: 'POST',
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
           'Authorization': token ? `Bearer ${token}` : '',
         },
         body: JSON.stringify({ workspace_id: workspaceId }),

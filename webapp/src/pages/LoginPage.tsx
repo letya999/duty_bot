@@ -40,7 +40,7 @@ const LoginPage: React.FC = () => {
       }
 
       const result = await response.json();
-      localStorage.setItem('session_token', result.session_token);
+      // session_token is in httpOnly cookie
       localStorage.setItem('user', JSON.stringify(result.user));
       navigate('/');
     } catch (err) {

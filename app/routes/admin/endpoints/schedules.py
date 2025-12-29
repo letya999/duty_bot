@@ -114,8 +114,18 @@ async def assign_duty(
             raise HTTPException(status_code=404, detail="Team not found")
 
         target_user = await db.get(User, user_id)
-        if not target_user or target_user.workspace_id != current_user.workspace_id:
-            raise HTTPException(status_code=400, detail="User not found in workspace")
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        # Allow if same workspace, same organization, or if current user is superadmin
+        is_same_workspace = target_user.workspace_id == current_user.workspace_id
+        is_same_org = (
+            target_user.organization_id is not None and 
+            target_user.organization_id == current_user.organization_id
+        )
+        
+        if not (is_same_workspace or is_same_org or current_user.is_superadmin):
+            raise HTTPException(status_code=400, detail="User not found in workspace context")
 
         date_obj = dt.fromisoformat(duty_date).date()
 
@@ -372,8 +382,18 @@ async def assign_shift(
             raise HTTPException(status_code=400, detail="This team does not have shifts enabled")
 
         target_user = await db.get(User, user_id)
-        if not target_user or target_user.workspace_id != current_user.workspace_id:
-            raise HTTPException(status_code=400, detail="User not found in workspace")
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        # Allow if same workspace, same organization, or if current user is superadmin
+        is_same_workspace = target_user.workspace_id == current_user.workspace_id
+        is_same_org = (
+            target_user.organization_id is not None and 
+            target_user.organization_id == current_user.organization_id
+        )
+        
+        if not (is_same_workspace or is_same_org or current_user.is_superadmin):
+            raise HTTPException(status_code=400, detail="User not found in workspace context")
 
         date_obj = dt.fromisoformat(shift_date).date()
 

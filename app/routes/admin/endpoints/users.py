@@ -98,10 +98,23 @@ async def update_user_info(
             logger.warning(f"No update data provided for user {user_id}")
             raise HTTPException(status_code=400, detail="No update data provided")
 
-        updated_user = await user_service.update_user(user_id, user.workspace_id, update_data)
+        target_user = await db.get(User, user_id)
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Allow if same workspace, same organization, or if current user is superadmin
+        is_same_workspace = target_user.workspace_id == user.workspace_id
+        is_same_org = (
+            target_user.organization_id is not None and 
+            target_user.organization_id == user.organization_id
+        )
+        
+        if not (is_same_workspace or is_same_org or user.is_superadmin):
+            raise HTTPException(status_code=403, detail="User not found in workspace context")
+
+        updated_user = await user_service.update_user(user_id, target_user.workspace_id, update_data)
         if not updated_user:
-            logger.error(f"User {user_id} not found in workspace {user.workspace_id}")
-            raise HTTPException(status_code=404, detail="User not found in this workspace")
+            raise HTTPException(status_code=404, detail="Failed to update user")
 
         logger.info(f"Successfully updated user {user_id}: display_name={updated_user.display_name}")
         return {
@@ -165,8 +178,18 @@ async def promote_user(
             raise HTTPException(status_code=403, detail="Only admins can promote users")
 
         target_user = await db.get(User, user_id)
-        if not target_user or target_user.workspace_id != current_user.workspace_id:
+        if not target_user:
             raise HTTPException(status_code=404, detail="User not found")
+
+        # Allow if same workspace, same organization, or if current user is superadmin
+        is_same_workspace = target_user.workspace_id == current_user.workspace_id
+        is_same_org = (
+            target_user.organization_id is not None and 
+            target_user.organization_id == current_user.organization_id
+        )
+        
+        if not (is_same_workspace or is_same_org or current_user.is_superadmin):
+             raise HTTPException(status_code=403, detail="User not found in workspace context")
 
         target_user.is_admin = True
         await db.commit()
@@ -214,8 +237,18 @@ async def demote_user(
             raise HTTPException(status_code=403, detail="Only admins can demote users")
 
         target_user = await db.get(User, user_id)
-        if not target_user or target_user.workspace_id != current_user.workspace_id:
+        if not target_user:
             raise HTTPException(status_code=404, detail="User not found")
+
+        # Allow if same workspace, same organization, or if current user is superadmin
+        is_same_workspace = target_user.workspace_id == current_user.workspace_id
+        is_same_org = (
+            target_user.organization_id is not None and 
+            target_user.organization_id == current_user.organization_id
+        )
+        
+        if not (is_same_workspace or is_same_org or current_user.is_superadmin):
+             raise HTTPException(status_code=403, detail="User not found in workspace context")
 
         if target_user.id == current_user.id:
             raise HTTPException(status_code=400, detail="Cannot demote yourself")

@@ -273,8 +273,18 @@ async def add_team_member(
             raise HTTPException(status_code=404, detail="Team not found")
 
         member = await db.get(User, user_id)
-        if not member or member.workspace_id != user.workspace_id:
+        if not member:
             raise HTTPException(status_code=404, detail="User not found")
+            
+        # Allow if same workspace, same organization, or if current user is superadmin
+        is_same_workspace = member.workspace_id == user.workspace_id
+        is_same_org = (
+            member.organization_id is not None and 
+            member.organization_id == user.organization_id
+        )
+        
+        if not (is_same_workspace or is_same_org or user.is_superadmin):
+            raise HTTPException(status_code=403, detail="User not found in workspace context")
 
         await team_service.add_member(team.id, member)
 
@@ -308,8 +318,18 @@ async def remove_team_member(
             raise HTTPException(status_code=404, detail="Team not found")
 
         member = await db.get(User, member_id)
-        if not member or member.workspace_id != user.workspace_id:
+        if not member:
             raise HTTPException(status_code=404, detail="User not found")
+            
+        # Allow if same workspace, same organization, or if current user is superadmin
+        is_same_workspace = member.workspace_id == user.workspace_id
+        is_same_org = (
+            member.organization_id is not None and 
+            member.organization_id == user.organization_id
+        )
+        
+        if not (is_same_workspace or is_same_org or user.is_superadmin):
+            raise HTTPException(status_code=403, detail="User not found in workspace context")
 
         await team_service.remove_member(team.id, member)
 

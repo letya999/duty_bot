@@ -46,6 +46,7 @@ class CSRFProtection:
             '/api/admin/auth/slack/callback',  # OAuth callbacks use state parameter
             '/web/auth/telegram-callback',  # Telegram OAuth
             '/web/auth/telegram-widget-callback',  # Telegram widget
+            '/slack/events',  # Slack Event API webhooks
         }
 
     def generate_token(self, session_token: Optional[str] = None) -> str:

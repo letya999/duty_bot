@@ -225,9 +225,13 @@ if cors_origins_env:
     allow_credentials = True
     logger.info(f"CORS enabled for specific origins: {list(set(allowed_origins))}")
 else:
-    # Development fallback: allow all origins but disable credentials for security
-    allowed_origins = ["*"]
-    allow_credentials = False
+    # Development fallback
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://rona-isobathythermal-nondeficiently.ngrok-free.dev"
+    ]
+    allow_credentials = True
     logger.warning("CORS configured for all origins with credentials disabled. Set CORS_ORIGINS for production.")
 
 app.add_middleware(

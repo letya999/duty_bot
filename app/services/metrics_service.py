@@ -94,45 +94,43 @@ class MetricsService:
         end_time: datetime
     ) -> int:
         """Calculate number of total days without any incidents in the period."""
-        period_days = (end_time - start_time).days
+        # Normalize range to dates
+        start_date = start_time.date()
+        end_date = end_time.date()
+
+        # Calculate actual number of calendar days in period
+        calendar_days = (end_date - start_date).days
+
         if not incidents:
-            return period_days
+            return calendar_days
 
         # Set of dates (YYYY-MM-DD) that had incidents
         dirty_dates = set()
-        
-        # Normalize range to dates
-        curr_date = end_time.date()
-        start_date = start_time.date()
-        
+
         for inc in incidents:
             # Determine intersection of incident duration and period
             # Use safe defaults if times are missing (though they shouldn't be for valid incidents)
             inc_start = inc.start_time.date() if inc.start_time else start_date
-            
+
             if inc.end_time:
                 inc_end = inc.end_time.date()
             else:
                 # If active (no end_time), assume it continues up to today
-                inc_end = curr_date
-            
-            # Optimization: Only care about dates >= start_date - 1 (to be safe)
-            # We add all dates the incident covers
+                inc_end = end_date
+
+            # Add all dates the incident covers within the period
             d = inc_start
             while d <= inc_end:
-                if d >= start_date: # Only track relevant dirty dates
-                     dirty_dates.add(d)
+                if d >= start_date:  # Only track dates in or after the period start
+                    dirty_dates.add(d)
                 d += timedelta(days=1)
-        
-        # Count backwards from today to find the consecutive incident-free days
+
+        # Count days without incidents, counting backwards from end_date
+        # We need exactly calendar_days days, starting from end_date
         days_without = 0
-        check_date = curr_date
-        
-        # We check exactly 'period_days' number of days backwards
-        for _ in range(period_days):
-            if check_date in dirty_dates:
-                break
-            days_without += 1
-            check_date -= timedelta(days=1)
-            
+        for i in range(calendar_days):
+            check_date = end_date - timedelta(days=i)
+            if check_date not in dirty_dates:
+                days_without += 1
+
         return days_without

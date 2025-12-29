@@ -55,7 +55,7 @@ export const ConsolidationWizard: React.FC<ConsolidationWizardProps> = ({
             // Let's use the one that gives all teams for a workspace, iterating through org workspaces.
 
             const wsRes = await fetch(`/api/admin/organizations/${organization.id}/workspaces`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
             });
             if (!wsRes.ok) throw new Error('Failed to fetch workspaces');
             const workspaces = await wsRes.json();
@@ -63,7 +63,7 @@ export const ConsolidationWizard: React.FC<ConsolidationWizardProps> = ({
             let allTeams: Team[] = [];
             for (const ws of workspaces) {
                 const teamsRes = await fetch(`/api/admin/teams/workspace/${ws.id}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
                 });
                 if (teamsRes.ok) {
                     const wsTeams = await teamsRes.json();
@@ -125,7 +125,7 @@ export const ConsolidationWizard: React.FC<ConsolidationWizardProps> = ({
                         headers: {
                             'Content-Type': 'application/json',
                             'X-CSRF-Token': csrfToken,
-                            'Authorization': `Bearer ${token}`
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                         },
                         body: JSON.stringify({
                             target_team_id: targetId,

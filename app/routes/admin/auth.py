@@ -39,7 +39,9 @@ async def get_session_from_cookie(request: Request) -> dict:
     if not token:
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ", 1)[1]
+            temp_token = auth_header.split(" ", 1)[1]
+            if temp_token and temp_token not in ("null", "undefined"):
+                token = temp_token
             
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -195,14 +197,15 @@ async def telegram_callback(request: Request):
             result = await db.execute(user_stmt)
             user = result.scalars().first()
 
-            # If not found by ID, try to find by username (for backwards compatibility)
+            # If not found by ID, try to find by username
             if not user and user_info.get('username'):
                 logger.info(f"User not found by telegram_id, trying by username: {user_info.get('username')}")
-                user_stmt = select(User).join(UserAccount).where(
-                    UserAccount.provider == 'telegram',
-                    func.lower(UserAccount.username) == user_info.get('username').lower(),
-                    User.workspace_id == workspace.id
-                )
+                user_stmt = select(User).where(
+                    (User.username == user_info.get('username')),
+                    ((User.workspace_id == workspace.id) | 
+                     ((User.organization_id == workspace.organization_id) & (User.organization_id != None)))
+                ).order_by((User.workspace_id == workspace.id).desc())
+                
                 result = await db.execute(user_stmt)
                 user = result.scalars().first()
 
@@ -228,6 +231,7 @@ async def telegram_callback(request: Request):
                 
                 user = User(
                     workspace_id=workspace.id,
+                    organization_id=workspace.organization_id,
                     username=username or str(user_info['user_id']),
                     first_name=first_name,
                     last_name=last_name,
@@ -521,28 +525,29 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
                 logger.info(f"Found existing workspace: {workspace.id}")
 
             # Get or create user with workspace_id set
-            # First try to find by slack_user_id
+            # 1. Try to find an existing account ALREADY in this workspace (any identity)
             user_stmt = select(User).join(UserAccount).where(
                 UserAccount.provider == 'slack',
                 UserAccount.provider_id == user_info['user_id'],
-                User.workspace_id == workspace.id
+                UserAccount.workspace_id == workspace.id
             )
             result = await db.execute(user_stmt)
             user = result.scalars().first()
 
-            # If not found by slack_user_id, try to find by username (for backwards compatibility)
-            if not user and user_info.get('username'):
-                logger.info(f"User not found by slack_user_id, trying by username: {user_info.get('username')}")
-                user_stmt = select(User).where(
-                    (User.username == user_info.get('username')) &
-                    (User.workspace_id == workspace.id)
-                )
+            if user:
+                logger.info(f"Found existing user {user.id} with Slack account in workspace {workspace.id}")
+            else:
+                # 2. Search for existing identity via this Slack ID across ANY workspace
+                user_stmt = select(User).join(UserAccount).where(
+                    UserAccount.provider == 'slack',
+                    UserAccount.provider_id == user_info['user_id']
+                ).order_by(User.is_superadmin.desc(), User.is_admin.desc())
                 result = await db.execute(user_stmt)
                 user = result.scalars().first()
-
+                
                 if user:
-                    logger.info(f"Found existing user by username: {user.id}, linking Slack ID {user_info['user_id']}")
-                    # Create UserAccount
+                    logger.info(f"Found existing identity {user.id} via Slack ID elsewhere, linking to workspace {workspace.id}")
+                    # Link to this workspace
                     ua = UserAccount(
                         user_id=user.id,
                         workspace_id=workspace.id,
@@ -553,11 +558,37 @@ async def slack_callback(request: Request, code: str = None, state: str = None):
                     db.add(ua)
                     await db.commit()
                     await db.refresh(user)
+                else:
+                    # 3. Search by username in the same Organization or workspace
+                    logger.info(f"User not found by id, trying by username: {user_info.get('username')}")
+                    user_stmt = select(User).where(
+                        (User.username == user_info.get('username')),
+                        ((User.workspace_id == workspace.id) | 
+                         ((User.organization_id == workspace.organization_id) & (User.organization_id != None)))
+                    ).order_by((User.workspace_id == workspace.id).desc())
+                    
+                    result = await db.execute(user_stmt)
+                    user = result.scalars().first()
+
+                    if user:
+                        logger.info(f"Found existing user by username: {user.id}, linking Slack ID {user_info['user_id']}")
+                        # Create UserAccount
+                        ua = UserAccount(
+                            user_id=user.id,
+                            workspace_id=workspace.id,
+                            provider='slack',
+                            provider_id=user_info['user_id'],
+                            username=user_info.get('username')
+                        )
+                        db.add(ua)
+                        await db.commit()
+                        await db.refresh(user)
 
             if not user:
                 logger.info(f"Creating new user for Slack user ID {user_info['user_id']}")
                 user = User(
                     workspace_id=workspace.id,
+                    organization_id=workspace.organization_id,
                     username=user_info.get('username'),
                     first_name=user_info.get('first_name'),
                     last_name=user_info.get('last_name'),

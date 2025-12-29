@@ -55,7 +55,7 @@ export const UserConsolidationWizard: React.FC<UserConsolidationWizardProps> = (
         try {
             const token = localStorage.getItem('session_token');
             const res = await fetch(`/api/admin/organizations/${organization.id}/users`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) }
             });
             if (!res.ok) throw new Error('Failed to fetch users');
             const data = await res.json();
@@ -112,7 +112,7 @@ export const UserConsolidationWizard: React.FC<UserConsolidationWizardProps> = (
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': csrfToken,
-                    'Authorization': `Bearer ${token}`
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
                 body: JSON.stringify({ display_name: editNameValue })
             });
@@ -144,7 +144,7 @@ export const UserConsolidationWizard: React.FC<UserConsolidationWizardProps> = (
                         headers: {
                             'Content-Type': 'application/json',
                             'X-CSRF-Token': csrfToken,
-                            'Authorization': `Bearer ${token}`
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                         },
                         body: JSON.stringify({
                             target_user_id: targetId,

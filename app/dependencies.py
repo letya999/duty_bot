@@ -44,7 +44,9 @@ async def get_current_user(
     
     # 1. Try Authorization header
     if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ", 1)[1]
+        temp_token = authorization.split(" ", 1)[1]
+        if temp_token and temp_token not in ("null", "undefined"):
+            token = temp_token
     
     # 2. Try session_token cookie
     if not token:

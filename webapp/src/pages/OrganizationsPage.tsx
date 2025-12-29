@@ -193,7 +193,7 @@ const OrganizationsPage: React.FC = () => {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': csrfToken,
-                    'Authorization': `Bearer ${token}`
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
                 credentials: 'include',
                 body: JSON.stringify({ name: newOrgName })
@@ -218,7 +218,7 @@ const OrganizationsPage: React.FC = () => {
                 method: 'POST',
                 headers: {
                     'X-CSRF-Token': csrfToken,
-                    'Authorization': `Bearer ${token}`
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
                 credentials: 'include'
             });
@@ -242,7 +242,7 @@ const OrganizationsPage: React.FC = () => {
                 method: 'DELETE',
                 headers: {
                     'X-CSRF-Token': csrfToken,
-                    'Authorization': `Bearer ${token}`
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
                 credentials: 'include'
             });
@@ -268,7 +268,7 @@ const OrganizationsPage: React.FC = () => {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': csrfToken,
-                    'Authorization': `Bearer ${token}`
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
                 credentials: 'include',
                 body: JSON.stringify({
@@ -300,7 +300,7 @@ const OrganizationsPage: React.FC = () => {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': csrfToken,
-                    'Authorization': `Bearer ${token}`
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
                 credentials: 'include',
                 body: JSON.stringify({
@@ -331,7 +331,7 @@ const OrganizationsPage: React.FC = () => {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': csrfToken,
-                    'Authorization': `Bearer ${token}`
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 },
                 credentials: 'include',
                 body: JSON.stringify({

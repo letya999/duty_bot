@@ -22,9 +22,16 @@ class UserService:
              else:
                  display_name = first_name or username
 
+        # Get organization_id from workspace
+        from app.models import Workspace
+        stmt_ws = select(Workspace.organization_id).where(Workspace.id == workspace_id)
+        res_ws = await self.user_repo.db.execute(stmt_ws)
+        organization_id = res_ws.scalar_one_or_none()
+
         # Create base user
         user = await self.user_repo.create({
             'workspace_id': workspace_id,
+            'organization_id': organization_id,
             'username': username,
             'first_name': first_name,
             'last_name': last_name,
@@ -88,9 +95,16 @@ class UserService:
                 else:
                      display_name = first_name or telegram_username or (str(telegram_id) if telegram_id else "Unknown")
 
+            # Get organization_id from workspace
+            from app.models import Workspace
+            stmt_ws = select(Workspace.organization_id).where(Workspace.id == workspace_id)
+            res_ws = await self.user_repo.db.execute(stmt_ws)
+            organization_id = res_ws.scalar_one_or_none()
+
             # Create new user
             user = await self.user_repo.create({
                 'workspace_id': workspace_id,
+                'organization_id': organization_id,
                 'username': telegram_username or (str(telegram_id) if telegram_id else None),
                 'first_name': first_name,
                 'last_name': last_name,
@@ -175,8 +189,15 @@ class UserService:
                 else:
                     display_name = first_name or slack_user_id
 
+            # Get organization_id from workspace
+            from app.models import Workspace
+            stmt_ws = select(Workspace.organization_id).where(Workspace.id == workspace_id)
+            res_ws = await self.user_repo.db.execute(stmt_ws)
+            organization_id = res_ws.scalar_one_or_none()
+
             user = await self.user_repo.create({
                 'workspace_id': workspace_id,
+                'organization_id': organization_id,
                 'username': slack_user_id, # Fallback username
                 'first_name': first_name,
                 'last_name': last_name,
@@ -379,9 +400,28 @@ class UserService:
 
     async def merge_users(self, target_user_id: int, source_user_id: int) -> User:
         """Merge source_user into target_user and delete source_user (SuperAdmin only)"""
-        from sqlalchemy import update, delete
-        from sqlalchemy.future import select
-        from app.models import UserAccount, Team, Schedule, Escalation, team_members
+        if target_user_id == source_user_id:
+            return await self.user_repo.get_by_id(target_user_id)
+
+        from sqlalchemy import update, delete, select
+        from app.models import UserAccount, Team, Schedule, Escalation, team_members, RotationConfig, DutyStats, AdminLog, Organization
+        
+        target_user = await self.user_repo.get_by_id(target_user_id)
+        source_user = await self.user_repo.get_by_id(source_user_id)
+        if not target_user or not source_user:
+            raise Exception("User not found")
+
+        # 1. Inherit status and names
+        if source_user.is_superadmin:
+            target_user.is_superadmin = True
+        if source_user.is_admin:
+            target_user.is_admin = True
+        if not target_user.display_name and source_user.display_name:
+            target_user.display_name = source_user.display_name
+        if not target_user.first_name and source_user.first_name:
+            target_user.first_name = source_user.first_name
+        if not target_user.last_name and source_user.last_name:
+            target_user.last_name = source_user.last_name
         
         # 1. Transfer UserAccounts
         stmt = update(UserAccount).where(UserAccount.user_id == source_user_id).values(user_id=target_user_id)
@@ -426,22 +466,65 @@ class UserService:
         stmt = team_members.delete().where(team_members.c.user_id == source_user_id)
         await self.user_repo.db.execute(stmt)
         
-        # 6. Transfer Admin Logs (handle history preservation)
-        from app.models import AdminLog, Organization
-        
-        # Update Admin Logs where source user was the admin
+        # 6. Transfer Admin Logs
         stmt = update(AdminLog).where(AdminLog.admin_user_id == source_user_id).values(admin_user_id=target_user_id)
         await self.user_repo.db.execute(stmt)
         
-        # Update Admin Logs where source user was the target
         stmt = update(AdminLog).where(AdminLog.target_user_id == source_user_id).values(target_user_id=target_user_id)
         await self.user_repo.db.execute(stmt)
 
-        # 7. Transfer Organization Ownership (created_by_id)
+        # 7. Transfer Organization Ownership
         stmt = update(Organization).where(Organization.created_by_user_id == source_user_id).values(created_by_user_id=target_user_id)
         await self.user_repo.db.execute(stmt)
 
-        # 8. Delete source user
+        # 8. Transfer RotationConfig
+        rotation_configs_stmt = select(RotationConfig)
+        rotation_configs_res = await self.user_repo.db.execute(rotation_configs_stmt)
+        rotation_configs = rotation_configs_res.scalars().all()
+        for rc in rotation_configs:
+            changed = False
+            if rc.last_assigned_user_id == source_user_id:
+                rc.last_assigned_user_id = target_user_id
+                changed = True
+            
+            if rc.member_ids and source_user_id in rc.member_ids:
+                new_ids = []
+                for uid in rc.member_ids:
+                    if uid == source_user_id:
+                        if target_user_id not in new_ids:
+                            new_ids.append(target_user_id)
+                    else:
+                        new_ids.append(uid)
+                rc.member_ids = new_ids
+                changed = True
+            
+            if changed:
+                self.user_repo.db.add(rc)
+
+        # 9. Transfer DutyStats
+        source_stats_stmt = select(DutyStats).where(DutyStats.user_id == source_user_id)
+        source_stats_res = await self.user_repo.db.execute(source_stats_stmt)
+        source_stats = source_stats_res.scalars().all()
+        for st in source_stats:
+            target_st_stmt = select(DutyStats).where(
+                DutyStats.user_id == target_user_id,
+                DutyStats.workspace_id == st.workspace_id,
+                DutyStats.team_id == st.team_id,
+                DutyStats.year == st.year,
+                DutyStats.month == st.month
+            )
+            target_st_res = await self.user_repo.db.execute(target_st_stmt)
+            target_st = target_st_res.scalar_one_or_none()
+            if target_st:
+                target_st.duty_days += st.duty_days
+                target_st.shift_days += st.shift_days
+                if st.hours_worked:
+                    target_st.hours_worked = (target_st.hours_worked or 0) + st.hours_worked
+                await self.user_repo.db.delete(st)
+            else:
+                st.user_id = target_user_id
+
+        # 10. Delete source user
         await self.user_repo.delete(source_user_id)
         
         await self.user_repo.db.commit()

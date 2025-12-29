@@ -31,7 +31,10 @@ async def get_session_from_cookie(request: Request) -> Dict[str, Any]:
     if not token:
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ", 1)[1]
+            temp_token = auth_header.split(" ", 1)[1]
+            # Filter out JS null/undefined strings
+            if temp_token and temp_token not in ("null", "undefined"):
+                token = temp_token
 
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")

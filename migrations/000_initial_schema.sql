@@ -51,10 +51,7 @@ CREATE TABLE IF NOT EXISTS "user" (
     organization_id INTEGER REFERENCES organization(id),
     
     -- Identity fields
-    telegram_id BIGINT,
-    telegram_username VARCHAR,
     username VARCHAR,
-    slack_user_id VARCHAR,
     first_name VARCHAR,
     last_name VARCHAR,
     display_name VARCHAR,
@@ -82,14 +79,8 @@ CREATE TABLE IF NOT EXISTS user_account (
 -- Indices for Users
 CREATE INDEX IF NOT EXISTS idx_user_workspace_id ON "user"(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_user_organization_id ON "user"(organization_id);
-CREATE INDEX IF NOT EXISTS idx_user_telegram_id ON "user"(telegram_id);
-CREATE INDEX IF NOT EXISTS idx_user_telegram_username ON "user"(telegram_username);
-CREATE INDEX IF NOT EXISTS idx_user_slack_user_id ON "user"(slack_user_id);
 CREATE INDEX IF NOT EXISTS idx_user_username ON "user"(username);
 CREATE INDEX IF NOT EXISTS idx_user_is_admin ON "user"(is_admin);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_workspace_telegram_username ON "user"(workspace_id, telegram_username) WHERE telegram_username IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_workspace_slack_user_id ON "user"(workspace_id, slack_user_id) WHERE slack_user_id IS NOT NULL;
 
 -- Indices for UserAccounts
 CREATE INDEX IF NOT EXISTS idx_user_account_user_id ON user_account(user_id);

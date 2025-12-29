@@ -324,3 +324,21 @@ class GoogleCalendarIntegration(Base):
 
     # Relationships
     workspace = relationship('Workspace', back_populates='google_calendar_integration')
+
+
+class Session(Base):
+    """Web session storage for authentication (database fallback)"""
+    __tablename__ = 'session'
+
+    id = Column(Integer, primary_key=True)
+    token = Column(String(64), nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey('user.id'), nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey('workspace.id'), nullable=False)
+    platform = Column(String, nullable=False)  # 'telegram' or 'slack'
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+    # Relationships
+    user = relationship('User')
+    workspace = relationship('Workspace')

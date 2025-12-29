@@ -17,6 +17,9 @@ starlette==0.41.3
 google-auth-oauthlib==1.2.0
 google-auth-httplib2==0.2.0
 google-api-python-client==2.107.0
+slowapi==0.1.9  # Rate limiting for FastAPI
+redis>=4.5.0,<6.0.0  # Session storage and caching
+itsdangerous==2.1.2  # CSRF token generation
 
 # Testing dependencies
 pytest==7.4.3

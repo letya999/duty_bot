@@ -22,7 +22,7 @@ npm install
 
 2. Create `.env` file with:
 ```
-VITE_API_URL=http://localhost:8000/api/miniapp
+VITE_API_URL=http://localhost:8000/api/admin
 ```
 
 3. Start development server:
@@ -80,24 +80,14 @@ src/
 
 ### API Integration
 
-The app communicates with the backend API at `/api/miniapp` endpoints:
+The app communicates with the backend API at `/api/admin` endpoints:
 
-- `GET /api/miniapp/user/info` - Get current user info
-- `GET /api/miniapp/schedule/month?year=2024&month=12` - Get monthly schedule
-- `GET /api/miniapp/schedule/day/{date}` - Get daily schedule
-- `POST /api/miniapp/schedule/assign` - Assign duty
-- `DELETE /api/miniapp/schedule/{schedule_id}` - Remove duty
-- `GET /api/miniapp/teams` - List teams
-- `GET /api/miniapp/teams/{team_id}/members` - List team members
-
-### Telegram Web App Integration
-
-The app uses Telegram Web App API to:
-
-- Display with proper theme colors matching user's Telegram settings
-- Show/hide back button for navigation
-- Display main action button for quick actions
-- Show alerts and confirmations
+- User management and authentication
+- Schedule management (create, update, delete schedules)
+- Team management
+- Reports and statistics
+- Google Calendar integration
+- Incident tracking
 
 ## Customization
 

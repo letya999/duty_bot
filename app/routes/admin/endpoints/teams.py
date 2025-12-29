@@ -19,7 +19,7 @@ router = APIRouter(prefix="/teams", tags=["Teams"])
 @router.get(
     "",
     summary="List all teams",
-    description="Получить список всех команд в workspace с информацией о членах."
+    description="Get a list of all teams in workspace with member information."
 )
 async def get_teams(
     user: User = Depends(get_current_user),
@@ -137,7 +137,7 @@ async def get_team_members(
 @router.post(
     "",
     summary="Create new team",
-    description="Создать новую команду в workspace."
+    description="Create a new team in workspace."
 )
 async def create_team(
     name: str = Body(..., embed=False),
@@ -175,7 +175,7 @@ async def create_team(
 @router.put(
     "/{team_id}",
     summary="Update team",
-    description="Обновить информацию о команде (название, описание, настройки)."
+    description="Update team information (name, description, settings)."
 )
 async def update_team(
     team_id: int,
@@ -224,7 +224,7 @@ async def update_team(
 @router.delete(
     "/{team_id}",
     summary="Delete team",
-    description="Удалить команду из workspace."
+    description="Delete a team from workspace."
 )
 async def delete_team(
     team_id: int,
@@ -254,7 +254,7 @@ async def delete_team(
 @router.post(
     "/{team_id}/members",
     summary="Add team member",
-    description="Добавить пользователя в команду."
+    description="Add a user to a team."
 )
 async def add_team_member(
     team_id: int,
@@ -299,7 +299,7 @@ async def add_team_member(
 @router.delete(
     "/{team_id}/members/{member_id}",
     summary="Remove team member",
-    description="Удалить пользователя из команды."
+    description="Remove a user from a team."
 )
 async def remove_team_member(
     team_id: int,
@@ -344,7 +344,7 @@ async def remove_team_member(
 @router.post(
     "/{team_id}/members/import",
     summary="Import member by handle",
-    description="Добавить участника по Telegram/Slack нику или ссылке."
+    description="Add a member by Telegram/Slack handle or link."
 )
 async def import_team_member(
     team_id: int,
@@ -528,7 +528,7 @@ async def import_team_member(
 @router.post(
     "/members/move",
     summary="Move member to another team",
-    description="Переместить участника из одной команды в другую."
+    description="Move a member from one team to another."
 )
 async def move_team_member(
     user_id: int = Body(..., embed=True),

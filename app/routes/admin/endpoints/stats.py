@@ -25,7 +25,7 @@ schedules_router = APIRouter(prefix="/schedules", tags=["Schedules"])
 @schedules_router.get(
     "/range",
     summary="Get schedules by date range",
-    description="Получить все дежурства в диапазоне дат."
+    description="Get all duty assignments within a date range."
 )
 async def get_schedules_by_date_range(
     start_date: str,
@@ -80,7 +80,7 @@ async def get_schedules_by_date_range(
 @router.get(
     "/schedules",
     summary="Get schedule statistics",
-    description="Получить статистику по дежурствам за период (по умолчанию последние 30 дней)."
+    description="Get statistics on duty assignments for a period (default: last 30 days)."
 )
 async def get_schedule_statistics(
     start_date: str = None,
@@ -142,7 +142,7 @@ async def get_schedule_statistics(
 @router.get(
     "/admin-logs",
     summary="Get admin action logs",
-    description="Получить логи всех действий администраторов."
+    description="Get logs of all administrator actions."
 )
 async def get_admin_logs(
     limit: int = 50,

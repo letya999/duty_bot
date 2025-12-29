@@ -21,7 +21,7 @@ router = APIRouter(prefix="/schedule", tags=["Schedules"])
 @router.get(
     "/month",
     summary="Get month schedule",
-    description="Получить дежурства на месяц с указанным годом и месяцем."
+    description="Get duty assignments for a month with specified year and month."
 )
 async def get_month_schedule(
     year: int,
@@ -59,7 +59,7 @@ async def get_month_schedule(
 @router.get(
     "/day/{date}",
     summary="Get daily schedule",
-    description="Получить дежурства на конкретный день."
+    description="Get duty assignments for a specific day."
 )
 async def get_daily_schedule(
     date: str,
@@ -93,7 +93,7 @@ async def get_daily_schedule(
 @router.post(
     "/assign",
     summary="Create or update duty assignment",
-    description="Назначить пользователя на дежурство на конкретный день."
+    description="Assign a user to duty on a specific day."
 )
 async def assign_duty(
     user_id: int = Body(..., embed=True),
@@ -152,7 +152,7 @@ async def assign_duty(
 @router.delete(
     "/{schedule_id}",
     summary="Delete duty assignment",
-    description="Удалить дежурство по его ID."
+    description="Delete a duty assignment by its ID."
 )
 async def remove_duty(
     schedule_id: int,
@@ -189,7 +189,7 @@ async def remove_duty(
 @router.put(
     "/{schedule_id}",
     summary="Update duty assignment",
-    description="Обновить существующее дежурство (пользователя, дату или команду)."
+    description="Update an existing duty assignment (user, date, or team)."
 )
 async def update_duty(
     schedule_id: int,
@@ -225,7 +225,7 @@ async def update_duty(
 @router.post(
     "/assign-bulk",
     summary="Bulk assign duties",
-    description="Массово назначить нескольких пользователей на диапазон дат."
+    description="Assign multiple users to a date range in bulk."
 )
 async def assign_bulk_duties(
     user_ids: list[int] = Body(..., embed=False),
@@ -285,7 +285,7 @@ async def assign_bulk_duties(
 @router.patch(
     "/{schedule_id}/move",
     summary="Move duty to another date",
-    description="Перенести дежурство на другую дату."
+    description="Move a duty assignment to another date."
 )
 async def move_duty(
     schedule_id: int,
@@ -321,7 +321,7 @@ async def move_duty(
 @router.patch(
     "/{schedule_id}/replace",
     summary="Replace duty person",
-    description="Заменить человека на дежурстве на другого пользователя."
+    description="Replace a person on duty with another user."
 )
 async def replace_duty_user(
     schedule_id: int,
@@ -359,7 +359,7 @@ shifts_router = APIRouter(prefix="/shifts", tags=["Schedules"])
 @shifts_router.post(
     "/assign",
     summary="Assign user to shift",
-    description="Добавить пользователя на смену. Используется для команд с включенными сменами (has_shifts=true)."
+    description="Add a user to a shift. Used for teams with shifts enabled (has_shifts=true)."
 )
 async def assign_shift(
     user_id: int = Body(..., embed=True),
@@ -419,7 +419,7 @@ async def assign_shift(
 @shifts_router.post(
     "/assign-bulk",
     summary="Bulk assign users to shifts",
-    description="Добавить нескольких пользователей на смены в диапазон дат. Используется для команд с включенными сменами."
+    description="Add multiple users to shifts for a date range. Used for teams with shifts enabled."
 )
 async def assign_shifts_bulk(
     user_ids: list[int] = Body(..., embed=True),

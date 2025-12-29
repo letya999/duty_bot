@@ -16,7 +16,7 @@ router = APIRouter(prefix="/escalations", tags=["Escalations"])
 @router.get(
     "",
     summary="List escalations",
-    description="Получить список эскалаций (назначений CTO) для всех команд или конкретной команды."
+    description="Get a list of escalations (CTO assignments) for all teams or a specific team."
 )
 async def get_escalations(
     team_id: int | None = None,
@@ -56,7 +56,7 @@ async def get_escalations(
 @router.post(
     "",
     summary="Create escalation",
-    description="Создать новую эскалацию (назначить CTO команде или установить глобального CTO)."
+    description="Create a new escalation (assign CTO to a team or set global CTO)."
 )
 async def create_escalation(
     team_id: int | None = Body(None, embed=False),
@@ -89,7 +89,7 @@ async def create_escalation(
 @router.delete(
     "/{escalation_id}",
     summary="Delete escalation",
-    description="Удалить эскалацию (отменить назначение CTO)."
+    description="Delete an escalation (revoke CTO assignment)."
 )
 async def delete_escalation(
     escalation_id: int,

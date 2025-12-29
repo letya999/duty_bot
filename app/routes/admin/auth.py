@@ -256,15 +256,18 @@ async def telegram_callback(request: Request):
         if user.is_superadmin:
             user_data["is_superadmin"] = True
 
-        # Return bridge HTML to set localStorage and redirect to modern dashboard
+        # Return bridge HTML to set user data and redirect to modern dashboard
+        # Security: Session token is stored in httpOnly cookie only (not localStorage)
+        # to protect against XSS attacks
         html = f"""
         <!DOCTYPE html>
         <html>
         <head><title>Redirecting...</title></head>
         <body>
             <script>
-                localStorage.setItem('session_token', {json.dumps(session_token)});
+                // Store only non-sensitive user data for UI state
                 localStorage.setItem('user', {json.dumps(json.dumps(user_data))});
+                // Session token is in httpOnly cookie - DO NOT store in localStorage
                 window.location.href = '/';
             </script>
         </body>
@@ -592,15 +595,18 @@ async def slack_callback(code: str = None, state: str = None):
         except Exception as e:
             logger.warning(f"Failed to create/update UserAccount during Slack login: {e}")
 
-        # Return bridge HTML to set localStorage and redirect to modern dashboard
+        # Return bridge HTML to set user data and redirect to modern dashboard
+        # Security: Session token is stored in httpOnly cookie only (not localStorage)
+        # to protect against XSS attacks
         html = f"""
         <!DOCTYPE html>
         <html>
         <head><title>Redirecting...</title></head>
         <body>
             <script>
-                localStorage.setItem('session_token', {json.dumps(session_token)});
+                // Store only non-sensitive user data for UI state
                 localStorage.setItem('user', {json.dumps(json.dumps(user_data))});
+                // Session token is in httpOnly cookie - DO NOT store in localStorage
                 window.location.href = '/';
             </script>
         </body>

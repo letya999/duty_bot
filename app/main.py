@@ -18,6 +18,7 @@ from app.database import init_db, close_db, AsyncSessionLocal
 from app.handlers.telegram_handler import TelegramHandler
 from app.handlers.slack_handler import SlackHandler
 from app.tasks.scheduled_tasks import ScheduledTasks
+from app.middleware import SecurityHeadersMiddleware
 from app.routes.admin.auth import router as auth_router
 from app.routes.admin.dashboard import router as dashboard_router
 from app.routes.admin.schedules import router as schedules_router
@@ -229,6 +230,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add security headers middleware
+# Adds essential security headers to protect against clickjacking, MIME sniffing, XSS
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # Add request logging middleware

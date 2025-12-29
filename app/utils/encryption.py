@@ -22,14 +22,22 @@ def _get_cipher() -> Fernet:
     if isinstance(encryption_key, str):
         encryption_key = encryption_key.encode()
 
-    # Ensure key is proper length (32 bytes base64 encoded = 44 characters)
-    if len(encryption_key) < 44:
-        # Pad the key if it's too short, but log a warning
-        import logging
-        logging.warning("ENCRYPTION_KEY is shorter than recommended. Using padded key.")
-        encryption_key = base64.urlsafe_b64encode(encryption_key.ljust(32)[:32])
+    # Validate key is proper Fernet format (32 bytes base64 encoded = 44 characters)
+    # Security: Do NOT pad short keys as this reduces entropy and creates vulnerabilities
+    if len(encryption_key) != 44:
+        raise ValueError(
+            f"ENCRYPTION_KEY must be exactly 44 characters (got {len(encryption_key)}). "
+            "Padding short keys is a security risk. "
+            "Generate a proper key with: python scripts/generate_security_keys.py --only-encryption"
+        )
 
-    return Fernet(encryption_key)
+    try:
+        return Fernet(encryption_key)
+    except Exception as e:
+        raise ValueError(
+            f"Invalid ENCRYPTION_KEY format: {e}. "
+            "Generate a valid Fernet key with: python scripts/generate_security_keys.py --only-encryption"
+        )
 
 
 def encrypt_string(plaintext: str) -> str:

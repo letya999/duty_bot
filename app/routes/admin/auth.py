@@ -15,6 +15,8 @@ from app.auth import (
 )
 from app.models import Workspace, User
 from app.database import AsyncSessionLocal
+from app.middleware.rate_limiter import limiter, get_rate_limit
+from app.middleware.csrf_protection import csrf_protection
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -125,6 +127,7 @@ async def telegram_login(request: Request):
 
 
 @router.post("/web/auth/telegram-callback")
+@limiter.limit(get_rate_limit("auth_strict"))
 async def telegram_callback(request: Request):
     """Handle Telegram OAuth callback"""
     try:
@@ -295,6 +298,7 @@ async def telegram_callback(request: Request):
 
 
 @router.post("/web/auth/telegram-widget-callback")
+@limiter.limit(get_rate_limit("auth_strict"))
 async def telegram_widget_callback(
     request: Request,
     user_account_service: "UserAccountService" = Depends(lambda: None) # Will be resolved below if possible or used manually
@@ -435,7 +439,8 @@ async def slack_login(request: Request):
 
 
 @router.get("/api/admin/auth/slack/callback")
-async def slack_callback(code: str = None, state: str = None):
+@limiter.limit(get_rate_limit("auth_strict"))
+async def slack_callback(request: Request, code: str = None, state: str = None):
     """Handle Slack OAuth callback"""
     try:
         if not code or not state:
@@ -639,15 +644,33 @@ async def slack_callback(code: str = None, state: str = None):
 
 
 @router.get("/web/auth/logout")
+@limiter.limit(get_rate_limit("auth_normal"))
 async def logout(request: Request):
     """Logout user"""
     token = request.cookies.get('session_token')
     if token:
-        session_manager.revoke_session(token)
+        await session_manager.revoke_session(token)
 
     response = RedirectResponse(url="/web/auth/login", status_code=302)
     response.delete_cookie("session_token")
     return response
+
+
+@router.get("/web/auth/csrf-token")
+async def get_csrf_token(request: Request):
+    """
+    Get CSRF token for making authenticated requests.
+
+    The CSRF token must be included in state-changing requests (POST, PUT, DELETE)
+    either as:
+    - X-CSRF-Token header
+    - csrf_token in request body (JSON or form data)
+
+    Returns:
+        JSON with csrf_token
+    """
+    csrf_token = csrf_protection.get_token_from_session(request)
+    return {"csrf_token": csrf_token}
 
 
 @router.get("/web/auth/workspaces")
@@ -730,6 +753,7 @@ async def list_workspaces(request: Request, session: dict = Depends(get_session_
 
 
 @router.post("/web/auth/switch-workspace")
+@limiter.limit(get_rate_limit("auth_normal"))
 async def switch_workspace(request: Request, session: dict = Depends(get_session_from_cookie)):
     """Switch to a different workspace.
 

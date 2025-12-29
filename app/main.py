@@ -18,7 +18,7 @@ from app.database import init_db, close_db, AsyncSessionLocal
 from app.handlers.telegram_handler import TelegramHandler
 from app.handlers.slack_handler import SlackHandler
 from app.tasks.scheduled_tasks import ScheduledTasks
-from app.middleware import SecurityHeadersMiddleware
+from app.middleware import SecurityHeadersMiddleware, limiter, rate_limit_exceeded_handler, csrf_protection
 from app.routes.admin.auth import router as auth_router
 from app.routes.admin.dashboard import router as dashboard_router
 from app.routes.admin.schedules import router as schedules_router
@@ -137,6 +137,9 @@ app = FastAPI(
     redoc_url="/api/redoc"
 )
 
+# Register rate limiter with app state
+app.state.limiter = limiter
+
 
 # ============================================================================
 # Exception Handlers
@@ -195,6 +198,10 @@ app.add_exception_handler(ConflictError, conflict_error_handler)
 app.add_exception_handler(CommandError, command_error_handler)
 app.add_exception_handler(ApplicationException, application_exception_handler)
 
+# Register rate limit exceeded handler
+from slowapi.errors import RateLimitExceeded
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
 
 # Add CORS middleware for web panel API
 # SECURITY: Configurable CORS origins. Use specific origins in production.
@@ -234,6 +241,25 @@ app.add_middleware(
 # Add security headers middleware
 # Adds essential security headers to protect against clickjacking, MIME sniffing, XSS
 app.add_middleware(SecurityHeadersMiddleware)
+
+
+# Add CSRF protection middleware
+# Validates CSRF tokens on state-changing requests (POST, PUT, DELETE, PATCH)
+@app.middleware("http")
+async def csrf_middleware(request: Request, call_next):
+    """CSRF protection middleware"""
+    try:
+        # Validate CSRF token (will raise HTTPException if invalid)
+        await csrf_protection.validate_request(request)
+    except HTTPException as e:
+        # Return error response
+        return JSONResponse(
+            status_code=e.status_code,
+            content={"error": "csrf_validation_failed", "message": e.detail}
+        )
+
+    # Continue with request
+    return await call_next(request)
 
 
 # Add request logging middleware

@@ -427,7 +427,7 @@ class UserService:
         await self.user_repo.db.execute(stmt)
         
         # 6. Transfer Admin Logs (handle history preservation)
-        from app.models import AdminLog
+        from app.models import AdminLog, Organization
         
         # Update Admin Logs where source user was the admin
         stmt = update(AdminLog).where(AdminLog.admin_user_id == source_user_id).values(admin_user_id=target_user_id)
@@ -437,7 +437,11 @@ class UserService:
         stmt = update(AdminLog).where(AdminLog.target_user_id == source_user_id).values(target_user_id=target_user_id)
         await self.user_repo.db.execute(stmt)
 
-        # 7. Delete source user
+        # 7. Transfer Organization Ownership (created_by_id)
+        stmt = update(Organization).where(Organization.created_by_user_id == source_user_id).values(created_by_user_id=target_user_id)
+        await self.user_repo.db.execute(stmt)
+
+        # 8. Delete source user
         await self.user_repo.delete(source_user_id)
         
         await self.user_repo.db.commit()

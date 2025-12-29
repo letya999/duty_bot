@@ -102,27 +102,28 @@ class GoogleCalendarService:
                 "google_calendar_id": calendar_id,
                 "public_calendar_url": public_url,
                 "service_account_email": service_account_key['client_email'],
-                "is_active": True,
-                "team_id": team_id
+                "is_active": True
             }
 
             integration = await self.repo.create(integration_data)
 
             # Associate teams if provided
             if team_ids:
-                # We need to fetch team objects to associate them
-                # Ideally repo would handle this, but for now let's query repo or assume IDs are valid
-                # Let's rely on repository layer to attach by ID if possible, or fetch simple objects
-                # Since we are in service, we might need a TeamRepository passed in or use a session
-                # But notice we don't have TeamRepository in __init__.
-                # We can't easily fetch teams here without TeamRepository.
-                # Let's change signature or rely on caller to pass objects?
-                # BETTER: Just save the integration, and let caller handle team association?
-                # OR: Repo method add_teams logic.
+                from app.repositories import TeamRepository
                 
-                # To keep it clean, let's assume valid IDs are passed and use a direct DB add in repo
-                pass # We will handle this by returning the integration and letting the endpoint add teams
+                # Use the same DB session from the current repository
+                team_repo = TeamRepository(self.repo.db)
                 
+                # Fetch team objects
+                teams_to_add = []
+                for tid in team_ids:
+                    team = await team_repo.get_by_id(tid)
+                    if team and team.workspace_id == workspace_id:
+                        teams_to_add.append(team)
+                
+                if teams_to_add:
+                    integration = await self.repo.add_teams(integration, teams_to_add)
+
             return integration
 
         except HttpError as e:

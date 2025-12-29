@@ -198,7 +198,8 @@ async def update_duty(
         team_service = TeamService(TeamRepository(db))
 
         team = await team_service.get_team(team_id) if team_id else None
-        schedule = await schedule_service.update_duty(schedule_id, user_id, duty_date, team)
+        duty_date_obj = datetime.fromisoformat(duty_date).date()
+        schedule = await schedule_service.update_duty(schedule_id, user_id, duty_date_obj, team)
 
         return {
             "id": schedule.id,

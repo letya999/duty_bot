@@ -59,7 +59,9 @@ export const UserConsolidationWizard: React.FC<UserConsolidationWizardProps> = (
             });
             if (!res.ok) throw new Error('Failed to fetch users');
             const data = await res.json();
-            setUsers(data);
+            // Deduplicate users by ID
+            const uniqueUsers = Array.from(new Map(data.map((u: any) => [u.id, u])).values());
+            setUsers(uniqueUsers as User[]);
         } catch (error) {
             console.error(error);
         } finally {
@@ -250,8 +252,8 @@ export const UserConsolidationWizard: React.FC<UserConsolidationWizardProps> = (
                                                                     key={sourceUser.id}
                                                                     onClick={() => handleToggleMerge(targetUser.id, sourceUser.id)}
                                                                     className={`text-left p-3 rounded-xl border transition-all flex items-center justify-between ${isSelected
-                                                                            ? 'bg-blue-600 border-blue-600 text-white shadow-md'
-                                                                            : 'bg-white border-gray-100 text-gray-600 hover:border-blue-300 hover:bg-blue-50'
+                                                                        ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                                                                        : 'bg-white border-gray-100 text-gray-600 hover:border-blue-300 hover:bg-blue-50'
                                                                         }`}
                                                                 >
                                                                     <div className="truncate pr-2 w-full">

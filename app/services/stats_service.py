@@ -24,9 +24,31 @@ class StatsService:
 
         Returns list of DutyStats records created/updated.
         """
+        from sqlalchemy import or_
+
         # Calculate date range for the month
         start_date = date(year, month, 1)
         end_date = (start_date + relativedelta(months=1)) - relativedelta(days=1)
+
+        # Get organization_id for the workspace
+        stmt_org = select(Workspace.organization_id).where(Workspace.id == workspace_id)
+        result_org = await self.db.execute(stmt_org)
+        organization_id = result_org.scalar_one_or_none()
+
+        filters = [
+            Schedule.date >= start_date,
+            Schedule.date <= end_date
+        ]
+
+        if organization_id:
+            filters.append(
+                or_(
+                    Team.workspace_id == workspace_id,
+                    Team.organization_id == organization_id
+                )
+            )
+        else:
+            filters.append(Team.workspace_id == workspace_id)
 
         # Single aggregated query: GROUP BY team_id, user_id, is_shift
         # This replaces 1000+ individual queries with 1 efficient query
@@ -37,13 +59,7 @@ class StatsService:
                 Schedule.is_shift,
                 func.count(Schedule.id).label("count")
             )
-            .where(
-                and_(
-                    Schedule.date >= start_date,
-                    Schedule.date <= end_date,
-                    Team.workspace_id == workspace_id
-                )
-            )
+            .where(and_(*filters))
             .join(Team, Schedule.team_id == Team.id)
             .group_by(Schedule.team_id, Schedule.user_id, Schedule.is_shift)
         )

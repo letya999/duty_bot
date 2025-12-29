@@ -878,7 +878,7 @@ async def switch_workspace(request: Request, session: dict = Depends(get_session
             logger.info(f"Switching user {user_id} from workspace {current_workspace_id} to {target_workspace_id}")
 
         # Create new session for target workspace
-        new_token = session_manager.create_session(
+        new_token = await session_manager.create_session(
             target_user.id,
             target_workspace_id,
             target_workspace.workspace_type

@@ -70,7 +70,7 @@ export const ConsolidationWizard: React.FC<ConsolidationWizardProps> = ({
                     allTeams = [...allTeams, ...wsTeams.map((t: any) => ({ ...t, workspace_id: ws.id }))];
                 }
             }
-            setTeams(allTeams);
+            setTeams(Array.from(new Map(allTeams.map(item => [item.id, item])).values()));
         } catch (error) {
             console.error(error);
         } finally {

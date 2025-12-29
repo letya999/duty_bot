@@ -42,13 +42,27 @@ async def get_schedules_for_period(
     start_date,
     end_date
 ) -> list[Schedule]:
-    """Get all schedules for a date period for user's workspace (both dates inclusive)"""
-    stmt = select(Schedule).join(Team).where(
-        and_(
-            Schedule.date >= start_date,
-            Schedule.date <= end_date,
-            Team.workspace_id == user.workspace_id
+    """Get all schedules for a date period for user's workspace or organization (both dates inclusive)"""
+    from sqlalchemy import or_
+
+    filters = [
+        Schedule.date >= start_date,
+        Schedule.date <= end_date
+    ]
+
+    # Team visibility: current workspace OR shared organization
+    if user.organization_id:
+        filters.append(
+            or_(
+                Team.workspace_id == user.workspace_id,
+                Team.organization_id == user.organization_id
+            )
         )
+    else:
+        filters.append(Team.workspace_id == user.workspace_id)
+
+    stmt = select(Schedule).join(Team).where(
+        and_(*filters)
     ).options(joinedload(Schedule.user), joinedload(Schedule.team))
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -101,11 +115,23 @@ async def get_daily_schedules(
     date_obj
 ) -> list[Schedule]:
     """Get schedules for a specific day"""
-    stmt = select(Schedule).join(Team).where(
-        and_(
-            Schedule.date == date_obj,
-            Team.workspace_id == user.workspace_id
+    from sqlalchemy import or_
+
+    filters = [Schedule.date == date_obj]
+
+    # Team visibility: current workspace OR shared organization
+    if user.organization_id:
+        filters.append(
+            or_(
+                Team.workspace_id == user.workspace_id,
+                Team.organization_id == user.organization_id
+            )
         )
+    else:
+        filters.append(Team.workspace_id == user.workspace_id)
+
+    stmt = select(Schedule).join(Team).where(
+        and_(*filters)
     ).options(joinedload(Schedule.user), joinedload(Schedule.team))
     result = await db.execute(stmt)
     return result.scalars().all()

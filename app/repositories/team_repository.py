@@ -31,13 +31,40 @@ class TeamRepository(BaseRepository[Team]):
         return result.scalar_one_or_none()
 
     async def get_by_name_in_workspace(self, workspace_id: int, team_name: str) -> Optional[Team]:
-        """Get team by name in workspace."""
+        """Get team by name in workspace or organization."""
+        from sqlalchemy import or_
+        from app.models import Workspace
+
+        # 1. Try to find in current workspace
         stmt = select(Team).where(
             Team.workspace_id == workspace_id,
             Team.name == team_name
         )
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        team = result.scalar_one_or_none()
+
+        if team:
+            return team
+
+        # 2. If not found, check if workspace belongs to an organization
+        organization_id = await self.get_organization_id_by_workspace(workspace_id)
+
+        if organization_id:
+            # 3. Find any team in the organization with this name
+            # We look for teams where the containing workspace belongs to the same organization
+            # OR the team itself is linked to the organization
+            stmt = select(Team).join(Workspace).where(
+                or_(
+                    Workspace.organization_id == organization_id,
+                    Team.organization_id == organization_id
+                ),
+                Team.name == team_name
+            )
+            result = await self.db.execute(stmt)
+            # Return the first match. This effectively allows name-based lookup across the org.
+            return result.scalars().first()
+
+        return None
 
     async def get_organization_id_by_workspace(self, workspace_id: int) -> Optional[int]:
         """Get organization ID for a workspace."""

@@ -457,13 +457,7 @@ const OrganizationsPage: React.FC = () => {
                                                                     >
                                                                         <div className="text-xs font-bold text-gray-800 truncate">{team.display_name}</div>
                                                                         <div className="text-[10px] text-gray-400 mt-1">{team.member_count} members</div>
-                                                                        <button
-                                                                            onClick={(e) => { e.stopPropagation(); setMergeSourceTeam(team); setIsTeamMergeModalOpen(true); }}
-                                                                            className="absolute top-2 right-2 p-1 text-gray-400 hover:text-purple-600 transition-all z-10"
-                                                                            title="Merge Team"
-                                                                        >
-                                                                            <GitMerge size={12} />
-                                                                        </button>
+
 
                                                                         {openTeams.has(team.id) && team.members && (
                                                                             <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
@@ -626,13 +620,7 @@ const OrganizationsPage: React.FC = () => {
                                                                         <Users size={12} />
                                                                         <span>{team.member_count} Members</span>
                                                                     </div>
-                                                                    <button
-                                                                        onClick={() => { setMergeSourceTeam({ ...team, workspace_id: ws.id }); setIsTeamMergeModalOpen(true); }}
-                                                                        className="absolute top-4 right-4 p-2 text-gray-400 hover:text-purple-600 transition-all bg-white rounded-lg border border-gray-100 shadow-sm"
-                                                                        title="Merge Team"
-                                                                    >
-                                                                        <GitMerge size={16} />
-                                                                    </button>
+
                                                                     {/* This simplified team view in All Hubs doesn't need expansion yet, or can follow same pattern if prioritized */}
                                                                 </div>
                                                             ))}

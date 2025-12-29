@@ -1,5 +1,9 @@
 """Telegram Mini App API routes"""
+import hashlib
+import hmac
+import json
 import logging
+import urllib.parse
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +13,7 @@ from app.models import User, Team, Schedule, Workspace, ChatChannel, team_member
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.services.schedule_service import ScheduleService
+from app.config import get_settings
 from app.config.api_utils import (
     format_user_response,
     get_month_dates,
@@ -20,6 +25,7 @@ from app.config.api_utils import (
 )
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 router = APIRouter(prefix="/api/miniapp", tags=["miniapp"])
 
@@ -38,10 +44,6 @@ async def get_user_from_telegram(
     if not init_data:
         raise HTTPException(status_code=401, detail="Missing Telegram init data")
 
-    # TODO: Implement proper Telegram init data verification
-    # For now, we'll just extract user ID from init data
-    # In production, you should verify the HMAC signature
-
     try:
         # Parse init data (format: user=..&hash=...&auth_date=...)
         params = {}
@@ -50,15 +52,42 @@ async def get_user_from_telegram(
                 key, value = param.split('=', 1)
                 params[key] = value
 
-        # In a real app, verify params['hash'] against TELEGRAM_BOT_TOKEN
-        # For now we'll just trust it
+        # Verify HMAC signature to prevent authentication bypass
+        if 'hash' not in params:
+            raise HTTPException(status_code=401, detail="Missing authentication hash")
+
+        # Create data check string (all params except hash, sorted alphabetically)
+        data_check_string = '\n'.join(
+            f"{k}={v}" for k, v in sorted(params.items()) if k != 'hash'
+        )
+
+        # Compute expected hash using HMAC-SHA256
+        # First, hash the bot token with SHA256
+        secret_key = hashlib.sha256(settings.telegram_token.encode()).digest()
+        # Then compute HMAC-SHA256 of the data check string
+        expected_hash = hmac.new(
+            secret_key,
+            data_check_string.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        # Verify the hash matches
+        if params.get('hash') != expected_hash:
+            logger.warning(f"Invalid Telegram signature - authentication attempt rejected")
+            raise HTTPException(status_code=401, detail="Invalid authentication signature")
+
+        # Check if data is not too old (max 1 day)
+        auth_date = int(params.get('auth_date', 0))
+        if datetime.now().timestamp() - auth_date > 86400:
+            logger.warning("Telegram auth data too old")
+            raise HTTPException(status_code=401, detail="Authentication data expired")
+
+        # Extract user data
         user_data = params.get('user')
         if not user_data:
             raise HTTPException(status_code=401, detail="Invalid user data")
 
         # user_data is JSON URL-encoded, parse it
-        import json
-        import urllib.parse
         user_dict = json.loads(urllib.parse.unquote(user_data))
         telegram_id = user_dict.get('id')
 

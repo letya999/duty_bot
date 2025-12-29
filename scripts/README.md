@@ -1,96 +1,76 @@
-# Scripts
+# Duty Bot Scripts
 
-Utility scripts for Duty Bot administration and security.
+Utility scripts for administration and security configuration.
+
+**Documentation:**
+- [SETUP_GUIDE.md](../docs/SETUP_GUIDE.md) - Service configuration (Slack, Google Calendar, Telegram)
+- [COMMANDS.md](../docs/COMMANDS.md) - Complete command reference
+- [TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md) - Solutions for common issues
+
+---
 
 ## Security Keys Generator
 
-Generate all required cryptographic keys for secure operation.
+Generate cryptographic keys for secure data encryption and session management.
 
-### Usage
+### Quick Start
 
 ```bash
-# Generate all keys and display them
+# Generate all keys and display
 python scripts/generate_security_keys.py
 
 # Generate and save to file
 python scripts/generate_security_keys.py --output .env.security
 
-# Generate only encryption key
-python scripts/generate_security_keys.py --only-encryption
+# Then copy to .env and securely delete the temp file
+cat .env.security >> .env
+shred -u .env.security  # Linux
+rm -P .env.security     # macOS
 ```
 
-### Generated Keys
+### What Gets Generated
 
 | Key | Purpose | Required |
 |-----|---------|----------|
-| `ENCRYPTION_KEY` | Encrypts Google Calendar credentials in database | Yes |
-| `SECRET_KEY` | General application security | Recommended |
-| `SESSION_SECRET` | Signs session cookies | Recommended |
+| `ENCRYPTION_KEY` | Encrypts sensitive data (Google Calendar credentials) | **Yes** |
+| `SECRET_KEY` | General application security (sessions, CSRF) | Yes |
+| `SESSION_SECRET` | Signs session cookies | Yes |
 | `API_TOKEN` | External API authentication | Optional |
 
-### Security Best Practices
-
-1. **Never commit keys to version control**
-   - Add `.env*` to `.gitignore`
-   - Use different keys for dev/staging/production
-
-2. **Store keys securely**
-   - Use a password manager
-   - Use secrets management service (AWS Secrets Manager, Vault)
-   - Keep encrypted backups
-
-3. **Rotate keys periodically**
-   - Every 6-12 months minimum
-   - Immediately if compromised
-   - After team member departures
-
-4. **Key separation**
-   - Use different keys for each environment
-   - Use different keys for each application instance
-   - Never reuse keys across projects
-
-### Quick Start
+### Command Options
 
 ```bash
-# 1. Generate keys
-python scripts/generate_security_keys.py --output .env.security
-
-# 2. Copy to your .env file
-cat .env.security >> .env
-
-# 3. Securely delete the temporary file
-shred -u .env.security  # Linux
-# or
-rm -P .env.security     # macOS
-# or just delete manually and empty trash
-
-# 4. Verify keys are set
-grep ENCRYPTION_KEY .env
+--output FILE           Save keys to file instead of display
+--only-encryption       Generate only ENCRYPTION_KEY
+--no-explanation        Omit usage explanations in output
 ```
+
+### Security Requirements
+
+- **Never commit** `.env*` files to git (add to `.gitignore`)
+- **Never share** keys publicly or in logs
+- **Use different keys** for development and production
+- **Rotate keys** every 6-12 months
+- **Store securely** in password manager or secrets vault
 
 ### Troubleshooting
 
-**Error: cryptography library not installed**
+**"cryptography library not installed"**
 ```bash
 pip install cryptography
 ```
 
-**Need to regenerate a single key?**
+**Regenerate single key**
 ```bash
-# Generate only encryption key
 python scripts/generate_security_keys.py --only-encryption
-
-# Or use Python directly
-python -c "from cryptography.fernet import Fernet; print(f'ENCRYPTION_KEY={Fernet.generate_key().decode()}')"
 ```
 
 ### Production Deployment
 
-For production, use a secrets management service:
+Store keys in a secrets management service:
 
 **AWS Secrets Manager:**
 ```bash
-# Store encryption key
 aws secretsmanager create-secret \
   --name duty-bot/encryption-key \
   --secret-string "$(python scripts/generate_security_keys.py --only-encryption --no-explanation | grep ENCRYPTION_KEY | cut -d'=' -f2)"
@@ -98,15 +78,13 @@ aws secretsmanager create-secret \
 
 **Docker Secrets:**
 ```bash
-# Create Docker secret
 python scripts/generate_security_keys.py --only-encryption --no-explanation | \
   grep ENCRYPTION_KEY | cut -d'=' -f2 | \
   docker secret create duty_bot_encryption_key -
 ```
 
-**Kubernetes Secrets:**
+**Kubernetes:**
 ```bash
-# Create Kubernetes secret
 kubectl create secret generic duty-bot-secrets \
   --from-literal=encryption-key="$(python scripts/generate_security_keys.py --only-encryption --no-explanation | grep ENCRYPTION_KEY | cut -d'=' -f2)"
 ```

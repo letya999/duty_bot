@@ -59,7 +59,7 @@ async def get_user_from_token(
 @router.get(
     "/status",
     summary="Get Google Calendar integration status",
-    description="Получить список интеграций с Google Calendar."
+    description="Get a list of Google Calendar integrations."
 )
 async def get_google_calendar_status(
     user: User = Depends(get_current_user),
@@ -108,7 +108,7 @@ async def get_google_calendar_status(
 @router.post(
     "/setup",
     summary="Setup Google Calendar integration",
-    description="Установить интеграцию с Google Calendar через service account."
+    description="Set up Google Calendar integration using a service account."
 )
 async def setup_google_calendar(
     request: ServiceAccountKeyRequest,
@@ -173,7 +173,7 @@ async def setup_google_calendar(
 @router.delete(
     "/{integration_id}",
     summary="Disconnect Google Calendar integration",
-    description="Отключить интеграцию с Google Calendar (удалить конкретный календарь)."
+    description="Disconnect Google Calendar integration (delete a specific calendar)."
 )
 async def disconnect_google_calendar(
     integration_id: int,
@@ -206,7 +206,7 @@ async def disconnect_google_calendar(
 @router.get(
     "/url",
     summary="Get public calendar URLs",
-    description="Получить публичные URL календарей."
+    description="Get public calendar URLs."
 )
 async def get_public_calendar_url(
     user: User = Depends(get_current_user),
@@ -244,7 +244,7 @@ async def get_public_calendar_url(
 @router.post(
     "/sync",
     summary="Manually trigger Google Calendar sync",
-    description="Вручную запустить синхронизацию дежурств с Google Calendar."
+    description="Manually trigger synchronization of duty assignments with Google Calendar."
 )
 async def sync_google_calendar(
     user: User = Depends(get_current_user),

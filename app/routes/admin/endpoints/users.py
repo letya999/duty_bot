@@ -24,7 +24,7 @@ class UserUpdateRequest(BaseModel):
 @router.get(
     "/info",
     summary="Get current user information",
-    description="Получить информацию о текущем авторизованном пользователе. Требует валидный Bearer token."
+    description="Get information about the current authenticated user. Requires a valid Bearer token."
 )
 async def get_user_info(user: User = Depends(get_current_user)) -> dict:
     """Get current user info - returns authenticated user details"""
@@ -42,7 +42,7 @@ async def get_user_info(user: User = Depends(get_current_user)) -> dict:
 @router.get(
     "",
     summary="List all users",
-    description="Получить список всех пользователей в workspace."
+    description="Get a list of all users in workspace."
 )
 async def get_all_users(
     user: User = Depends(get_current_user),
@@ -77,7 +77,7 @@ async def get_all_users(
 @router.put(
     "/{user_id}",
     summary="Update user information",
-    description="Обновить информацию о пользователе (например, display_name)."
+    description="Update user information (e.g., display_name)."
 )
 async def update_user_info(
     user_id: int,
@@ -133,7 +133,7 @@ async def update_user_info(
 @router.get(
     "/admins",
     summary="List all admins",
-    description="Получить список всех администраторов в workspace."
+    description="Get a list of all administrators in workspace."
 )
 async def get_admins(
     user: User = Depends(get_current_user),
@@ -223,7 +223,7 @@ async def promote_user(
 @router.post(
     "/{user_id}/demote",
     summary="Demote user from admin",
-    description="Удалить права администратора у пользователя."
+    description="Remove administrator privileges from a user."
 )
 async def demote_user(
     user_id: int,

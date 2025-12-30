@@ -145,10 +145,14 @@ class AuthService:
         """
         Find existing user by provider ID.
 
-        First tries by provider_id, then by username for backwards compatibility.
-        Prefers admin users and more recently created accounts.
+        Search strategy:
+        1. Exact match: (provider, provider_id)
+        2. Cross-provider match: provider_id only (user may have same ID in multiple platforms)
+
+        This prevents creating duplicate users when the same provider_id is used
+        across different platforms (e.g., user has same ID in both Telegram and Slack).
         """
-        # Query by provider_id
+        # First try: exact match by (provider, provider_id)
         stmt = (
             select(User)
             .join(UserAccount)
@@ -163,9 +167,32 @@ class AuthService:
         user = result.scalars().first()
 
         if user:
+            logger.info(f"Found user {user.id} by exact match (provider={provider}, provider_id={provider_id})")
             workspace = await self.db.get(Workspace, user.workspace_id)
             return user, workspace
 
+        # Second try: match by provider_id across ALL providers
+        # Important: Some platforms may use the same ID for a user (e.g., user with
+        # same U0930GD8F44 ID in both Telegram and Slack accounts)
+        logger.debug(f"No exact match for (provider={provider}, provider_id={provider_id}), "
+                     f"checking across all providers...")
+
+        stmt = (
+            select(User)
+            .join(UserAccount)
+            .where(UserAccount.provider_id == provider_id)
+            .order_by(User.is_superadmin.desc(), User.is_admin.desc(), User.created_at.desc())
+        )
+
+        result = await self.db.execute(stmt)
+        user = result.scalars().first()
+
+        if user:
+            logger.info(f"Found user {user.id} by cross-provider match (provider_id={provider_id} exists in {provider} context)")
+            workspace = await self.db.get(Workspace, user.workspace_id)
+            return user, workspace
+
+        logger.debug(f"No existing user found for provider_id={provider_id}")
         return None, None
 
     async def find_user_by_username(

@@ -593,38 +593,36 @@ class UserService:
             target_user.last_name = source_user.last_name
         
         
-        # 1. Transfer UserAccounts (Relationship Safe Context)
-        # We must manage the relationship collections to ensure SQLAlchemy knows we are moving 
-        # the accounts, not just orphaning them (which triggers delete-orphan).
-        source_accounts_list = list(source_user.user_accounts)
-        
-        for account in source_accounts_list:
-            # Check for potential conflict in target user accounts
-            existing_account = next(
-                (a for a in target_user.user_accounts 
-                 if a.provider == account.provider and a.workspace_id == account.workspace_id), 
-                None
+        # 1. Transfer UserAccounts via direct SQL to avoid cascade delete-orphan issues
+        # First, delete duplicate accounts (same provider + workspace in target)
+        from app.models import UserAccount
+        source_accounts_stmt = select(UserAccount).where(UserAccount.user_id == source_user_id)
+        source_accounts_result = await self.user_repo.db.execute(source_accounts_stmt)
+        source_accounts = source_accounts_result.scalars().all()
+
+        for source_account in source_accounts:
+            # Check for conflict with target accounts
+            conflict_stmt = select(UserAccount).where(
+                UserAccount.user_id == target_user_id,
+                UserAccount.provider == source_account.provider,
+                UserAccount.workspace_id == source_account.workspace_id
             )
-            
-            if existing_account:
-                # Update target account with source info if missing
-                if not existing_account.username and account.username:
-                    existing_account.username = account.username
-                if not existing_account.account_email and account.account_email:
-                    existing_account.account_email = account.account_email
-                
-                # Remove from source logic (orphaned duplicate will be deleted)
-                source_user.user_accounts.remove(account)
+            conflict = (await self.user_repo.db.execute(conflict_stmt)).scalar_one_or_none()
+
+            if conflict:
+                # Update target account with missing info from source
+                if not conflict.username and source_account.username:
+                    conflict.username = source_account.username
+                if not conflict.account_email and source_account.account_email:
+                    conflict.account_email = source_account.account_email
+                # Delete the source account (duplicate)
+                await self.user_repo.db.delete(source_account)
             else:
-                # Move to target (re-parenting)
-                # we do NOT remove from source explicitly to avoid delete-orphan trigger on the object we want to keep
-                target_user.user_accounts.append(account)
-        
+                # Transfer to target via direct foreign key update
+                source_account.user_id = target_user_id
+
         # Flush to persist these changes
         await self.user_repo.db.flush()
-        # Refresh source_user so it realizes it no longer owns the moved accounts, 
-        # preventing cascade delete when we delete source_user later
-        await self.user_repo.db.refresh(source_user)
         
         # 2. Transfer Team Leadership
         stmt = update(Team).where(Team.team_lead_id == source_user_id).values(team_lead_id=target_user_id)

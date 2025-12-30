@@ -10,7 +10,7 @@ from app.services.team_service import TeamService
 from app.services.user_service import UserService
 from app.repositories import TeamRepository, UserRepository
 from app.exceptions import NotFoundError
-from app.routes.admin.dependencies import get_team_service, get_user_service
+from app.routes.admin.dependencies import get_team_service, get_user_service, get_admin_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/teams", tags=["Teams"])
@@ -145,7 +145,8 @@ async def create_team(
     has_shifts: bool = Body(False, embed=False),
     team_lead_id: int | None = Body(None, embed=False),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Create new team"""
     try:
@@ -159,6 +160,16 @@ async def create_team(
             display_name=display_name,
             has_shifts=has_shifts,
             team_lead_id=team_lead_id
+        )
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="create_team",
+            details={"team_id": team.id, "name": name, "display_name": display_name},
+            target_id=team.id,
+            resource_type="team"
         )
 
         return {
@@ -184,7 +195,8 @@ async def update_team(
     has_shifts: bool | None = Body(None, embed=False),
     team_lead_id: int | None = Body(None, embed=False),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Update team"""
     try:
@@ -195,6 +207,17 @@ async def update_team(
         team = await team_service.get_team(team_id, user.workspace_id)
         if not team:
             raise HTTPException(status_code=404, detail="Team not found")
+
+        # Prepare update details
+        update_details = {}
+        if name is not None:
+            update_details["name"] = name
+        if display_name is not None:
+            update_details["display_name"] = display_name
+        if has_shifts is not None:
+            update_details["has_shifts"] = has_shifts
+        if team_lead_id is not None:
+            update_details["team_lead_id"] = team_lead_id
 
         team = await team_service.update_team(
             team_id=team.id,
@@ -207,6 +230,16 @@ async def update_team(
             team_lead = await db.get(User, team_lead_id)
             if team_lead:
                 team = await team_service.set_team_lead(team.id, team_lead.id)
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="update_team",
+            details=update_details,
+            target_id=team.id,
+            resource_type="team"
+        )
 
         return {
             "id": team.id,
@@ -229,7 +262,8 @@ async def update_team(
 async def delete_team(
     team_id: int,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Delete team"""
     try:
@@ -242,6 +276,16 @@ async def delete_team(
             raise HTTPException(status_code=404, detail="Team not found")
 
         await team_service.delete_team(team)
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="delete_team",
+            details={"team_id": team.id, "team_name": team.name},
+            target_id=team.id,
+            resource_type="team"
+        )
 
         return {"status": "deleted"}
     except HTTPException:
@@ -260,7 +304,8 @@ async def add_team_member(
     team_id: int,
     user_id: int = Body(..., embed=True),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Add member to team"""
     try:
@@ -275,18 +320,29 @@ async def add_team_member(
         member = await db.get(User, user_id)
         if not member:
             raise HTTPException(status_code=404, detail="User not found")
-            
+
         # Allow if same workspace, same organization, or if current user is superadmin
         is_same_workspace = member.workspace_id == user.workspace_id
         is_same_org = (
-            member.organization_id is not None and 
+            member.organization_id is not None and
             member.organization_id == user.organization_id
         )
-        
+
         if not (is_same_workspace or is_same_org or user.is_superadmin):
             raise HTTPException(status_code=403, detail="User not found in workspace context")
 
         await team_service.add_member(team.id, member)
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="add_team_member",
+            target_user_id=user_id,
+            details={"team_id": team.id, "team_name": team.name},
+            target_id=team.id,
+            resource_type="team"
+        )
 
         return {"status": "added"}
     except HTTPException:
@@ -305,7 +361,8 @@ async def remove_team_member(
     team_id: int,
     member_id: int,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Remove member from team"""
     try:
@@ -320,18 +377,29 @@ async def remove_team_member(
         member = await db.get(User, member_id)
         if not member:
             raise HTTPException(status_code=404, detail="User not found")
-            
+
         # Allow if same workspace, same organization, or if current user is superadmin
         is_same_workspace = member.workspace_id == user.workspace_id
         is_same_org = (
-            member.organization_id is not None and 
+            member.organization_id is not None and
             member.organization_id == user.organization_id
         )
-        
+
         if not (is_same_workspace or is_same_org or user.is_superadmin):
             raise HTTPException(status_code=403, detail="User not found in workspace context")
 
         await team_service.remove_member(team.id, member)
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="remove_team_member",
+            target_user_id=member_id,
+            details={"team_id": team.id, "team_name": team.name},
+            target_id=team.id,
+            resource_type="team"
+        )
 
         return {"status": "removed"}
     except HTTPException:

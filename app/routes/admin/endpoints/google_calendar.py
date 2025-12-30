@@ -21,7 +21,7 @@ from app.repositories import (
     ScheduleRepository,
     TeamRepository
 )
-from app.routes.admin.dependencies import get_google_calendar_service
+from app.routes.admin.dependencies import get_google_calendar_service, get_admin_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings/google-calendar", tags=["Google Calendar"])
@@ -116,7 +116,8 @@ async def setup_google_calendar(
     user_repo: UserRepository = Depends(get_user_repository),
     google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository),
     schedule_repo: ScheduleRepository = Depends(get_schedule_repository),
-    team_repo: TeamRepository = Depends(get_team_repository)
+    team_repo: TeamRepository = Depends(get_team_repository),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Setup Google Calendar integration."""
     try:
@@ -126,7 +127,7 @@ async def setup_google_calendar(
         # For multiple calendars support, checking "already configured" is tricky.
         # We allow multiple. If they upload the same JSON again, it creates a new calendar.
         # User is responsible for deleting old ones if they want to replace.
-        
+
         google_service = GoogleCalendarService(google_calendar_repo)
 
         integration = await google_service.setup_google_calendar(
@@ -134,7 +135,7 @@ async def setup_google_calendar(
             request.service_account_key,
             request.team_ids
         )
-        
+
         # Manually add teams here since we didn't inject TeamRepo into service fully
         if request.team_ids:
             teams_objects = []
@@ -152,6 +153,21 @@ async def setup_google_calendar(
             team_repo
         )
         logger.info(f"Initial sync after setup: {synced_count} schedules synced")
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="setup_google_calendar",
+            details={
+                "integration_id": integration.id,
+                "google_calendar_id": integration.google_calendar_id,
+                "team_ids": request.team_ids or [],
+                "synced_count": synced_count
+            },
+            target_id=integration.id,
+            resource_type="google_calendar"
+        )
 
         return {
             "status": "success",
@@ -176,7 +192,8 @@ async def setup_google_calendar(
 async def disconnect_google_calendar(
     integration_id: int,
     user: User = Depends(get_current_user),
-    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository)
+    google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Disconnect Google Calendar integration."""
     try:
@@ -191,6 +208,16 @@ async def disconnect_google_calendar(
 
         if not success:
             raise HTTPException(status_code=404, detail="Google Calendar integration not found")
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="disconnect_google_calendar",
+            details={"integration_id": integration_id},
+            target_id=integration_id,
+            resource_type="google_calendar"
+        )
 
         return {"status": "disconnected"}
 
@@ -248,7 +275,8 @@ async def sync_google_calendar(
     user: User = Depends(get_current_user),
     google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository),
     schedule_repo: ScheduleRepository = Depends(get_schedule_repository),
-    team_repo: TeamRepository = Depends(get_team_repository)
+    team_repo: TeamRepository = Depends(get_team_repository),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Manually trigger Google Calendar sync."""
     try:
@@ -261,6 +289,16 @@ async def sync_google_calendar(
             user.workspace_id,
             schedule_repo,
             team_repo
+        )
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="sync_google_calendar",
+            details={"synced_count": synced_count},
+            target_id=None,
+            resource_type="google_calendar"
         )
 
         return {

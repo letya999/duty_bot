@@ -12,7 +12,7 @@ from app.services.schedule_service import ScheduleService
 from app.services.team_service import TeamService
 from app.repositories import ScheduleRepository, TeamRepository
 from app.exceptions import NotFoundError, AuthorizationError, ValidationError
-from app.routes.admin.dependencies import get_schedule_service, get_team_service
+from app.routes.admin.dependencies import get_schedule_service, get_team_service, get_admin_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/schedule", tags=["Schedules"])
@@ -100,7 +100,8 @@ async def assign_duty(
     duty_date: str = Body(..., embed=True),
     team_id: int = Body(..., embed=True),
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Assign duty to a user"""
     try:
@@ -116,14 +117,14 @@ async def assign_duty(
         target_user = await db.get(User, user_id)
         if not target_user:
             raise HTTPException(status_code=404, detail="User not found")
-            
+
         # Allow if same workspace, same organization, or if current user is superadmin
         is_same_workspace = target_user.workspace_id == current_user.workspace_id
         is_same_org = (
-            target_user.organization_id is not None and 
+            target_user.organization_id is not None and
             target_user.organization_id == current_user.organization_id
         )
-        
+
         if not (is_same_workspace or is_same_org or current_user.is_superadmin):
             raise HTTPException(status_code=400, detail="User not found in workspace context")
 
@@ -134,6 +135,17 @@ async def assign_duty(
             target_user.id,
             date_obj,
             is_shift=team.has_shifts
+        )
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=current_user.workspace_id,
+            admin_id=current_user.id,
+            action="assign_duty",
+            target_user_id=user_id,
+            details={"team_id": team_id, "duty_date": duty_date, "is_shift": team.has_shifts},
+            target_id=schedule.id,
+            resource_type="schedule"
         )
 
         return {
@@ -157,7 +169,8 @@ async def assign_duty(
 async def remove_duty(
     schedule_id: int,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Remove duty assignment"""
     try:
@@ -165,7 +178,7 @@ async def remove_duty(
         stmt = select(Schedule).where(Schedule.id == schedule_id).options(selectinload(Schedule.team))
         result = await db.execute(stmt)
         schedule_obj = result.scalar_one_or_none()
-        
+
         if not schedule_obj:
             raise NotFoundError("Schedule")
 
@@ -177,6 +190,17 @@ async def remove_duty(
 
         if not success:
             raise ValidationError("Failed to clear duty")
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="remove_duty",
+            target_user_id=schedule_obj.user_id,
+            details={"team_id": schedule_obj.team_id, "duty_date": str(schedule_obj.date)},
+            target_id=schedule_id,
+            resource_type="schedule"
+        )
 
         return {"status": "removed", "schedule_id": schedule_id}
     except (NotFoundError, AuthorizationError, ValidationError):
@@ -197,7 +221,8 @@ async def update_duty(
     duty_date: str = Body(..., embed=False),
     team_id: int | None = Body(None, embed=False),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Update existing duty assignment"""
     try:
@@ -210,6 +235,17 @@ async def update_duty(
         team = await team_service.get_team(team_id) if team_id else None
         duty_date_obj = datetime.fromisoformat(duty_date).date()
         schedule = await schedule_service.update_duty(schedule_id, user_id, duty_date_obj, team)
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="update_duty",
+            target_user_id=user_id,
+            details={"team_id": team_id, "duty_date": duty_date},
+            target_id=schedule_id,
+            resource_type="schedule"
+        )
 
         return {
             "id": schedule.id,
@@ -233,7 +269,8 @@ async def assign_bulk_duties(
     end_date: str = Body(..., embed=False),
     team_id: int | None = Body(None, embed=False),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Assign multiple users to dates in range"""
     try:
@@ -275,6 +312,22 @@ async def assign_bulk_duties(
         logger.info(f"💾 Committing {created_count} assignments to database")
         await db.commit()
         logger.info(f"✅ Bulk assign completed successfully")
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="assign_bulk_duties",
+            details={
+                "team_id": team_id,
+                "user_count": len(user_ids),
+                "start_date": start_date,
+                "end_date": end_date,
+                "created_count": created_count
+            },
+            target_id=team_id,
+            resource_type="team"
+        )
 
         return {"created": created_count, "total_expected": len(user_ids) * ((end - start).days + 1)}
     except Exception as e:

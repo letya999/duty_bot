@@ -43,8 +43,27 @@ class AdminService:
         action: str,
         target_user_id: int = None,
         details: dict = None,
+        target_id: int = None,  # For logging actions on teams, schedules, etc.
+        resource_type: str = None,  # Type of resource being modified (team, schedule, escalation, etc.)
     ) -> AdminLog:
-        """Log admin action for audit trail"""
+        """Log admin action for audit trail
+
+        Args:
+            workspace_id: Workspace where action occurred
+            admin_id: Admin user performing the action
+            action: Type of action (e.g., 'promote_admin', 'create_team', 'assign_duty')
+            target_user_id: User affected by the action (optional)
+            details: Additional details as dict
+            target_id: ID of the resource being modified (team_id, schedule_id, etc.)
+            resource_type: Type of resource (team, schedule, escalation, etc.)
+        """
+        if not details:
+            details = {}
+
+        # Add resource information to details if provided
+        if target_id and resource_type:
+            details[f'{resource_type}_id'] = target_id
+
         details_str = json.dumps(details) if details else None
         return await self.admin_log_repo.log_action(
             workspace_id=workspace_id,

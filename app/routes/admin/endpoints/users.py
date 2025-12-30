@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db, get_current_user
+from app.routes.admin.dependencies import get_admin_service
 from app.models import User
 from app.services.user_service import UserService
 from app.services.admin_service import AdminService
@@ -83,7 +84,9 @@ async def update_user_info(
     user_id: int,
     data: UserUpdateRequest,
     user: User = Depends(get_current_user),
-    user_service: UserService = Depends(get_user_service)
+    db: AsyncSession = Depends(get_db),
+    user_service: UserService = Depends(get_user_service),
+    admin_service: AdminService = Depends(get_admin_service)
 ) -> dict:
     """Update user info"""
     try:
@@ -101,20 +104,29 @@ async def update_user_info(
         target_user = await db.get(User, user_id)
         if not target_user:
             raise HTTPException(status_code=404, detail="User not found")
-        
+
         # Allow if same workspace, same organization, or if current user is superadmin
         is_same_workspace = target_user.workspace_id == user.workspace_id
         is_same_org = (
-            target_user.organization_id is not None and 
+            target_user.organization_id is not None and
             target_user.organization_id == user.organization_id
         )
-        
+
         if not (is_same_workspace or is_same_org or user.is_superadmin):
             raise HTTPException(status_code=403, detail="User not found in workspace context")
 
         updated_user = await user_service.update_user(user_id, target_user.workspace_id, update_data)
         if not updated_user:
             raise HTTPException(status_code=404, detail="Failed to update user")
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="update_user",
+            target_user_id=user_id,
+            details={"updated_fields": list(update_data.keys())}
+        )
 
         logger.info(f"Successfully updated user {user_id}: display_name={updated_user.display_name}")
         return {

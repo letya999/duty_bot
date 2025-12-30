@@ -370,3 +370,4 @@ class GoogleCalendarIntegration(Base):
 
     # Relationships
     workspace = relationship('Workspace', back_populates='google_calendar_integration')
+    teams = relationship('Team', secondary=google_calendar_teams, lazy='selectin')

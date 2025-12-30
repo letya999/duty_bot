@@ -5,7 +5,7 @@ Authentication service handling OAuth flows and user provisioning.
 import logging
 from typing import Optional, Dict, Any
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User, UserAccount, Workspace
@@ -85,6 +85,28 @@ class AuthService:
 
         # Create new workspace and user
         workspace = await self._get_or_create_workspace(provider, provider_id, user_info)
+        
+        # Try to find existing user by username in this workspace/organization
+        # This handles cases where a user exists but hasn't linked this provider yet
+        username = user_info.get("username")
+        if username:
+            user = await self.find_user_by_username(provider, username, workspace.id, workspace.organization_id)
+            if user:
+                logger.info(
+                    f"Found existing user {user.id} by username '{username}', "
+                    f"linking {provider} account {provider_id}"
+                )
+                await self.ensure_user_account(
+                    user_id=user.id,
+                    provider=provider,
+                    provider_id=provider_id,
+                    workspace_id=workspace.id,
+                    username=username,
+                )
+                # Refresh user to ensure relationships are loaded if needed
+                await self.db.refresh(user)
+                return user, workspace
+
         user = await self._create_user_with_account(
             provider, provider_id, workspace.id, user_info
         )
@@ -121,20 +143,26 @@ class AuthService:
         return None, None
 
     async def find_user_by_username(
-        self, provider: str, username: str, workspace_id: int
+        self, provider: str, username: str, workspace_id: int, organization_id: Optional[int] = None
     ) -> Optional[User]:
-        """Find user by username in specific workspace (backwards compatibility)."""
+        """Find user by username in specific workspace or organization."""
         if not username:
             return None
 
+        # Logic: matches username AND (in same workspace OR in same organization)
+        conditions = [
+            func.lower(User.username) == username.lower(),
+            or_(
+                User.workspace_id == workspace_id,
+                (User.organization_id == organization_id) if organization_id else False
+            )
+        ]
+        
+        # Determine order: prefer same workspace
         stmt = (
             select(User)
-            .join(UserAccount)
-            .where(
-                UserAccount.provider == provider,
-                func.lower(UserAccount.username) == username.lower(),
-                User.workspace_id == workspace_id,
-            )
+            .where(*conditions)
+            .order_by((User.workspace_id == workspace_id).desc())
         )
 
         result = await self.db.execute(stmt)
@@ -155,6 +183,12 @@ class AuthService:
             (Workspace.workspace_type == workspace_type)
             & (Workspace.external_id == provider_id)
         )
+
+        if provider == "slack" and user_info.get("team_id"):
+            stmt = select(Workspace).where(
+                (Workspace.workspace_type == workspace_type)
+                & (Workspace.external_id == user_info["team_id"])
+            )
 
         result = await self.db.execute(stmt)
         workspace = result.scalars().first()

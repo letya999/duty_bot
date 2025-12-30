@@ -147,3 +147,10 @@ class TeamRepository(BaseRepository[Team]):
                 # Reload with eager loading to avoid greenlet issues
                 team = await self.get_by_id_with_members(team_id)
         return team
+
+    def get_by_id_sync(self, team_id: int, teams_cache: List[Team]) -> Optional[Team]:
+        """Get team from pre-fetched list synchronously."""
+        for team in teams_cache:
+            if team.id == team_id:
+                return team
+        return None

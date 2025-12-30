@@ -15,14 +15,21 @@ class UserRepository(BaseRepository[User]):
         super().__init__(db, User)
 
     async def get_by_telegram_username(self, workspace_id: int, telegram_username: str) -> Optional[User]:
-        """Get user by Telegram username in workspace (case-insensitive) via UserAccount."""
+        """Get user by Telegram username in workspace (case-insensitive) via UserAccount or User.username."""
         from app.models import UserAccount
-        from sqlalchemy import func
-        stmt = select(User).join(UserAccount).where(
+        from sqlalchemy import func, or_, and_
+        
+        stmt = select(User).outerjoin(UserAccount).where(
             User.workspace_id == workspace_id,
-            UserAccount.provider == 'telegram',
-            func.lower(UserAccount.username) == telegram_username.lower()
+            or_(
+                func.lower(User.username) == telegram_username.lower(),
+                and_(
+                    UserAccount.provider == 'telegram',
+                    func.lower(UserAccount.username) == telegram_username.lower()
+                )
+            )
         ).options(selectinload(User.user_accounts))
+        
         result = await self.db.execute(stmt)
         return result.scalars().first()
 

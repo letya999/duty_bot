@@ -9,6 +9,8 @@ from google.oauth2.service_account import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from sqlalchemy.future import select
+from sqlalchemy.orm import joinedload
 
 from app.models import GoogleCalendarIntegration, Schedule, Team, User
 from app.repositories.google_calendar_repository import GoogleCalendarRepository
@@ -75,19 +77,15 @@ class GoogleCalendarService:
                 'timeZone': 'UTC'
             }
 
-            calendar = await asyncio.to_thread(
-                service.calendars().insert(body=calendar_body).execute
-            )
+            calendar = service.calendars().insert(body=calendar_body).execute()
             calendar_id = calendar['id']
 
-            # Make calendar public in thread pool
+            # Make calendar public
             rule = {
                 'scope': {'type': 'default'},
                 'role': 'reader'
             }
-            await asyncio.to_thread(
-                service.acl().insert(calendarId=calendar_id, body=rule).execute
-            )
+            service.acl().insert(calendarId=calendar_id, body=rule).execute()
 
             # Get public calendar URL
             public_url = f"https://calendar.google.com/calendar/u/0?cid={calendar_id}"
@@ -153,7 +151,10 @@ class GoogleCalendarService:
 
             # Create event body
             end_date = schedule.date + timedelta(days=1)
+            event_id = self._get_event_id(schedule.id)
+            
             event_body = {
+                'id': event_id,
                 'summary': f"👥 {team.display_name} - {schedule.user.first_name or schedule.user.username}",
                 'description': f"On-call person for {team.display_name} from 00:00 to 23:59",
                 'start': {
@@ -162,19 +163,36 @@ class GoogleCalendarService:
                 'end': {
                     'date': end_date.isoformat()
                 },
-                'colorId': str(self._get_team_color(team.id))
+                'colorId': str(self._get_team_color(team.id)),
+                'extendedProperties': {
+                    'private': {
+                        'source': 'duty_bot',
+                        'schedule_id': str(schedule.id),
+                        'team_id': str(team.id)
+                    }
+                }
             }
 
-            # Create event in thread pool to avoid blocking event loop
-            event = await asyncio.to_thread(
-                service.events().insert(
+            # Create or Update event
+            try:
+                # Try insert first (safest if we assume it doesn't exist often)
+                event = service.events().insert(
                     calendarId=integration.google_calendar_id,
                     body=event_body
-                ).execute
-            )
-
-            event_id = event['id']
-            logger.info(f"Created calendar event {event_id} for schedule {schedule.id}")
+                ).execute()
+                logger.info(f"Created calendar event {event_id} for schedule {schedule.id}")
+                
+            except HttpError as e:
+                if e.resp.status == 409:
+                    # Already exists, update it
+                    event = service.events().update(
+                        calendarId=integration.google_calendar_id,
+                        eventId=event_id,
+                        body=event_body
+                    ).execute()
+                    logger.info(f"Updated calendar event {event_id} for schedule {schedule.id}")
+                else:
+                    raise
 
             return event_id
 
@@ -197,13 +215,11 @@ class GoogleCalendarService:
             )
             service = self._get_calendar_service(service_account_key)
 
-            # Delete event in thread pool to avoid blocking event loop
-            await asyncio.to_thread(
-                service.events().delete(
-                    calendarId=integration.google_calendar_id,
-                    eventId=event_id
-                ).execute
-            )
+            # Delete event
+            service.events().delete(
+                calendarId=integration.google_calendar_id,
+                eventId=event_id
+            ).execute()
 
             logger.info(f"Deleted calendar event {event_id}")
             return True
@@ -262,8 +278,8 @@ class GoogleCalendarService:
 
             total_synced_count = 0
             
-            # Define range for initial sync: 1 day ago to 90 days in future
-            start_date = date_type.today() - timedelta(days=1)
+            # Define range for initial sync: 7 days ago to 90 days in future
+            start_date = date_type.today() - timedelta(days=7)
             end_date = date_type.today() + timedelta(days=90)
 
             for integration in integrations:
@@ -276,7 +292,7 @@ class GoogleCalendarService:
                     teams_to_sync = integration.teams
                 else:
                     # Sync for all teams (legacy/global behavior)
-                    teams_to_sync = await team_repo.list_by_workspace(workspace_id)
+                    teams_to_sync = await team_repo.list_by_workspace(workspace_id, limit=1000)
 
                 teams_to_sync = [t for t in teams_to_sync if t] # Filter None
 
@@ -290,27 +306,69 @@ class GoogleCalendarService:
                     logger.error(f"Failed to initialize Google Calendar for integration {integration.id}: {e}")
                     continue
 
-                for team in teams_to_sync:
-                    # Use a more efficient way to get schedules with users
-                    from sqlalchemy import select
-                    from sqlalchemy.orm import joinedload
+                # Fetch schedules from DB
+                stmt = select(Schedule).options(
+                    joinedload(Schedule.user)
+                ).where(
+                    Schedule.team_id.in_([t.id for t in teams_to_sync]),
+                    Schedule.date >= start_date,
+                    Schedule.date <= end_date
+                )
+                
+                result = await schedule_repo.execute(stmt)
+                schedules = result.scalars().all()
+                
+                active_schedule_ids = set()
+                
+                # Upsert active schedules
+                for schedule in schedules:
+                    if schedule.user:
+                        event_id = await self.sync_schedule_to_calendar(integration, team_repo.get_by_id_sync(schedule.team_id, teams_to_sync), schedule, service=service)
+                        if event_id:
+                            total_synced_count += 1
+                            active_schedule_ids.add(str(schedule.id))
+
+                # Cleanup orphans using list events
+                try:
+                    # List events controlled by us (source=duty_bot)
+                    # We have to filter client side mostly, or extensive use of privateExtendedProperty if API allows
+                    # The list API supports partial filtering on privateExtendedProperty
                     
-                    stmt = select(Schedule).options(
-                        joinedload(Schedule.user)
-                    ).where(
-                        Schedule.team_id == team.id,
-                        Schedule.date >= start_date,
-                        Schedule.date <= end_date
-                    )
-                    
-                    result = await schedule_repo.execute(stmt)
-                    schedules = result.scalars().all()
-                    
-                    for schedule in schedules:
-                        if schedule.user:
-                            event_id = await self.sync_schedule_to_calendar(integration, team, schedule, service=service)
-                            if event_id:
-                                total_synced_count += 1
+                    page_token = None
+                    while True:
+                        events_result = service.events().list(
+                            calendarId=integration.google_calendar_id,
+                            timeMin=start_date.isoformat() + 'T00:00:00Z',
+                            timeMax=end_date.isoformat() + 'T23:59:59Z',
+                            singleEvents=True,
+                            privateExtendedProperty=['source=duty_bot'],
+                            pageToken=page_token
+                        ).execute()
+
+                        events = events_result.get('items', [])
+                        
+                        for event in events:
+                            props = event.get('extendedProperties', {}).get('private', {})
+                            schedule_id = props.get('schedule_id')
+                            team_id = props.get('team_id')
+                            
+                            # Only cleanup events for teams we are currently syncing
+                            # If team_id matches one of teams_to_sync
+                            if team_id and int(team_id) in [t.id for t in teams_to_sync]:
+                                if schedule_id and schedule_id not in active_schedule_ids:
+                                    # Orphan found
+                                    logger.info(f"Deleting orphan event {event['id']} (schedule {schedule_id})")
+                                    service.events().delete(
+                                        calendarId=integration.google_calendar_id,
+                                        eventId=event['id']
+                                    ).execute()
+
+                        page_token = events_result.get('nextPageToken')
+                        if not page_token:
+                            break
+                            
+                except Exception as e:
+                    logger.warning(f"Error cleaning up orphans: {e}")
                 
                 await self.update_last_sync(integration.id)
 
@@ -348,3 +406,10 @@ class GoogleCalendarService:
     async def update_last_sync(self, integration_id: int) -> None:
         """Update last sync timestamp."""
         await self.repo.update(integration_id, {"last_sync_at": datetime.utcnow()})
+
+    def _get_event_id(self, schedule_id: int) -> str:
+        """Generate deterministic event ID based on schedule ID.
+        Google Calendar ID must be base32hex (a-v, 0-9) and length 5-1024.
+        We use 'dbsched' (duty bot schedule) prefix + schedule_id to ensure min length.
+        """
+        return f"dbsched{schedule_id}"

@@ -112,7 +112,7 @@ async def get_google_calendar_status(
 )
 async def setup_google_calendar(
     request: ServiceAccountKeyRequest,
-    authorization: str = Header(None),
+    user: User = Depends(get_current_user),
     user_repo: UserRepository = Depends(get_user_repository),
     google_calendar_repo: GoogleCalendarRepository = Depends(get_google_calendar_repository),
     schedule_repo: ScheduleRepository = Depends(get_schedule_repository),
@@ -120,8 +120,6 @@ async def setup_google_calendar(
 ) -> dict:
     """Setup Google Calendar integration."""
     try:
-        user = await get_user_from_token(authorization, user_repo)
-
         if not user.is_admin:
             raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
 

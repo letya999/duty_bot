@@ -23,6 +23,7 @@ wheels/
 .installed.cfg
 *.egg
 .coverage
+.pytest_cache/
 
 # IDEs
 .vscode/

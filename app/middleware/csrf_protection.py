@@ -47,6 +47,7 @@ class CSRFProtection:
             '/web/auth/telegram-callback',  # Telegram OAuth
             '/web/auth/telegram-widget-callback',  # Telegram widget
             '/slack/events',  # Slack Event API webhooks
+            '/api/admin/settings/google-calendar',  # Exempt google calendar setup from CSRF
         }
 
     def generate_token(self, session_token: Optional[str] = None) -> str:

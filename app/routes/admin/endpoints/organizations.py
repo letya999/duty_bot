@@ -12,10 +12,11 @@ from app.services.user_account_service import UserAccountService
 from app.services.user_service import UserService
 from app.services.team_service import TeamService
 from app.routes.admin.dependencies import (
-    get_organization_service, 
+    get_organization_service,
     get_user_account_service,
     get_user_service,
-    get_team_service
+    get_team_service,
+    get_admin_service
 )
 from app.exceptions import NotFoundError, ConflictError
 
@@ -82,7 +83,8 @@ class OrganizationResponse(BaseModel):
 async def create_organization(
     req: CreateOrganizationRequest,
     user: User = Depends(get_current_user),
-    org_service: OrganizationService = Depends(get_organization_service)
+    org_service: OrganizationService = Depends(get_organization_service),
+    admin_service = Depends(get_admin_service)
 ) -> OrganizationResponse:
     """Create a new organization (SuperAdmin only)"""
     if not user.is_superadmin:
@@ -93,6 +95,17 @@ async def create_organization(
 
     try:
         org = await org_service.create_organization(req.name, user.id)
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="create_organization",
+            details={"organization_id": org.id, "organization_name": req.name},
+            target_id=org.id,
+            resource_type="organization"
+        )
+
         return OrganizationResponse(
             id=org.id,
             name=org.name,
@@ -170,7 +183,8 @@ async def update_organization(
     org_id: int,
     req: UpdateOrganizationRequest,
     user: User = Depends(get_current_user),
-    org_service: OrganizationService = Depends(get_organization_service)
+    org_service: OrganizationService = Depends(get_organization_service),
+    admin_service = Depends(get_admin_service)
 ) -> OrganizationResponse:
     """Update organization details"""
     if not user.is_superadmin:
@@ -183,6 +197,16 @@ async def update_organization(
         org = await org_service.update_organization(org_id, req.name)
         if not org:
             raise HTTPException(status_code=404, detail="Organization not found")
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="update_organization",
+            details={"organization_id": org.id, "new_name": req.name},
+            target_id=org.id,
+            resource_type="organization"
+        )
 
         return OrganizationResponse(
             id=org.id,
@@ -204,7 +228,8 @@ async def add_workspace_to_organization(
     org_id: int,
     workspace_id: int,
     user: User = Depends(get_current_user),
-    org_service: OrganizationService = Depends(get_organization_service)
+    org_service: OrganizationService = Depends(get_organization_service),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Add workspace to organization"""
     if not user.is_superadmin:
@@ -215,6 +240,17 @@ async def add_workspace_to_organization(
 
     try:
         workspace = await org_service.add_workspace_to_organization(org_id, workspace_id)
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="add_workspace_to_organization",
+            details={"organization_id": org_id, "workspace_id": workspace_id},
+            target_id=org_id,
+            resource_type="organization"
+        )
+
         return {"status": "success", "workspace_id": workspace.id}
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -228,7 +264,8 @@ async def remove_workspace_from_organization(
     org_id: int,
     workspace_id: int,
     user: User = Depends(get_current_user),
-    org_service: OrganizationService = Depends(get_organization_service)
+    org_service: OrganizationService = Depends(get_organization_service),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Remove workspace from organization"""
     if not user.is_superadmin:
@@ -239,6 +276,17 @@ async def remove_workspace_from_organization(
 
     try:
         await org_service.remove_workspace_from_organization(workspace_id)
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="remove_workspace_from_organization",
+            details={"organization_id": org_id, "workspace_id": workspace_id},
+            target_id=org_id,
+            resource_type="organization"
+        )
+
         return {"status": "success"}
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

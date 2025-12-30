@@ -6,7 +6,7 @@ interface CardProps {
 }
 
 export const Card: React.FC<CardProps> = ({ className = '', children }) => (
-  <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
+  <div className={`bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden ${className}`}>
     {children}
   </div>
 );
@@ -17,7 +17,7 @@ interface CardHeaderProps {
 }
 
 export const CardHeader: React.FC<CardHeaderProps> = ({ className = '', children }) => (
-  <div className={`px-6 py-4 border-b border-gray-200 ${className}`}>
+  <div className={`px-8 py-6 border-b border-gray-50 flex items-center justify-between ${className}`}>
     {children}
   </div>
 );
@@ -28,7 +28,7 @@ interface CardBodyProps {
 }
 
 export const CardBody: React.FC<CardBodyProps> = ({ className = '', children }) => (
-  <div className={`px-6 py-4 ${className}`}>
+  <div className={`p-8 ${className}`}>
     {children}
   </div>
 );
@@ -39,7 +39,7 @@ interface CardFooterProps {
 }
 
 export const CardFooter: React.FC<CardFooterProps> = ({ className = '', children }) => (
-  <div className={`px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-lg ${className}`}>
+  <div className={`px-8 py-6 border-t border-gray-50 bg-gray-50/50 ${className}`}>
     {children}
   </div>
 );

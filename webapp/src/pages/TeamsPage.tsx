@@ -7,6 +7,7 @@ import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { PageLayout, PageHeader } from '../components/ui/PageLayout';
 import { apiService } from '../services/api';
 import { Team, User } from '../types';
 
@@ -248,17 +249,17 @@ const TeamsPage: React.FC = () => {
   }
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{t('teams.title')}</h1>
-          <p className="text-gray-600 mt-2">{t('teams.subtitle')}</p>
-        </div>
-        <Button onClick={() => handleOpenModal()} variant="primary" size="md" className="mt-6 shadow-lg transform hover:scale-105 transition-all">
-          <Icons.Plus size={20} />
-          {t('teams.new_team')}
-        </Button>
-      </div>
+    <PageLayout>
+      <PageHeader
+        title={t('teams.title')}
+        subtitle={t('teams.subtitle')}
+        action={
+          <Button onClick={() => handleOpenModal()} variant="primary" size="md" className="shadow-lg transform hover:scale-105 transition-all">
+            <Icons.Plus size={20} />
+            {t('teams.new_team')}
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {teams.map(team => (
@@ -449,12 +450,11 @@ const TeamsPage: React.FC = () => {
       >
         <div className="space-y-4">
           <div className="flex gap-2 mb-4">
-            <input // Should be Input probably, but maybe too complex for simple field with side button? Let's use native input with same style or wrap. I'll use native for now but styled. Matches current Input style.
-              type="text"
+            <Input
               value={importHandle}
               onChange={(e) => setImportHandle(e.target.value)}
               placeholder={t('teams.members_modal.add_placeholder')}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="flex-1"
             />
             <Button
               size="sm"
@@ -550,7 +550,7 @@ const TeamsPage: React.FC = () => {
           </div>
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   );
 };
 

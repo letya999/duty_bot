@@ -5,6 +5,7 @@ import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { PageLayout, PageHeader } from '../components/ui/PageLayout';
 import { apiService } from '../services/api';
 import { Team, User } from '../types';
 
@@ -92,6 +93,12 @@ const EscalationsPage: React.FC = () => {
     }
   };
 
+  // Memoize escalations filtering to avoid recalculation on every render
+  const { globalEscalations, teamEscalations } = useMemo(() => ({
+    globalEscalations: escalations.filter(e => !e.team_id),
+    teamEscalations: escalations.filter(e => e.team_id),
+  }), [escalations]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -100,24 +107,18 @@ const EscalationsPage: React.FC = () => {
     );
   }
 
-  // Memoize escalations filtering to avoid recalculation on every render
-  const { globalEscalations, teamEscalations } = useMemo(() => ({
-    globalEscalations: escalations.filter(e => !e.team_id),
-    teamEscalations: escalations.filter(e => e.team_id),
-  }), [escalations]);
-
   return (
-    <div className="p-8">
-      <div className="mb-8 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{t('escalations.title')}</h1>
-          <p className="text-gray-600 mt-2">{t('escalations.subtitle')}</p>
-        </div>
-        <Button onClick={handleOpenModal} variant="primary" size="md">
-          <Plus size={20} />
-          {t('escalations.add_btn')}
-        </Button>
-      </div>
+    <PageLayout>
+      <PageHeader
+        title={t('escalations.title')}
+        subtitle={t('escalations.subtitle')}
+        action={
+          <Button onClick={handleOpenModal} variant="primary" size="md">
+            <Plus size={20} />
+            {t('escalations.add_btn')}
+          </Button>
+        }
+      />
 
       {/* Global Escalations */}
       <div className="mb-8">
@@ -258,7 +259,7 @@ const EscalationsPage: React.FC = () => {
           </div>
         </div>
       </Modal>
-    </div>
+    </PageLayout>
   );
 };
 

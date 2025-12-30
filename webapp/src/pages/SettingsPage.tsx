@@ -3,8 +3,10 @@ import { Shield, ShieldOff, Calendar, Copy, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Alert } from '../components/ui/Alert';
+import { PageLayout, PageHeader } from '../components/ui/PageLayout';
 import { apiService } from '../services/api';
 import { User, Team } from '../types';
 
@@ -186,11 +188,11 @@ const SettingsPage: React.FC = () => {
   const nonAdmins = users.filter(u => !u.is_admin);
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">{t('settings.title')}</h1>
-        <p className="text-gray-600 mt-2">{t('settings.subtitle')}</p>
-      </div>
+    <PageLayout>
+      <PageHeader
+        title={t('settings.title')}
+        subtitle={t('settings.subtitle')}
+      />
 
       {/* Success Alert */}
       {success && (
@@ -321,11 +323,10 @@ const SettingsPage: React.FC = () => {
                         {t('settings.google_calendar.public_url')}
                       </label>
                       <div className="flex gap-2">
-                        <input
-                          type="text"
+                        <Input
                           readOnly
                           value={integration.public_calendar_url}
-                          className="flex-1 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-600 outline-none"
+                          className="flex-1 bg-white text-gray-600"
                         />
                         <Button
                           variant="ghost"
@@ -493,7 +494,7 @@ const SettingsPage: React.FC = () => {
           </div>
         </CardBody>
       </Card>
-    </div>
+    </PageLayout>
   );
 };
 

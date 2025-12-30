@@ -5,6 +5,7 @@ import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { PageLayout, PageHeader } from '../components/ui/PageLayout';
 import { apiService } from '../services/api';
 import { User, Schedule } from '../types';
 
@@ -108,11 +109,11 @@ const ReportsPage: React.FC = () => {
   }
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">{t('reports.title')}</h1>
-        <p className="text-gray-600 mt-2">{t('reports.subtitle')}</p>
-      </div>
+    <PageLayout>
+      <PageHeader
+        title={t('reports.title')}
+        subtitle={t('reports.subtitle')}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card className="md:col-span-1">
@@ -223,7 +224,7 @@ const ReportsPage: React.FC = () => {
           )}
         </CardBody>
       </Card>
-    </div>
+    </PageLayout>
   );
 };
 

@@ -4,6 +4,7 @@ import { Icons } from '../components/ui/Icons';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { Alert } from '../components/ui/Alert';
+import { PageLayout, PageHeader } from '../components/ui/PageLayout';
 import { apiService } from '../services/api';
 import { Team, User, Schedule } from '../types';
 
@@ -57,12 +58,12 @@ const DashboardPage: React.FC = () => {
   }
 
   return (
-    <div className="p-8">
+    <PageLayout>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">{t('dashboard.title')}</h1>
-        <p className="text-gray-600 mt-2">{t('dashboard.welcome')}</p>
-      </div>
+      <PageHeader
+        title={t('dashboard.title')}
+        subtitle={t('dashboard.welcome')}
+      />
 
       {/* Error Alert */}
       {error && (
@@ -176,7 +177,7 @@ const DashboardPage: React.FC = () => {
           )}
         </CardBody>
       </Card>
-    </div>
+    </PageLayout>
   );
 };
 

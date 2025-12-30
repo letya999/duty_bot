@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { PageLayout, PageHeader } from '../components/ui/PageLayout';
 import { Alert } from '../components/ui/Alert';
 import { Icons } from '../components/ui/Icons';
 import { apiService } from '../services/api';
@@ -168,8 +169,8 @@ const IncidentsPage: React.FC = () => {
   }
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-8">{t('incidents.title')}</h1>
+    <PageLayout>
+      <PageHeader title={t('incidents.title')} />
 
       {error && <Alert type="error" message={error} />}
 
@@ -323,7 +324,7 @@ const IncidentsPage: React.FC = () => {
           )}
         </CardBody>
       </Card>
-    </div>
+    </PageLayout>
   );
 };
 

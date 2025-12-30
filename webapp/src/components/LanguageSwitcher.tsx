@@ -33,27 +33,27 @@ const LanguageSwitcher: React.FC = () => {
         <div className="relative" ref={dropdownRef}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 backdrop-blur-md border border-indigo-500/30 text-white transition-all duration-200 group"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 shadow-sm hover:shadow-md text-gray-700 transition-all duration-200 group font-bold"
             >
-                <Globe size={18} className="text-indigo-500 group-hover:rotate-12 transition-transform" />
-                <span className="text-sm font-medium">{currentLanguage.name}</span>
-                <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                <Globe size={18} className="text-blue-600 group-hover:rotate-12 transition-transform" />
+                <span className="text-sm">{currentLanguage.name}</span>
+                <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-[#1e293b]/95 backdrop-blur-xl border border-white/10 shadow-2xl py-2 z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-white border border-gray-100 shadow-xl py-2 z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
                     {languages.map((lang) => (
                         <button
                             key={lang.code}
                             onClick={() => handleLanguageChange(lang.code)}
                             className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${i18n.language === lang.code
-                                ? 'text-indigo-500 bg-white/5'
-                                : 'text-gray-300 hover:text-white hover:bg-white/5'
+                                ? 'text-blue-600 bg-blue-50 font-bold'
+                                : 'text-gray-700 hover:bg-gray-50 font-medium'
                                 }`}
                         >
                             <div className="flex items-center gap-3">
                                 <span className="text-lg">{lang.flag}</span>
-                                <span className="font-medium">{lang.name}</span>
+                                <span>{lang.name}</span>
                             </div>
                             {i18n.language === lang.code && <Check size={16} />}
                         </button>

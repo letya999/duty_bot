@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Building2, Plus, Users, Globe, Trash2, FolderTree, Shield, GitMerge, Check, AlertCircle } from 'lucide-react';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { PageLayout, PageHeader } from '../components/ui/PageLayout';
 
 interface TeamMember {
     id: number;
@@ -355,20 +356,20 @@ const OrganizationsPage: React.FC = () => {
     const allOrgTeams = workspaces.flatMap(ws => ws.teams || []).filter((t, i, a) => a.findIndex(t2 => t2.id === t.id) === i);
 
     return (
-        <div className="p-6 max-w-7xl mx-auto space-y-8">
-            <div className="flex justify-between items-end">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">{t('organizations.title')}</h1>
-                    <p className="text-gray-500 mt-1">{t('organizations.subtitle')}</p>
-                </div>
-                <button
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 font-bold"
-                >
-                    <Plus size={20} />
-                    {t('organizations.new_org')}
-                </button>
-            </div>
+        <PageLayout>
+            <PageHeader
+                title={t('organizations.title')}
+                subtitle={t('organizations.subtitle')}
+                action={
+                    <button
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 font-bold"
+                    >
+                        <Plus size={20} />
+                        {t('organizations.new_org')}
+                    </button>
+                }
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 <div className="lg:col-span-1 space-y-4">
@@ -881,7 +882,7 @@ const OrganizationsPage: React.FC = () => {
                     </div>
                 </div>
             )}
-        </div>
+        </PageLayout>
     );
 };
 

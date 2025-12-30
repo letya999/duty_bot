@@ -304,9 +304,9 @@ const SchedulesPage: React.FC = () => {
           </h2>
         </CardHeader>
         <CardBody>
-          <div className={`grid ${gridCols} gap-px bg-gray-200 border border-gray-200 rounded-lg overflow-hidden`}>
+          <div className={`grid ${gridCols} gap-px bg-gray-100 border border-gray-100 rounded-2xl overflow-hidden shadow-inner`}>
             {headers.map((day, idx) => (
-              <div key={idx} className="bg-gray-50 p-2 text-center text-sm font-medium text-text-muted capitalize">
+              <div key={idx} className="bg-gray-50 p-3 text-center text-xs font-black text-gray-400 uppercase tracking-widest">
                 {day}
               </div>
             ))}
@@ -321,19 +321,21 @@ const SchedulesPage: React.FC = () => {
               return (
                 <div
                   key={dateStr}
-                  className={`bg-white min-h-[120px] p-2 hover:bg-gray-50 transition-colors group relative ${isToday ? 'bg-info-light/30' : ''
+                  className={`bg-white min-h-[120px] p-3 hover:bg-gray-50 transition-colors group relative ${isToday ? 'bg-blue-50/50' : ''
                     }`}
                   onClick={() => handleOpenAddModal(dateStr)} // Click cell to add
                 >
-                  <div className="flex justify-between items-start mb-1">
-                    <span className={`text-sm font-medium ${isToday
-                      ? 'bg-primary text-primary-text w-6 h-6 flex items-center justify-center rounded-full'
-                      : 'text-gray-700'
-                      }`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <span
+                      className={`text-xs font-bold ${isToday
+                        ? 'bg-blue-600 text-white w-6 h-6 flex items-center justify-center rounded-full shadow-md'
+                        : 'text-gray-400'
+                        }`}
+                    >
                       {day.getDate()}
                     </span>
                     <button
-                      className="opacity-0 group-hover:opacity-100 text-primary hover:text-primary-dark transition-opacity"
+                      className="opacity-0 group-hover:opacity-100 text-blue-600 hover:bg-blue-50 p-1 rounded-md transition-all"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleOpenAddModal(dateStr);
@@ -342,24 +344,27 @@ const SchedulesPage: React.FC = () => {
                       <Icons.Plus size={16} />
                     </button>
                   </div>
-                  <div className="space-y-1">
-                    {daySchedules.map(schedule => (
+                  <div className="space-y-1.5">
+                    {daySchedules.map((schedule) => (
                       <div
                         key={schedule.id}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleOpenEditModal(schedule);
                         }}
-                        className="text-xs p-1.5 rounded bg-info-light border-l-2 border-info cursor-pointer hover:brightness-95 transition-all truncate"
+                        className="text-[10px] p-2 rounded-lg bg-gray-50 border border-gray-100 cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all truncate group/item"
                         title={`${schedule.user.display_name || schedule.user.first_name} ${schedule.team ? `(${schedule.team.name})` : ''}`}
                       >
-                        <span className="font-medium text-info-dark">
-                          {schedule.user.display_name || schedule.user.first_name}
-                        </span>
-                        {schedule.team && (
-                          <span className="text-info-dark/70 ml-1">
-                            • {schedule.team.name}
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                          <span className="font-bold text-gray-700 group-hover/item:text-blue-700 transition-colors truncate">
+                            {schedule.user.display_name || schedule.user.first_name}
                           </span>
+                        </div>
+                        {schedule.team && (
+                          <div className="text-gray-400 pl-3 truncate text-[9px]">
+                            {schedule.team.name}
+                          </div>
                         )}
                       </div>
                     ))}
@@ -407,13 +412,13 @@ const SchedulesPage: React.FC = () => {
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => handleOpenEditModal(schedule)}
-                            className="p-1.5 text-info hover:bg-info-light rounded"
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           >
                             <Icons.Edit size={16} />
                           </button>
                           <button
                             onClick={() => handleDeleteDuty(schedule.id)}
-                            className="p-1.5 text-error hover:bg-error-light rounded"
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                           >
                             <Icons.Delete size={16} />
                           </button>
@@ -443,17 +448,17 @@ const SchedulesPage: React.FC = () => {
   }
 
   return (
-    <div className="p-8">
-      <div className="mb-8 flex justify-between items-center">
+    <div className="p-6 max-w-7xl mx-auto space-y-8">
+      <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">{t('schedules.title')}</h1>
-          <p className="text-gray-600 mt-2">{t('schedules.subtitle')}</p>
+          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">{t('schedules.title')}</h1>
+          <p className="text-gray-500 mt-1">{t('schedules.subtitle')}</p>
         </div>
         <Button
           onClick={() => handleOpenAddModal()}
           variant="primary"
           size="md"
-          className="mt-6 shadow-lg transform hover:scale-105 transition-all"
+          className="flex items-center gap-2"
         >
           <Icons.Plus size={20} />
           {t('schedules.add_duty')}
@@ -461,12 +466,12 @@ const SchedulesPage: React.FC = () => {
       </div>
 
       <div className="mb-6 flex gap-4 flex-wrap items-center">
-        <div className="flex gap-2 bg-secondary-bg p-1 rounded-lg">
+        <div className="flex gap-2 bg-gray-100 p-1.5 rounded-xl border border-gray-200">
           <button
             onClick={() => setViewMode('calendar')}
-            className={`px-4 py-2 rounded flex items-center gap-2 ${viewMode === 'calendar'
-              ? 'bg-white text-primary shadow'
-              : 'text-text-muted hover:text-gray-900'
+            className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all font-bold text-sm ${viewMode === 'calendar'
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-gray-500 hover:text-gray-900'
               }`}
           >
             <Icons.Calendar size={18} />
@@ -474,9 +479,9 @@ const SchedulesPage: React.FC = () => {
           </button>
           <button
             onClick={() => setViewMode('list')}
-            className={`px-4 py-2 rounded flex items-center gap-2 ${viewMode === 'list'
-              ? 'bg-white text-primary shadow'
-              : 'text-text-muted hover:text-gray-900'
+            className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all font-bold text-sm ${viewMode === 'list'
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-gray-500 hover:text-gray-900'
               }`}
           >
             <Icons.List size={18} />
@@ -485,14 +490,14 @@ const SchedulesPage: React.FC = () => {
         </div>
 
         {viewMode === 'calendar' && (
-          <div className="flex gap-2 bg-secondary-bg p-1 rounded-lg">
+          <div className="flex gap-2 bg-gray-100 p-1.5 rounded-xl border border-gray-200">
             {['day', 'week', 'month'].map(mode => (
               <button
                 key={mode}
                 onClick={() => setCalendarMode(mode as CalendarMode)}
-                className={`px-3 py-2 rounded text-sm capitalize ${calendarMode === mode
-                  ? 'bg-white text-primary shadow'
-                  : 'text-text-muted hover:text-gray-900'
+                className={`px-3 py-2 rounded-lg text-sm capitalize transition-all font-bold ${calendarMode === mode
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-900'
                   }`}
               >
                 {t(`schedules.${mode}`)}
@@ -522,7 +527,7 @@ const SchedulesPage: React.FC = () => {
               value={listStartDate}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setListStartDate(e.target.value)}
             />
-            <span className="text-text-muted">{t('schedules.filters.to')}</span>
+            <span className="text-gray-400 font-bold text-xs uppercase">{t('schedules.filters.to')}</span>
             <Input
               type="date"
               className="w-40"

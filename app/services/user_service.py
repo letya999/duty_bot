@@ -592,7 +592,6 @@ class UserService:
         if not target_user.last_name and source_user.last_name:
             target_user.last_name = source_user.last_name
         
-        
         # 1. Transfer UserAccounts
         # We need to transfer accounts from source to target. 
         # If target already has an account for the same provider and workspace, we merge data and delete the source account.

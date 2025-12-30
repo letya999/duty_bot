@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Building2, Plus, Users, Globe, Trash2, FolderTree, Shield, GitMerge, Check, AlertCircle } from 'lucide-react';
+import { Building2, Plus, Users, Globe, Trash2, FolderTree, Shield, GitMerge, Check, AlertCircle, Send, MessageSquare, ExternalLink } from 'lucide-react';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { PageLayout, PageHeader } from '../components/ui/PageLayout';
 
@@ -310,10 +310,11 @@ const OrganizationsPage: React.FC = () => {
                 })
             });
             if (response.ok) {
+                const updatedUsers = await response.json();
+                setOrgUsers(updatedUsers);
                 setIsUserMergeModalOpen(false);
                 setMergeSourceUser(null);
                 setMergeTargetUser(null);
-                fetchOrgDetails(selectedOrg.id);
             }
         } catch (error) {
             console.error('Failed to merge users:', error);
@@ -550,10 +551,22 @@ const OrganizationsPage: React.FC = () => {
                                                             </td>
                                                             <td className="px-6 py-4">
                                                                 <div className="flex flex-wrap gap-2 mb-2">
-                                                                    {user.user_accounts.map(acc => (
-                                                                        <span key={acc.id} className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-100">
-                                                                            {acc.provider === 'telegram' ? '✈️' : '⚡'} @{acc.username || acc.provider_id.slice(0, 8)}
-                                                                        </span>
+                                                                    {Array.from(new Map(user.user_accounts.map(item => [item.provider_id, item])).values()).map(acc => (
+                                                                        <a
+                                                                            key={acc.id}
+                                                                            href={acc.provider === 'telegram' && acc.username ? `https://t.me/${acc.username}` : undefined}
+                                                                            target={acc.provider === 'telegram' && acc.username ? '_blank' : undefined}
+                                                                            rel="noopener noreferrer"
+                                                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border transition-all hover:scale-105 ${acc.provider === 'telegram'
+                                                                                    ? 'bg-sky-50 text-sky-600 border-sky-100 hover:bg-sky-100'
+                                                                                    : 'bg-purple-50 text-purple-600 border-purple-100 hover:bg-purple-100'
+                                                                                }`}
+                                                                            onClick={e => (!acc.username && e.preventDefault())}
+                                                                        >
+                                                                            {acc.provider === 'telegram' ? <Send size={10} className="fill-current opacity-50" /> : <MessageSquare size={10} className="fill-current opacity-50" />}
+                                                                            <span>@{acc.username || acc.provider_id.slice(0, 8)}</span>
+                                                                            {acc.provider === 'telegram' && acc.username && <ExternalLink size={8} className="opacity-40" />}
+                                                                        </a>
                                                                     ))}
                                                                 </div>
                                                                 <button

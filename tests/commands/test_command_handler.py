@@ -133,6 +133,33 @@ async def setup_duty_team(db_session: AsyncSession):
         assert "Backend Team" in result
         assert "user1" in result
 
+    @pytest.mark.asyncio
+    async def test_mention_duty_with_formatter(self, db_session: AsyncSession, setup_duty_team):
+        """Test mention_duty with custom formatter (Slack style)"""
+        workspace_id, team, user1, user2 = setup_duty_team
+        today = date.today()
+
+        # Create schedule entry
+        schedule = Schedule(
+            team_id=team.id,
+            user_id=user1.id,
+            date=today,
+            is_shift=False
+        )
+        db_session.add(schedule)
+        await db_session.flush()
+
+        handler = CommandHandler(db_session, workspace_id=workspace_id)
+        
+        # Define mock Slack formatter
+        def formatter(u):
+            return f"<@{u.id}>" # Simulating Slack ID
+
+        result = await handler.mention_duty("backend", today=today, user_formatter=formatter)
+
+        assert "Backend Team" in result
+        assert f"<@{user1.id}>" in result
+
 
 class TestCommandHandlerTeam:
     """Test team management commands"""

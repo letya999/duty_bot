@@ -55,6 +55,33 @@ class UserRepository(BaseRepository[User]):
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
+    async def get_by_username(self, workspace_id: int, username: str) -> Optional[User]:
+        """Get user by username or messenger handle in workspace."""
+        from app.models import UserAccount
+        from sqlalchemy import func, or_, and_
+        
+        stmt = select(User).outerjoin(UserAccount).where(
+            User.workspace_id == workspace_id,
+            or_(
+                func.lower(User.username) == username.lower(),
+                func.lower(UserAccount.username) == username.lower()
+            )
+        ).options(selectinload(User.user_accounts))
+        
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def get_by_email(self, workspace_id: int, email: str) -> Optional[User]:
+        """Get user by email in workspace (via UserAccount)."""
+        from app.models import UserAccount
+        from sqlalchemy import func
+        stmt = select(User).join(UserAccount).where(
+            User.workspace_id == workspace_id,
+            func.lower(UserAccount.account_email) == email.lower()
+        ).options(selectinload(User.user_accounts))
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     async def get_by_slack_user_id(self, workspace_id: int, slack_user_id: str) -> Optional[User]:
         """Get user by Slack user ID in workspace via UserAccount."""
         from app.models import UserAccount
@@ -122,3 +149,14 @@ class UserRepository(BaseRepository[User]):
             user.is_admin = is_admin
             await self.db.commit()
         return user
+
+    async def get_by_provider_id_in_org(self, organization_id: int, provider: str, provider_id: str) -> Optional[User]:
+        """Get user by provider ID within the same organization."""
+        from app.models import UserAccount
+        stmt = select(User).join(UserAccount).where(
+            User.organization_id == organization_id,
+            UserAccount.provider == provider,
+            UserAccount.provider_id == provider_id
+        ).options(selectinload(User.user_accounts))
+        result = await self.db.execute(stmt)
+        return result.scalars().first()

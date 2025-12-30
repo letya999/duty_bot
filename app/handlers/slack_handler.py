@@ -80,7 +80,101 @@ class SlackHandler:
         @self.app.event("app_mention")
         async def handle_app_mentions(body, say, logger):
             logger.info(f"Received app_mention: {body}")
-            await say("I'm alive and listening!")
+            
+            event = body.get("event", {})
+            user_id = event.get("user")
+            team_id = body.get("team_id")
+            text = event.get("text", "")
+            channel_id = event.get("channel")
+
+            logger.info(f"Received app_mention event. User: {user_id}, Team: {team_id}, Channel: {channel_id}")
+            logger.debug(f"Event text: {text}")
+
+            if not user_id or not team_id:
+                logger.warning("Missing user_id or team_id in app_mention event")
+                return
+
+            try:
+                async with get_db_with_retry() as db:
+                    # Ensure workspace exists
+                    logger.info(f"Resolving workspace for team_id: {team_id}")
+                    workspace_id = await get_or_create_slack_workspace(db, team_id)
+                    logger.info(f"Workspace resolved: {workspace_id}")
+                    
+                    # Initialize handlers
+                    handler = BotCommandHandler(db, workspace_id)
+                    
+                    # This call will fetch user from Slack and create/update in DB
+                    logger.info(f"Calling user_service.get_user_by_slack for user_id: {user_id}")
+                    user = await handler.user_service.get_user_by_slack(workspace_id, user_id)
+                    
+                    if user:
+                        logger.info(f"User resolved successfully. ID: {user.id}, Display Name: {user.display_name}, Username: {user.username}")
+                    else:
+                        logger.warning(f"Failed to resolve user for user_id: {user_id}")
+                    
+                    logger.info(f"User {user.display_name if user else 'UNKNOWN'} (id={user.id if user else 'None'}) processed via app_mention")
+
+                    # Extract potential command from text
+                    # Remove the bot mention <@BOTID> from text
+                    clean_text = text
+                    if event.get("blocks"):
+                         # Try to extract clean text if blocks are present (optional)
+                         pass
+                    
+                    # Simple cleanup: remove <@...>
+                    import re
+                    clean_text = re.sub(r'<@[A-Z0-9]+>', '', text).strip()
+                    
+                    parts = clean_text.split()
+                    if not parts:
+                         # Just a mention? Say hello or I'm alive
+                         await self._send_message_safe(self.client, channel_id, f"Hello <@{user_id}>! I'm here. Type `/help` or help to see commands.")
+                         return
+
+                    command_name = parts[0].lower()
+                    command_args = parts[1:]
+                    
+                    # Map text commands to handlers (similar to Telegram)
+                    # We reuse slash command handlers if possible, but they expect specific format
+                    # or we just call the CommandHandler methods directly.
+                    
+                    response_text = None
+                    
+                    if command_name in ["duty", "d"]:
+                         if not command_args:
+                             response_text = await handler.duty_today()
+                         else:
+                             response_text = await handler.mention_duty(command_args[0])
+
+                    elif command_name in ["team", "t"]:
+                         # Not implementing full team management via text due to complexity, but list is easy
+                         if not command_args or command_args[0] == "list":
+                              response_text = await handler.team_list()
+                         elif command_args[0] == "info" and len(command_args) > 1:
+                              response_text = await handler.team_info(command_args[1])
+                         else:
+                              response_text = "For team management, please use the `/team` slash command."
+
+                    elif command_name in ["help", "start"]:
+                         response_text = await handler.help()
+                         
+                    elif command_name in ["schedule", "s"]:
+                          response_text = "For schedule management, please use the `/schedule` slash command."
+                          
+                    elif command_name in ["incident", "i"]:
+                          # Simple list
+                          if not command_args:
+                              response_text = await handler.incident_list()
+                          else:
+                               response_text = "For incident management, please use the `/incident` slash command."
+
+                    if response_text:
+                         await self._send_message_safe(self.client, channel_id, response_text)
+
+            except Exception as e:
+                logger.error(f"Error processing app_mention: {e}")
+                # Don't spam channel with errors processing mentions unless critical
 
     def _test_token_status(self):
         """Test if the Slack bot token is valid"""
@@ -151,15 +245,24 @@ class SlackHandler:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
+                
+                # Auto-register user
+                logger.info(f"duty_command: Resolving user {command['user_id']}")
+                await handler.user_service.get_user_by_slack(workspace_id, command["user_id"])
+                
+                def slack_formatter(u):
+                    if u.slack_user_id:
+                        return f"<@{u.slack_user_id}>"
+                    return u.display_name
 
                 text = command.get("text", "").strip()
                 if not text:
                     # Show all duties today
-                    result = await handler.duty_today()
+                    result = await handler.duty_today(user_formatter=slack_formatter)
                 else:
                     # Mention specific team's duty
                     team_name = text.split()[0].strip()
-                    result = await handler.mention_duty(team_name)
+                    result = await handler.mention_duty(team_name, user_formatter=slack_formatter)
 
                 await client.chat_postMessage(
                     channel=command["channel_id"],
@@ -627,6 +730,10 @@ class SlackHandler:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
+                
+                # Auto-register user
+                logger.info(f"escalate_command: Resolving user {command['user_id']}")
+                await handler.user_service.get_user_by_slack(workspace_id, command["user_id"])
 
                 text = command.get("text", "").strip()
                 if not text:
@@ -666,6 +773,10 @@ class SlackHandler:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
+                
+                # Auto-register user
+                logger.info(f"incident_command: Resolving user {command['user_id']}")
+                await handler.user_service.get_user_by_slack(workspace_id, command["user_id"])
 
                 text = command.get("text", "").strip()
                 if not text:
@@ -821,6 +932,11 @@ class SlackHandler:
             async with get_db_with_retry() as db:
                 workspace_id = await get_or_create_slack_workspace(db, command["team_id"])
                 handler = BotCommandHandler(db, workspace_id)
+                
+                # Auto-register user
+                logger.info(f"help_command: Resolving user {command['user_id']}")
+                await handler.user_service.get_user_by_slack(workspace_id, command["user_id"])
+                
                 result = await handler.help()
                 await self._send_message_safe(client, command["channel_id"], result)
         except Exception as e:

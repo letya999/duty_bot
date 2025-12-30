@@ -179,3 +179,59 @@ class TestUserService:
         admins = await service.user_repo.list_admins_in_workspace(workspace.id)
         assert len(admins) >= 1
         assert all(a.is_admin for a in admins)
+
+    @pytest.mark.asyncio
+    async def test_merge_users(self, setup_user_service):
+        """Test merging users preserves accounts"""
+        from app.models import UserAccount
+        from sqlalchemy import select
+        service, workspace = setup_user_service
+
+        # Create source user (Telegram)
+        source = await service.create_user(
+            workspace_id=workspace.id,
+            username="source",
+            telegram_username="source_tg",
+            telegram_id=111111,
+            first_name="Source"
+        )
+
+        # Create target user (Slack)
+        target = await service.create_user(
+            workspace_id=workspace.id,
+            username="target",
+            slack_user_id="U222222",
+            first_name="Target"
+        )
+
+        # Verify initial state
+        # Source has 1 account (Telegram)
+        # We need to refresh/query properly as create_user might not expire session
+        stmt = select(UserAccount).where(UserAccount.user_id == source.id)
+        source_accounts = (await service.user_repo.db.execute(stmt)).scalars().all()
+        assert len(source_accounts) == 1
+        assert source_accounts[0].provider == 'telegram'
+
+        # Target has 1 account (Slack)
+        stmt = select(UserAccount).where(UserAccount.user_id == target.id)
+        target_accounts = (await service.user_repo.db.execute(stmt)).scalars().all()
+        assert len(target_accounts) == 1
+        assert target_accounts[0].provider == 'slack'
+
+        # Merge
+        await service.merge_users(target.id, source.id)
+
+        # Verify final state
+        # Target should have 2 accounts
+        stmt = select(UserAccount).where(UserAccount.user_id == target.id)
+        result = await service.user_repo.db.execute(stmt)
+        final_accounts = result.scalars().all()
+        
+        assert len(final_accounts) == 2
+        providers = {acc.provider for acc in final_accounts}
+        assert 'telegram' in providers
+        assert 'slack' in providers
+        
+        # Source should be deleted
+        source_check = await service.user_repo.get_by_id(source.id)
+        assert source_check is None

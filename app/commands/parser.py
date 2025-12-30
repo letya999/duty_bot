@@ -159,8 +159,8 @@ class DateParser:
 class CommandParser:
     """Parse bot commands"""
 
-    # Regex for mentions: @username (Telegram) or <@U12345> (Slack)
-    MENTION_PATTERN = re.compile(r'(?:@(\w+))|(?:<@(\w+)>)')
+    # Regex for mentions: @username (Telegram) or <@U12345> (Slack) or <@U12345|label>
+    MENTION_PATTERN = re.compile(r'(?:<@(\w+)(?:\|[^>]+)?>)|(?:@([\w.-]+))')
 
     @staticmethod
     def extract_mentions(text: str) -> list[str]:

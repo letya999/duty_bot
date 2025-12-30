@@ -26,6 +26,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path
       }
+    },
+    hmr: {
+      host: 'rona-isobathythermal-nondeficiently.ngrok-free.dev',
+      clientPort: 443
     }
   },
   build: {

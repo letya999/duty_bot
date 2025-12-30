@@ -77,9 +77,21 @@ class UserService:
         if telegram_id:
             user = await self.user_repo.get_by_telegram_id(workspace_id, telegram_id)
         
-        # 2. If not found, try by username
         if not user and telegram_username:
             user = await self.user_repo.get_by_telegram_username(workspace_id, telegram_username)
+
+        # 3. If not found, try to find in SAME ORGANIZATION
+        if not user and telegram_id:
+             from app.models import Workspace
+             stmt_ws = select(Workspace.organization_id).where(Workspace.id == workspace_id)
+             res_ws = await self.user_repo.db.execute(stmt_ws)
+             current_org_id = res_ws.scalar_one_or_none()
+             
+             if current_org_id:
+                 user = await self.user_repo.get_by_provider_id_in_org(current_org_id, 'telegram', str(telegram_id))
+                 if user:
+                     # logger.info(f"Found existing user {user.id} in org {current_org_id} for Telegram ID {telegram_id}. Using this identity.")
+                     pass
 
         if not user:
             # Use get_settings to check for master admins
@@ -176,13 +188,20 @@ class UserService:
 
         return user
 
-    async def get_or_create_by_slack(self, workspace_id: int, slack_user_id: str, display_name: str, first_name: str = None, last_name: str = None) -> User:
+    async def get_or_create_by_slack(self, workspace_id: int, slack_user_id: str, display_name: str, first_name: str = None, last_name: str = None, email: str = None, handle: str = None) -> User:
         """Get or create user by Slack user ID in workspace"""
         
         # 1. Try to find by slack_user_id (via UserAccount)
         user = await self.user_repo.get_by_slack_user_id(workspace_id, slack_user_id)
 
         if not user:
+            # Use get_settings to check for master admins
+            from app.config import get_settings
+            settings = get_settings()
+            is_master = False
+            if slack_user_id and slack_user_id in settings.get_admin_ids('slack'):
+                is_master = True
+
             # Generate default display_name if needed
             if not display_name:
                 if first_name and last_name:
@@ -199,10 +218,11 @@ class UserService:
             user = await self.user_repo.create({
                 'workspace_id': workspace_id,
                 'organization_id': organization_id,
-                'username': slack_user_id, # Fallback username
+                'username': handle or slack_user_id, # Use handle if available
                 'first_name': first_name,
                 'last_name': last_name,
-                'display_name': display_name
+                'display_name': display_name,
+                'is_admin': is_master
             })
 
             # Create UserAccount record
@@ -213,8 +233,8 @@ class UserService:
                         'workspace_id': workspace_id,
                         'provider': 'slack',
                         'provider_id': slack_user_id,
-                        'username': None,
-                        'account_email': None
+                        'username': handle,
+                        'account_email': email
                     })
                 except Exception:
                     pass
@@ -226,8 +246,30 @@ class UserService:
             if last_name and not user.last_name:
                 update_data['last_name'] = last_name
             
+            # Sync master admin status
+            from app.config import get_settings
+            settings = get_settings()
+            if slack_user_id and slack_user_id in settings.get_admin_ids('slack') and not user.is_admin:
+                update_data['is_admin'] = True
+
             if update_data:
                  user = await self.user_repo.update(user.id, update_data)
+
+            # Update email and username if missing or changed
+            if (email or handle) and self.user_account_repo:
+                 try:
+                    account = await self.user_account_repo.get_by_slack_id(slack_user_id, workspace_id)
+                    if account:
+                        account_update = {}
+                        if email and account.account_email != email:
+                             account_update['account_email'] = email
+                        if handle and account.username != handle:
+                             account_update['username'] = handle
+                        
+                        if account_update:
+                             await self.user_account_repo.update(account.id, account_update)
+                 except Exception:
+                    pass
 
         return user
 
@@ -293,10 +335,51 @@ class UserService:
 
     async def get_user_by_slack(self, workspace_id: int, slack_user_id: str) -> User | None:
         """Get user by Slack user ID in workspace, fetch from Slack if needed"""
+        import re
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"get_user_by_slack: Processing {slack_user_id} in workspace {workspace_id}")
+        
+        # 0. Validate Slack ID format (Relaxed)
+        # We assume any string > 2 chars could be a valid ID or username
+        if len(slack_user_id) < 2:
+             logger.warning(f"get_user_by_slack: Short/Invalid string '{slack_user_id}', skipping.")
+             return None
+             
+        # Check if it looks like a standard ID for logging purposes
+        is_standard_id = (slack_user_id.startswith('U') or slack_user_id.startswith('W') or slack_user_id.startswith('S'))
+        if not is_standard_id:
+             logger.info(f"get_user_by_slack: {slack_user_id} does not look like standard ID (U/W/S). Will try username lookup first.")
+             # Assume it's a username lookup by admin (e.g. they typed /team add @username)
+             user = await self.user_repo.get_by_username(workspace_id, slack_user_id)
+             if user:
+                 logger.info(f"get_user_by_slack: Found user by username '{slack_user_id}': ID={user.id}")
+                 return user
+             logger.info(f"get_user_by_slack: Not found by username. Will attempt to treat as Slack ID and fetch from API.")
+
         # 1. Try to find in current workspace
         user = await self.user_repo.get_by_slack_user_id(workspace_id, slack_user_id)
+        
+        # 1.5. If not found locally, try to find in SAME ORGANIZATION
+        if not user:
+             from app.models import Workspace
+             stmt_ws = select(Workspace.organization_id).where(Workspace.id == workspace_id)
+             res_ws = await self.user_repo.db.execute(stmt_ws)
+             current_org_id = res_ws.scalar_one_or_none()
+             
+             if current_org_id:
+                 user = await self.user_repo.get_by_provider_id_in_org(current_org_id, 'slack', slack_user_id)
+                 if user:
+                     logger.info(f"get_user_by_slack: Found existing user {user.id} in org {current_org_id} for Slack ID {slack_user_id}. Using this identity.")
+
         if user:
-            return user
+             logger.info(f"get_user_by_slack: Found existing user locally or in org. ID={user.id}. Proceeding to refresh from Slack.")
+        else:
+             logger.info(f"get_user_by_slack: User not found locally or in org. Proceeding to fetch from Slack.")
+
+        # Even if found, we proceed to fetch info from Slack to ensure profile is up-to-date and complete
+        # (e.g. if it was created as a "garbage" user or just username before)
         
         # 2. Try to fetch from Slack API
         from app.config import get_settings
@@ -306,15 +389,16 @@ class UserService:
             "display_name": slack_user_id,
             "first_name": None,
             "last_name": None,
+            "email": None,
+            "handle": None
         }
 
         if settings.slack_bot_token:
             try:
                 from slack_sdk.web.async_client import AsyncWebClient
-                import logging
-                logger = logging.getLogger(__name__)
-
                 client = AsyncWebClient(token=settings.slack_bot_token)
+                
+                logger.info(f"get_user_by_slack: Fetching users.info for {slack_user_id}")
                 response = await client.users_info(user=slack_user_id)
                 
                 if response["ok"]:
@@ -324,6 +408,7 @@ class UserService:
                     real_name = profile.get("real_name") or slack_user.get("real_name")
                     first_name = profile.get("first_name")
                     last_name = profile.get("last_name")
+                    email = profile.get("email")
                     
                     if not first_name and real_name:
                         parts = real_name.split(' ', 1)
@@ -334,19 +419,103 @@ class UserService:
                     info["first_name"] = first_name or real_name or "Slack User"
                     info["last_name"] = last_name
                     info["display_name"] = profile.get("display_name") or real_name or slack_user.get("name")
+                    info["email"] = email
+                    info["handle"] = slack_user.get("name")
                     
-                    logger.info(f"Fetched Slack info for {slack_user_id}: {info['display_name']}")
+                    logger.info(f"get_user_by_slack: Fetched Slack info: Display='{info['display_name']}', Email='{info['email']}', Handle='{info['handle']}'")
+                else:
+                     logger.warning(f"get_user_by_slack: Slack API check failed: {response.get('error')}")
+
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Failed to fetch Slack info for {slack_user_id}: {e}")
+                logger.warning(f"get_user_by_slack: Failed to fetch Slack info for {slack_user_id}: {e}")
+
+        # 2b. Try to find by Email if valid
+        if not user and info['email'] and self.user_account_repo:
+            logger.info(f"get_user_by_slack: Attempting to find user by email '{info['email']}'")
+            user = await self.user_repo.get_by_email(workspace_id, info['email'])
+            if user:
+                logger.info(f"get_user_by_slack: Found user by email. ID={user.id}. Linking Slack account.")
+                # Link account!
+                try:
+                    await self.user_account_repo.create({
+                        'user_id': user.id,
+                        'workspace_id': workspace_id,
+                        'provider': 'slack',
+                        'provider_id': slack_user_id,
+                        'username': None,
+                        'account_email': info['email']
+                    })
+                    logger.info("get_user_by_slack: Linked Slack account successfully.")
+                    # Fallthrough to update logic below
+                except Exception as e:
+                    logger.error(f"get_user_by_slack: Failed to link Slack account: {e}")
+
+        if user:
+            # Update existing user info
+            logger.info(f"get_user_by_slack: Updating existing user. ID={user.id}")
+            update_data = {}
+            if info["first_name"] and user.first_name != info["first_name"]:
+                update_data["first_name"] = info["first_name"]
+            if info["last_name"] and user.last_name != info["last_name"]:
+                update_data["last_name"] = info["last_name"]
+            
+            # Update display_name if it looks like a default/fallback one
+            if info["display_name"] and (not user.display_name or user.display_name == slack_user_id):
+                 update_data["display_name"] = info["display_name"]
+            
+            # Update username if it was just the ID and we have a handle now
+            if info["handle"] and (not user.username or user.username == slack_user_id):
+                 update_data["username"] = info["handle"]
+
+            # Sync master admin status
+            from app.config import get_settings
+            settings = get_settings()
+            if slack_user_id and slack_user_id in settings.get_admin_ids('slack') and not user.is_admin:
+                update_data['is_admin'] = True
+
+            if update_data:
+                await self.user_repo.update(user.id, update_data)
+                logger.info(f"get_user_by_slack: User updated with: {update_data}")
+            
+            # Ensure UserAccount has email and handle
+            if (info["email"] or info["handle"]) and self.user_account_repo:
+                 try:
+                    account = await self.user_account_repo.get_by_slack_id(slack_user_id, workspace_id)
+                    if account:
+                        account_update = {}
+                        if info["email"] and account.account_email != info["email"]:
+                             account_update['account_email'] = info["email"]
+                        if info["handle"] and account.username != info["handle"]:
+                             account_update['username'] = info["handle"]
+                        
+                        if account_update:
+                             await self.user_account_repo.update(account.id, account_update)
+                             logger.info(f"get_user_by_slack: Updated UserAccount: {account_update}")
+                    else:
+                         # Should exist if user found by slack_id, but double check
+                         logger.info("get_user_by_slack: UserAccount missing for existing user (weird). Creating it.")
+                         await self.user_account_repo.create({
+                            'user_id': user.id,
+                            'workspace_id': workspace_id,
+                            'provider': 'slack',
+                            'provider_id': slack_user_id,
+                            'username': info["handle"],
+                            'account_email': info["email"]
+                        })
+                 except Exception as e:
+                     logger.warning(f"get_user_by_slack: Error ensuring UserAccount: {e}")
+            return user
 
         # 3. Create record in this workspace
+        logger.info(f"get_user_by_slack: Creating new user for {slack_user_id}")
         return await self.get_or_create_by_slack(
             workspace_id,
             slack_user_id,
             info["display_name"],
             first_name=info["first_name"],
-            last_name=info["last_name"]
+            last_name=info["last_name"],
+            email=info["email"],
+            handle=info["handle"]
         )
 
     async def get_all_users(self, workspace_id: int) -> list[User]:
@@ -423,9 +592,39 @@ class UserService:
         if not target_user.last_name and source_user.last_name:
             target_user.last_name = source_user.last_name
         
-        # 1. Transfer UserAccounts
-        stmt = update(UserAccount).where(UserAccount.user_id == source_user_id).values(user_id=target_user_id)
-        await self.user_repo.db.execute(stmt)
+        
+        # 1. Transfer UserAccounts (Relationship Safe Context)
+        # We must manage the relationship collections to ensure SQLAlchemy knows we are moving 
+        # the accounts, not just orphaning them (which triggers delete-orphan).
+        source_accounts_list = list(source_user.user_accounts)
+        
+        for account in source_accounts_list:
+            # Check for potential conflict in target user accounts
+            existing_account = next(
+                (a for a in target_user.user_accounts 
+                 if a.provider == account.provider and a.workspace_id == account.workspace_id), 
+                None
+            )
+            
+            if existing_account:
+                # Update target account with source info if missing
+                if not existing_account.username and account.username:
+                    existing_account.username = account.username
+                if not existing_account.account_email and account.account_email:
+                    existing_account.account_email = account.account_email
+                
+                # Remove from source logic (orphaned duplicate will be deleted)
+                source_user.user_accounts.remove(account)
+            else:
+                # Move to target (re-parenting)
+                # we do NOT remove from source explicitly to avoid delete-orphan trigger on the object we want to keep
+                target_user.user_accounts.append(account)
+        
+        # Flush to persist these changes
+        await self.user_repo.db.flush()
+        # Refresh source_user so it realizes it no longer owns the moved accounts, 
+        # preventing cascade delete when we delete source_user later
+        await self.user_repo.db.refresh(source_user)
         
         # 2. Transfer Team Leadership
         stmt = update(Team).where(Team.team_lead_id == source_user_id).values(team_lead_id=target_user_id)

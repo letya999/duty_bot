@@ -126,7 +126,7 @@ class CommandHandler:
 
     # ==================== Duty Commands ====================
 
-    async def duty_today(self, today: date = None) -> str:
+    async def duty_today(self, today: date = None, user_formatter=None) -> str:
         """Show all on-duty people today"""
         today = self._get_today(today)
 
@@ -139,14 +139,17 @@ class CommandHandler:
         for team in teams:
             users = await self.schedule_service.get_today_duties(team.id, today)
             if users:
-                names = ", ".join([u.display_name for u in users])
+                if user_formatter:
+                    names = ", ".join([user_formatter(u) for u in users])
+                else:
+                    names = ", ".join([u.display_name for u in users])
                 result.append(f"**{team.display_name}**: {names}")
             else:
                 result.append(f"**{team.display_name}**: не назначен")
 
         return "\n".join(result)
 
-    async def mention_duty(self, team_name: str, today: date = None) -> str:
+    async def mention_duty(self, team_name: str, today: date = None, user_formatter=None) -> str:
         """Mention today's duty person/shift"""
         today = self._get_today(today)
 
@@ -158,7 +161,10 @@ class CommandHandler:
         if not users:
             raise CommandError(f"No duty assigned for {team.display_name} today")
         
-        mentions = " ".join([f"@{u.telegram_username or u.slack_user_id}" for u in users])
+        if user_formatter:
+            mentions = " ".join([user_formatter(u) for u in users])
+        else:
+            mentions = " ".join([f"@{u.telegram_username or u.slack_user_id or u.display_name}" for u in users])
         return f"Today's duty for {team.display_name}: {mentions}"
 
     # ==================== Team Commands ====================

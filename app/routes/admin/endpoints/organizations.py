@@ -475,15 +475,41 @@ async def merge_organization_users(
     org_id: int,
     req: MergeUsersRequest,
     admin: User = Depends(get_current_user),
-    user_service: UserService = Depends(get_user_service)
-) -> dict:
+    user_service: UserService = Depends(get_user_service),
+    org_service: OrganizationService = Depends(get_organization_service),
+    user_account_service: UserAccountService = Depends(get_user_account_service)
+) -> List[UserInOrganization]:
     """Merge two users in an organization"""
     if not admin.is_superadmin:
         raise HTTPException(status_code=403, detail="Only SuperAdmins can merge users")
     
     try:
         await user_service.merge_users(req.target_user_id, req.source_user_id)
-        return {"status": "success"}
+        
+        # Return updated user list
+        users = await org_service.get_organization_users(org_id)
+        result = []
+        for u in users:
+            accounts_summary = await user_account_service.get_user_accounts_summary(u.id)
+            all_accounts = accounts_summary.get('slack', []) + accounts_summary.get('telegram', [])
+            result.append(UserInOrganization(
+                id=u.id,
+                display_name=u.display_name,
+                is_superadmin=u.is_superadmin,
+                is_admin=u.is_admin,
+                user_accounts=[
+                    UserAccountResponse(
+                        id=acc['id'],
+                        provider=acc.get('provider', 'unknown'),
+                        provider_id=acc['provider_id'],
+                        username=acc['username'],
+                        account_email=acc['email']
+                    )
+                    for acc in all_accounts
+                ]
+            ))
+        return result
+
     except Exception as e:
         logger.error(f"Error merging users: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db, get_current_user
 from app.models import User, Escalation
-from app.routes.admin.dependencies import get_escalation_service
+from app.routes.admin.dependencies import get_escalation_service, get_admin_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/escalations", tags=["Escalations"])
@@ -62,7 +62,8 @@ async def create_escalation(
     team_id: int | None = Body(None, embed=False),
     cto_id: int = Body(..., embed=False),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Create escalation"""
     try:
@@ -75,6 +76,17 @@ async def create_escalation(
         )
         db.add(escalation)
         await db.commit()
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="create_escalation",
+            target_user_id=cto_id,
+            details={"escalation_id": escalation.id, "team_id": team_id},
+            target_id=escalation.id,
+            resource_type="escalation"
+        )
 
         return {
             "id": escalation.id,
@@ -94,7 +106,8 @@ async def create_escalation(
 async def delete_escalation(
     escalation_id: int,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin_service = Depends(get_admin_service)
 ) -> dict:
     """Delete escalation"""
     try:
@@ -110,6 +123,17 @@ async def delete_escalation(
 
         await db.delete(escalation)
         await db.commit()
+
+        # Log the action
+        await admin_service.log_action(
+            workspace_id=user.workspace_id,
+            admin_id=user.id,
+            action="delete_escalation",
+            target_user_id=escalation.cto_id if escalation else None,
+            details={"escalation_id": escalation_id, "team_id": escalation.team_id if escalation else None},
+            target_id=escalation_id,
+            resource_type="escalation"
+        )
 
         return {"status": "deleted"}
     except HTTPException:

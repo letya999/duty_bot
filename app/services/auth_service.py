@@ -84,13 +84,18 @@ class AuthService:
             return None, None
 
         # Create new workspace and user
-        workspace = await self._get_or_create_workspace(provider, provider_id, user_info)
-        
-        # Try to find existing user by username in this workspace/organization
+        workspace, workspace_org_id = await self._get_or_create_workspace(provider, provider_id, user_info)
+
+        # Try to find existing user by username or name in this workspace/organization
         # This handles cases where a user exists but hasn't linked this provider yet
         username = user_info.get("username")
+        first_name = user_info.get("first_name")
+        last_name = user_info.get("last_name")
+        organization_id = workspace.organization_id or workspace_org_id
+
+        # Try matching by username first
         if username:
-            user = await self.find_user_by_username(provider, username, workspace.id, workspace.organization_id)
+            user = await self.find_user_by_username(provider, username, workspace.id, organization_id)
             if user:
                 logger.info(
                     f"Found existing user {user.id} by username '{username}', "
@@ -107,8 +112,29 @@ class AuthService:
                 await self.db.refresh(user)
                 return user, workspace
 
+        # Try matching by first_name + last_name if they don't match by username
+        if first_name or last_name:
+            user = await self.find_user_by_name(
+                first_name, last_name, workspace.id, organization_id
+            )
+            if user:
+                logger.info(
+                    f"Found existing user {user.id} by name '{first_name} {last_name}', "
+                    f"linking {provider} account {provider_id}"
+                )
+                await self.ensure_user_account(
+                    user_id=user.id,
+                    provider=provider,
+                    provider_id=provider_id,
+                    workspace_id=workspace.id,
+                    username=username,
+                )
+                # Refresh user to ensure relationships are loaded if needed
+                await self.db.refresh(user)
+                return user, workspace
+
         user = await self._create_user_with_account(
-            provider, provider_id, workspace.id, user_info
+            provider, provider_id, workspace.id, user_info, organization_id
         )
 
         return user, workspace
@@ -119,10 +145,14 @@ class AuthService:
         """
         Find existing user by provider ID.
 
-        First tries by provider_id, then by username for backwards compatibility.
-        Prefers admin users and more recently created accounts.
+        Search strategy:
+        1. Exact match: (provider, provider_id)
+        2. Cross-provider match: provider_id only (user may have same ID in multiple platforms)
+
+        This prevents creating duplicate users when the same provider_id is used
+        across different platforms (e.g., user has same ID in both Telegram and Slack).
         """
-        # Query by provider_id
+        # First try: exact match by (provider, provider_id)
         stmt = (
             select(User)
             .join(UserAccount)
@@ -137,41 +167,137 @@ class AuthService:
         user = result.scalars().first()
 
         if user:
+            logger.info(f"Found user {user.id} by exact match (provider={provider}, provider_id={provider_id})")
             workspace = await self.db.get(Workspace, user.workspace_id)
             return user, workspace
 
+        # Second try: match by provider_id across ALL providers
+        # Important: Some platforms may use the same ID for a user (e.g., user with
+        # same U0930GD8F44 ID in both Telegram and Slack accounts)
+        logger.debug(f"No exact match for (provider={provider}, provider_id={provider_id}), "
+                     f"checking across all providers...")
+
+        stmt = (
+            select(User)
+            .join(UserAccount)
+            .where(UserAccount.provider_id == provider_id)
+            .order_by(User.is_superadmin.desc(), User.is_admin.desc(), User.created_at.desc())
+        )
+
+        result = await self.db.execute(stmt)
+        user = result.scalars().first()
+
+        if user:
+            logger.info(f"Found user {user.id} by cross-provider match (provider_id={provider_id} exists in {provider} context)")
+            workspace = await self.db.get(Workspace, user.workspace_id)
+            return user, workspace
+
+        logger.debug(f"No existing user found for provider_id={provider_id}")
         return None, None
 
     async def find_user_by_username(
         self, provider: str, username: str, workspace_id: int, organization_id: Optional[int] = None
     ) -> Optional[User]:
-        """Find user by username in specific workspace or organization."""
+        """Find user by username in specific workspace or organization.
+
+        Search priority:
+        1. Same workspace with matching username
+        2. Same organization with matching username (if organization_id provided)
+        """
         if not username:
             return None
 
-        # Logic: matches username AND (in same workspace OR in same organization)
-        conditions = [
-            func.lower(User.username) == username.lower(),
-            or_(
-                User.workspace_id == workspace_id,
-                (User.organization_id == organization_id) if organization_id else False
-            )
-        ]
-        
-        # Determine order: prefer same workspace
+        # First try to find in the same workspace
         stmt = (
             select(User)
-            .where(*conditions)
-            .order_by((User.workspace_id == workspace_id).desc())
+            .where(
+                func.lower(User.username) == username.lower(),
+                User.workspace_id == workspace_id,
+            )
         )
-
         result = await self.db.execute(stmt)
-        return result.scalars().first()
+        user = result.scalars().first()
+
+        if user:
+            logger.info(f"Found user by username '{username}' in workspace {workspace_id}")
+            return user
+
+        # If not found in workspace and organization_id is available, try organization
+        if organization_id:
+            stmt = (
+                select(User)
+                .where(
+                    func.lower(User.username) == username.lower(),
+                    User.organization_id == organization_id,
+                )
+                .order_by(User.workspace_id.desc())  # Prefer users with workspace_id
+            )
+            result = await self.db.execute(stmt)
+            user = result.scalars().first()
+
+            if user:
+                logger.info(f"Found user by username '{username}' in organization {organization_id}")
+                return user
+
+        logger.debug(f"User with username '{username}' not found in workspace {workspace_id} or organization {organization_id}")
+        return None
+
+    async def find_user_by_name(
+        self, first_name: Optional[str], last_name: Optional[str],
+        workspace_id: int, organization_id: Optional[int] = None
+    ) -> Optional[User]:
+        """Find user by first_name and last_name in workspace or organization.
+
+        Search priority:
+        1. Same workspace with matching name
+        2. Same organization with matching name (if organization_id provided)
+        """
+        if not first_name and not last_name:
+            return None
+
+        # First try to find in the same workspace
+        conditions = []
+        if first_name:
+            conditions.append(func.lower(User.first_name) == first_name.lower())
+        if last_name:
+            conditions.append(func.lower(User.last_name) == last_name.lower())
+
+        stmt = (
+            select(User)
+            .where(User.workspace_id == workspace_id, *conditions)
+        )
+        result = await self.db.execute(stmt)
+        user = result.scalars().first()
+
+        if user:
+            logger.info(f"Found user by name in workspace {workspace_id}: {first_name} {last_name}")
+            return user
+
+        # If not found in workspace and organization_id is available, try organization
+        if organization_id:
+            stmt = (
+                select(User)
+                .where(User.organization_id == organization_id, *conditions)
+                .order_by(User.workspace_id.desc())  # Prefer users with workspace_id
+            )
+            result = await self.db.execute(stmt)
+            user = result.scalars().first()
+
+            if user:
+                logger.info(f"Found user by name in organization {organization_id}: {first_name} {last_name}")
+                return user
+
+        logger.debug(f"User with name '{first_name} {last_name}' not found")
+        return None
 
     async def _get_or_create_workspace(
         self, provider: str, provider_id: str, user_info: Dict[str, Any]
-    ) -> Workspace:
-        """Get or create workspace for OAuth provider."""
+    ) -> tuple[Workspace, Optional[int]]:
+        """Get or create workspace for OAuth provider.
+
+        Returns:
+            Tuple of (Workspace, organization_id) where organization_id may be None
+        """
         workspace_type_map = {
             "telegram": "telegram",
             "slack": "slack",
@@ -194,8 +320,8 @@ class AuthService:
         workspace = result.scalars().first()
 
         if workspace:
-            logger.info(f"Found existing workspace: {workspace.id}")
-            return workspace
+            logger.info(f"Found existing workspace: {workspace.id} (org_id: {workspace.organization_id})")
+            return workspace, workspace.organization_id
 
         # Create new workspace
         logger.info(f"Creating new workspace for {provider} user {provider_id}")
@@ -220,7 +346,7 @@ class AuthService:
         await self.db.refresh(workspace)
         logger.info(f"Created workspace: {workspace.id}")
 
-        return workspace
+        return workspace, None
 
     async def _create_user_with_account(
         self,
@@ -228,6 +354,7 @@ class AuthService:
         provider_id: str,
         workspace_id: int,
         user_info: Dict[str, Any],
+        organization_id: Optional[int] = None,
     ) -> User:
         """Create new user and associated UserAccount."""
         logger.info(f"Creating new user for {provider} ID {provider_id}")
@@ -262,6 +389,7 @@ class AuthService:
         # Create user
         user = User(
             workspace_id=workspace_id,
+            organization_id=organization_id,
             username=username,
             first_name=first_name,
             last_name=last_name,
@@ -284,7 +412,7 @@ class AuthService:
         self.db.add(user_account)
         await self.db.commit()
 
-        logger.info(f"Created user: {user.id} with {provider} account")
+        logger.info(f"Created user: {user.id} with {provider} account (org_id: {organization_id})")
         return user
 
     async def ensure_user_account(

@@ -593,15 +593,17 @@ class UserService:
             target_user.last_name = source_user.last_name
         
         
-        # 1. Transfer UserAccounts (Relationship Safe Context)
-        # We must manage the relationship collections to ensure SQLAlchemy knows we are moving 
-        # the accounts, not just orphaning them (which triggers delete-orphan).
-        source_accounts_list = list(source_user.user_accounts)
+        # 1. Transfer UserAccounts
+        # We need to transfer accounts from source to target. 
+        # If target already has an account for the same provider and workspace, we merge data and delete the source account.
+        # Otherwise, we just re-parent the account to the target user.
+        source_accounts = list(source_user.user_accounts)
+        target_accounts = list(target_user.user_accounts)
         
-        for account in source_accounts_list:
+        for account in source_accounts:
             # Check for potential conflict in target user accounts
             existing_account = next(
-                (a for a in target_user.user_accounts 
+                (a for a in target_accounts 
                  if a.provider == account.provider and a.workspace_id == account.workspace_id), 
                 None
             )
@@ -613,18 +615,19 @@ class UserService:
                 if not existing_account.account_email and account.account_email:
                     existing_account.account_email = account.account_email
                 
-                # Remove from source logic (orphaned duplicate will be deleted)
-                source_user.user_accounts.remove(account)
+                # Use delete() to ensure it's removed from DB and session
+                await self.user_repo.db.delete(account)
             else:
                 # Move to target (re-parenting)
-                # we do NOT remove from source explicitly to avoid delete-orphan trigger on the object we want to keep
-                target_user.user_accounts.append(account)
+                # Assignment to .user relationship automatically handles the move in SQLAlchemy
+                account.user = target_user
+                account.user_id = target_user_id
         
-        # Flush to persist these changes
+        # Flush to persist these changes before we proceed further
         await self.user_repo.db.flush()
-        # Refresh source_user so it realizes it no longer owns the moved accounts, 
-        # preventing cascade delete when we delete source_user later
-        await self.user_repo.db.refresh(source_user)
+        # Ensure collections are updated
+        await self.user_repo.db.refresh(target_user, ['user_accounts'])
+        await self.user_repo.db.refresh(source_user, ['user_accounts'])
         
         # 2. Transfer Team Leadership
         stmt = update(Team).where(Team.team_lead_id == source_user_id).values(team_lead_id=target_user_id)

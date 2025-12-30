@@ -110,9 +110,7 @@ This release marks the first public open-source version of Duty Bot with a compl
 - [ ] **CLI Tool**: Command-line management interface
 
 #### Medium Term
-- [ ] **Mobile App**: Native iOS/Android applications
 - [ ] **Calendar UI Improvements**: Drag-and-drop scheduling
-- [ ] **GraphQL API**: Alternative to REST API
 - [ ] **Real-time Updates**: WebSocket support for live notifications
 - [ ] **Advanced Analytics**: Duty history analysis and patterns
 - [ ] **Custom Escalation Rules**: User-defined escalation policies
@@ -120,7 +118,6 @@ This release marks the first public open-source version of Duty Bot with a compl
 - [ ] **Integration Hub**: Unified management of third-party apps
 
 #### Long Term
-- [ ] **Machine Learning**: Predictive duty assignment
 - [ ] **Automated Handoff**: Smart duty transition suggestions
 - [ ] **Multi-language Support**: Full i18n implementation
 - [ ] **On-premise Deployment**: Single-binary executable

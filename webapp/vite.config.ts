@@ -4,12 +4,17 @@ import react from '@vitejs/plugin-react'
 // Determine backend URL based on environment
 const backendUrl = process.env.VITE_API_BACKEND || 'http://app:8000'
 
+// Determine allowed hosts based on environment
+const allowedHosts = process.env.VITE_APP_HOST
+  ? [process.env.VITE_APP_HOST, 'localhost']
+  : ['localhost']
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     host: '0.0.0.0',
-    allowedHosts: ['rona-isobathythermal-nondeficiently.ngrok-free.dev', 'localhost'],
+    allowedHosts,
     proxy: {
       '/web': {
         target: backendUrl,

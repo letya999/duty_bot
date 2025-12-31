@@ -1,130 +1,53 @@
-version: '3.8'
-
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: duty_bot_db
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-duty_bot}
-      POSTGRES_USER: ${POSTGRES_USER:-duty_bot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-duty_bot} -d ${POSTGRES_DB:-duty_bot}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
-    networks:
-      - duty_bot_network
-    restart: unless-stopped
-    # Security: restrict resource usage
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
 
-  # FastAPI Backend Application
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        - PYTHON_VERSION=3.11
+    build: .
     container_name: duty_bot_app
     depends_on:
       postgres:
         condition: service_healthy
     env_file: .env
     environment:
-      # Database connection via Docker service name
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-duty_bot}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-duty_bot}
-      # Application settings
-      HOST: 0.0.0.0
-      PORT: 8000
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     ports:
-      - "${APP_PORT:-8000}:8000"
+      - "8000:8000"
     volumes:
-      # Mount entire directory for development
       - .:/app
-      # Exclude node_modules and venv
-      - /app/node_modules
-      - /app/venv
-      - /app/.venv
-    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
-    networks:
-      - duty_bot_network
-    # Health check endpoint
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    # Resource limits for security
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 1G
-        reservations:
-          cpus: '1'
-          memory: 512M
 
-  # React Frontend Development Server
   webapp:
     build:
       context: ./webapp
       dockerfile: Dockerfile
     container_name: duty_bot_webapp
-    depends_on:
-      - app
+    ports:
+      - "5173:5173"
     env_file: .env
     environment:
-      # Point to backend API via Docker service name
       VITE_API_BACKEND: http://app:8000
-      VITE_API_URL: /api/admin
-      VITE_APP_HOST: localhost
-      NODE_ENV: development
-    ports:
-      - "${WEBAPP_PORT:-5173}:5173"
     volumes:
-      # Mount webapp directory for HMR (Hot Module Replacement)
       - ./webapp:/app
-      # Don't overwrite node_modules
       - /app/node_modules
     command: npm run dev -- --host 0.0.0.0
     restart: unless-stopped
-    networks:
-      - duty_bot_network
-    # Resource limits
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
+    depends_on:
+      - app
 
-# Named volume for PostgreSQL data persistence
 volumes:
   postgres_data:
-    driver: local
-
-# Network for inter-container communication
-networks:
-  duty_bot_network:
-    driver: bridge

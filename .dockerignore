@@ -1,0 +1,112 @@
+# ==================
+# Git
+# ==================
+.git
+.gitignore
+.gitattributes
+
+# ==================
+# Documentation
+# ==================
+docs/
+README.md
+CHANGELOG.md
+LICENSE
+*.md
+
+# ==================
+# CI/CD
+# ==================
+.github/
+.gitlab-ci.yml
+.circleci/
+jenkins/
+.travis.yml
+
+# ==================
+# Development
+# ==================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.venv/
+env/
+venv/
+
+# ==================
+# Python
+# ==================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+.mypy_cache/
+htmlcov/
+dist/
+build/
+
+# ==================
+# Node.js
+# ==================
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnp
+.pnp.js
+
+# ==================
+# Environment files (secrets)
+# ==================
+.env
+.env.*
+!.env.example
+!.env.production
+
+# ==================
+# Logs
+# ==================
+*.log
+logs/
+
+# ==================
+# Database files
+# ==================
+*.db
+*.sqlite
+*.sqlite3
+
+# ==================
+# Docker files
+# ==================
+Dockerfile.dev
+docker-compose.override.yml
+docker-compose.dev.yml
+
+# ==================
+# Test files and coverage
+# ==================
+tests/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.py[cod]
+__pycache__/
+
+# ==================
+# Temporary files
+# ==================
+*.tmp
+*.temp
+*.bak
+.cache/
+
+# ==================
+# IDE-specific
+# ==================
+.history
+.vscode-remote

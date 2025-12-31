@@ -593,16 +593,12 @@ class UserService:
             target_user.last_name = source_user.last_name
         
         # 1. Transfer UserAccounts
-        # We need to transfer accounts from source to target. 
-        # If target already has an account for the same provider and workspace, we merge data and delete the source account.
-        # Otherwise, we just re-parent the account to the target user.
-        source_accounts = list(source_user.user_accounts)
-        target_accounts = list(target_user.user_accounts)
-        
-        for account in source_accounts:
+        # We must manage moving the accounts carefully to avoid orphan deletion triggers.
+        # Using list() on the collection to avoid modification-during-iteration issues.
+        for account in list(source_user.user_accounts):
             # Check for potential conflict in target user accounts
             existing_account = next(
-                (a for a in target_accounts 
+                (a for a in target_user.user_accounts 
                  if a.provider == account.provider and a.workspace_id == account.workspace_id), 
                 None
             )
@@ -614,19 +610,16 @@ class UserService:
                 if not existing_account.account_email and account.account_email:
                     existing_account.account_email = account.account_email
                 
-                # Use delete() to ensure it's removed from DB and session
+                # Delete the duplicate source account
                 await self.user_repo.db.delete(account)
             else:
-                # Move to target (re-parenting)
-                # Assignment to .user relationship automatically handles the move in SQLAlchemy
+                # Move to target by setting the parent object. 
+                # This automatically handles removal from the source collection 
+                # and updates the FK to target_user.id.
                 account.user = target_user
-                account.user_id = target_user_id
         
-        # Flush to persist these changes before we proceed further
+        # Ensure changes are flushed before proceeding to other transfers
         await self.user_repo.db.flush()
-        # Ensure collections are updated
-        await self.user_repo.db.refresh(target_user, ['user_accounts'])
-        await self.user_repo.db.refresh(source_user, ['user_accounts'])
         
         # 2. Transfer Team Leadership
         stmt = update(Team).where(Team.team_lead_id == source_user_id).values(team_lead_id=target_user_id)
@@ -634,7 +627,8 @@ class UserService:
         
         # 3. Transfer Schedules (handle duplicates)
         source_schedules_stmt = select(Schedule).where(Schedule.user_id == source_user_id)
-        source_schedules = (await self.user_repo.db.execute(source_schedules_stmt)).scalars().all()
+        source_schedules_res = await self.user_repo.db.execute(source_schedules_stmt)
+        source_schedules = source_schedules_res.scalars().all()
         for s in source_schedules:
             exists_stmt = select(Schedule).where(
                 Schedule.user_id == target_user_id,
@@ -653,10 +647,12 @@ class UserService:
         
         # 5. Team Membership (handle duplicates)
         source_teams_stmt = select(team_members.c.team_id).where(team_members.c.user_id == source_user_id)
-        target_teams_stmt = select(team_members.c.team_id).where(team_members.c.user_id == target_user_id)
+        source_teams_res = await self.user_repo.db.execute(source_teams_stmt)
+        source_teams = source_teams_res.scalars().all()
         
-        source_teams = (await self.user_repo.db.execute(source_teams_stmt)).scalars().all()
-        target_teams = (await self.user_repo.db.execute(target_teams_stmt)).scalars().all()
+        target_teams_stmt = select(team_members.c.team_id).where(team_members.c.user_id == target_user_id)
+        target_teams_res = await self.user_repo.db.execute(target_teams_stmt)
+        target_teams = target_teams_res.scalars().all()
         
         teams_to_transfer = set(source_teams) - set(target_teams)
         for team_id in teams_to_transfer:
@@ -673,11 +669,11 @@ class UserService:
         
         stmt = update(AdminLog).where(AdminLog.target_user_id == source_user_id).values(target_user_id=target_user_id)
         await self.user_repo.db.execute(stmt)
-
+ 
         # 7. Transfer Organization Ownership
         stmt = update(Organization).where(Organization.created_by_user_id == source_user_id).values(created_by_user_id=target_user_id)
         await self.user_repo.db.execute(stmt)
-
+ 
         # 8. Transfer RotationConfig
         rotation_configs_stmt = select(RotationConfig)
         rotation_configs_res = await self.user_repo.db.execute(rotation_configs_stmt)
@@ -701,7 +697,7 @@ class UserService:
             
             if changed:
                 self.user_repo.db.add(rc)
-
+ 
         # 9. Transfer DutyStats
         source_stats_stmt = select(DutyStats).where(DutyStats.user_id == source_user_id)
         source_stats_res = await self.user_repo.db.execute(source_stats_stmt)
@@ -724,9 +720,15 @@ class UserService:
                 await self.user_repo.db.delete(st)
             else:
                 st.user_id = target_user_id
-
+ 
         # 10. Delete source user
-        await self.user_repo.delete(source_user_id)
+        # Flush everything first to ensure references are updated
+        await self.user_repo.db.flush()
+        
+        # Delete directly to avoid repository's internal commit and re-fetching
+        await self.user_repo.db.delete(source_user)
         
         await self.user_repo.db.commit()
+        
+        # Final refresh of target user to ensure all relationships are up to date
         return await self.user_repo.get_by_id(target_user_id)
